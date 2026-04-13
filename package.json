@@ -1,0 +1,24 @@
+{
+  "name": "kmt-crew-portal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@supabase/ssr": "latest",
+    "@supabase/supabase-js": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "lucide-react": "latest",
+    "tailwindcss": "^3.4.1", 
+    "postcss": "^8.4.35",
+    "autoprefixer": "^10.4.18",
+    "clsx": "latest",
+    "tailwind-merge": "latest"
+  }
+}
