@@ -33,9 +33,9 @@ export default function AuthPage() {
   }, [])
 
   // ดึงรายการ Color/Size จาก Inventory (Unique values)
-  const availableSuitColors = [...new Set(inventory.filter(i => i.category?.includes('Body')).map(i => i.color || i.Color))]
-  const availableSuitSizes = [...new Set(inventory.filter(i => i.category?.includes('Body')).map(i => i.size || i.Size))]
-  const availableBootSizes = [...new Set(inventory.filter(i => i.category?.includes('Foot')).map(i => i.size || i.Size))].sort()
+  const availableSuitColors = [...new Set(inventory?.filter(i => i.category?.includes('Body')).map(i => i.color || i.Color))]
+  const availableSuitSizes = [...new Set(inventory?.filter(i => i.category?.includes('Body')).map(i => i.size || i.Size))]
+  const availableBootSizes = [...new Set(inventory?.filter(i => i.category?.includes('Foot')).map(i => i.size || i.Size))].sort()
 
   const handleRegister = async () => {
     setLoading(true)
