@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
-import { Camera, Search, Ruler, AlertCircle, X, AlertTriangle } from 'lucide-react'
+import { Camera, Search, Ruler, AlertTriangle, X } from 'lucide-react'
 
 export default function AuthPage() {
   const [step, setStep] = useState(1)
@@ -38,10 +38,35 @@ export default function AuthPage() {
     (c.full_name || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   )
 
-  // ดึงรายการ Color/Size จาก Inventory (ดึงแบบปลอดภัย)
-  const availableSuitColors = [...new Set(inventory.filter(i => (i.category || i.Category || '').includes('Body')).map(i => i.color || i.Color))].filter(Boolean)
-  const availableSuitSizes = [...new Set(inventory.filter(i => (i.category || i.Category || '').includes('Body')).map(i => i.size || i.Size))].filter(Boolean)
-  const availableBootSizes = [...new Set(inventory.filter(i => (i.category || i.Category || '').includes('Foot')).map(i => i.size || i.Size))].filter(Boolean).sort()
+  // ---------------------------------------------------------
+  // 🛠️ LOGIC ใหม่: การดึงสต็อกให้ตรงกับ Database จริง
+  // ---------------------------------------------------------
+  
+  // 1. สีชุด Boiler Suit: ค้นหาคำว่า "boiler suit" แล้วตัดเอาเฉพาะคำหลังเครื่องหมาย "-"
+  const availableSuitColors = [...new Set(
+    inventory
+      .filter(i => (i.item_name || '').toLowerCase().includes('boiler suit'))
+      .map(i => {
+        const name = i.item_name || '';
+        return name.includes('-') ? name.split('-')[1].trim() : name;
+      })
+  )].filter(Boolean)
+
+  // 2. ไซส์ชุด Boiler Suit:
+  const availableSuitSizes = [...new Set(
+    inventory
+      .filter(i => (i.item_name || '').toLowerCase().includes('boiler suit'))
+      .map(i => i.size || i.Size)
+  )].filter(Boolean)
+
+  // 3. ไซส์ Safety Boots: เจาะจงเฉพาะคำว่า "Safety boots" (ตัด Rubber boots ออก)
+  const availableBootSizes = [...new Set(
+    inventory
+      .filter(i => (i.item_name || '').toLowerCase().includes('safety boots'))
+      .map(i => i.size || i.Size)
+  )].filter(Boolean).sort()
+
+  // ---------------------------------------------------------
 
   // ฟังก์ชันลงทะเบียน
   const handleRegister = async () => {
