@@ -4,8 +4,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { 
   ShoppingCart, ChevronDown, ChevronUp, Plus, Trash2, 
-  HardHat, Headphones, Eye, Mask, Shirt, HandMetal, 
-  Footprints, MoreHorizontal, X, Package, AlertCircle
+  HardHat, Headphones, Eye, Wind, Shirt, Hand, 
+  Footprints, MoreHorizontal, X, Package, ShieldAlert
 } from 'lucide-react'
 
 export default function PPEPage() {
@@ -40,19 +40,17 @@ export default function PPEPage() {
     fetchData()
   }, [router])
 
-  // 1. แยกหมวดหมู่ตามลำดับที่ต้องการ
   const categories = [
     { name: 'Head', keywords: ['helmet'], icon: <HardHat size={18}/> },
     { name: 'Ears', keywords: ['ear'], icon: <Headphones size={18}/> },
     { name: 'Eyes', keywords: ['glass', 'goggle'], icon: <Eye size={18}/> },
-    { name: 'Respiratory', keywords: ['mask'], icon: <Mask size={18}/> },
+    { name: 'Respiratory', keywords: ['mask'], icon: <Wind size={18}/> },
     { name: 'Body', keywords: ['suit', 'coverall', 'vest'], icon: <Shirt size={18}/> },
-    { name: 'Hands', keywords: ['glove'], icon: <HandMetal size={18}/> },
+    { name: 'Hands', keywords: ['glove'], icon: <Hand size={18}/> },
     { name: 'Foots', keywords: ['boot', 'shoe'], icon: <Footprints size={18}/> },
     { name: 'Others', keywords: [], icon: <MoreHorizontal size={18}/> }
   ]
 
-  // Logic การรวมกลุ่มสินค้า (Group by Name)
   const groupedInventory = useMemo(() => {
     const groups = {}
     inventory.forEach(item => {
@@ -63,7 +61,6 @@ export default function PPEPage() {
     return Object.values(groups)
   }, [inventory])
 
-  // 4. เช็กขีดจำกัดรายปี
   const getLimitStatus = (itemName) => {
     const lowerName = itemName.toLowerCase()
     const count = history.filter(h => h.item_name.toLowerCase().includes(lowerName)).length
@@ -88,7 +85,8 @@ export default function PPEPage() {
     }))
     const { error } = await supabase.from('ppe_requests').insert(reqs)
     if (!error) {
-      alert('เบิกอุปกรณ์เรียบร้อยแล้ว'); setCart([]); setShowCart(false); router.refresh();
+      alert('เบิกอุปกรณ์เรียบร้อยแล้ว'); setCart([]); setShowCart(false);
+      window.location.reload(); 
     }
     setLoading(false)
   }
@@ -97,7 +95,6 @@ export default function PPEPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-24">
-      {/* Header */}
       <div className="bg-slate-900/90 backdrop-blur-md sticky top-0 z-50 border-b border-white/10 p-5">
         <div className="max-w-md mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -116,7 +113,6 @@ export default function PPEPage() {
 
       <div className="max-w-md mx-auto p-6 space-y-4">
         {categories.map(cat => {
-          // กรองสินค้าตามหมวดหมู่
           const catItems = groupedInventory.filter(group => {
             const n = group.name.toLowerCase()
             return cat.name === 'Others' ? 
@@ -131,7 +127,7 @@ export default function PPEPage() {
             <div key={cat.name} className="space-y-2">
               <button 
                 onClick={() => setExpandedCat(isCatOpen ? null : cat.name)}
-                className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${isCatOpen ? 'bg-blue-600' : 'bg-white/5 border border-white/10'}`}
+                className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${isCatOpen ? 'bg-blue-600 shadow-lg shadow-blue-900/40' : 'bg-white/5 border border-white/10'}`}
               >
                 <div className="flex items-center gap-3">
                   {cat.icon}
@@ -148,14 +144,13 @@ export default function PPEPage() {
 
                     return (
                       <div key={group.name} className="bg-white/5 border border-white/5 rounded-2xl overflow-hidden">
-                        {/* 2. ยุบชื่อเดียวกันไว้ที่นี่ */}
                         <button 
                           onClick={() => setExpandedItem(isItemOpen ? null : group.name)}
                           className="w-full p-4 flex items-center justify-between hover:bg-white/5"
                         >
                           <div className="flex flex-col items-start">
                             <span className="text-xs font-bold">{group.name}</span>
-                            {limit.reached && <span className="text-[8px] text-red-500 font-black uppercase">{limit.msg}</span>}
+                            {limit.reached && <span className="text-[8px] text-red-500 font-black uppercase flex items-center gap-1 mt-1"><ShieldAlert size={10}/> {limit.msg}</span>}
                           </div>
                           <ChevronDown size={14} className={`text-slate-600 transition-transform ${isItemOpen ? 'rotate-180' : ''}`}/>
                         </button>
@@ -163,13 +158,11 @@ export default function PPEPage() {
                         {isItemOpen && (
                           <div className="px-4 pb-4 space-y-2 bg-black/20">
                             {group.variants.map((variant, vIdx) => {
-                              // 4. ล็อก Profile Logic
                               const isSuit = group.name.toLowerCase().includes('suit')
                               const isBoot = group.name.toLowerCase().includes('boot')
                               const isLocked = (isSuit && (variant.color !== user.suit_color || variant.size !== user.suit_size)) ||
                                                (isBoot && variant.size !== user.boot_size)
                               
-                              // 3. เช็กสต็อก
                               const stock = variant.stock || variant.Quantity || 0
                               const isOutOfStock = stock <= 0
 
@@ -179,10 +172,10 @@ export default function PPEPage() {
                                 <div key={vIdx} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
                                   <div className="flex flex-col">
                                     <span className="text-[11px] font-bold">
-                                      {variant.color && variant.size ? `${variant.color} - ${variant.size}` : (variant.color || variant.size || 'Standard Size')}
+                                      {variant.color && variant.size ? `${variant.color} - ${variant.size}` : (variant.color || variant.size || 'Standard')}
                                     </span>
                                     <span className={`text-[9px] font-black uppercase ${isOutOfStock ? 'text-red-500' : 'text-slate-500'}`}>
-                                      {isOutOfStock ? 'สินค้าหมด' : `คงเหลือ: ${stock}`}
+                                      {isOutOfStock ? 'OUT OF STOCK' : `Stock: ${stock}`}
                                     </span>
                                   </div>
                                   <button 
@@ -207,18 +200,17 @@ export default function PPEPage() {
         })}
       </div>
 
-      {/* Cart Drawer */}
       {showCart && (
-        <div className="fixed inset-0 bg-slate-950 z-[60] flex flex-col animate-in slide-in-from-bottom duration-300">
+        <div className="fixed inset-0 bg-slate-950 z-[60] flex flex-col animate-in slide-in-from-bottom">
           <div className="p-6 border-b border-white/10 flex justify-between items-center bg-slate-900">
-            <h3 className="text-sm font-black uppercase tracking-widest">รายการที่เลือก</h3>
+            <h3 className="text-sm font-black uppercase tracking-widest text-blue-500">Cart Review</h3>
             <button onClick={() => setShowCart(false)} className="p-2 bg-white/10 rounded-full"><X size={20}/></button>
           </div>
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {cart.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center opacity-20">
                 <Package size={64}/>
-                <p className="text-xs font-bold mt-4">ไม่มีสินค้าในตะกร้า</p>
+                <p className="text-xs font-bold mt-4 uppercase">Cart is empty</p>
               </div>
             ) : cart.map((item) => (
               <div key={item.cartId} className="bg-white/5 p-4 rounded-2xl flex justify-between items-center border border-white/10">
@@ -230,13 +222,13 @@ export default function PPEPage() {
               </div>
             ))}
           </div>
-          <div className="p-8 border-t border-white/10 bg-slate-900/50">
+          <div className="p-8 border-t border-white/10 bg-slate-900/50 backdrop-blur-md">
             <button 
               disabled={cart.length === 0 || loading}
               onClick={handleCheckout}
               className="w-full py-5 bg-blue-600 rounded-2xl font-black uppercase tracking-widest shadow-2xl shadow-blue-500/30 active:scale-95 transition-all"
             >
-              {loading ? 'กำลังบันทึก...' : `ยืนยันการเบิก (${cart.length} รายการ)`}
+              {loading ? 'Processing...' : `Confirm Request (${cart.length})`}
             </button>
           </div>
         </div>
