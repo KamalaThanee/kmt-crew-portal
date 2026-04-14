@@ -26,7 +26,7 @@ export default function PPEPage() {
     setUser(u)
 
     async function fetchData() {
-      const { data: inv } = await supabase.from('ppe_inventory').select('*')
+      const { data: inv, error: invErr } = await supabase.from('ppe_inventory').select('*')
       if (inv) setInventory(inv)
       
       const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString()
@@ -41,11 +41,11 @@ export default function PPEPage() {
   }, [router])
 
   const categories = [
-    { name: 'Head', keywords: ['helmet'], icon: <HardHat size={18}/> },
+    { name: 'Head', keywords: ['helmet', 'hat'], icon: <HardHat size={18}/> },
     { name: 'Ears', keywords: ['ear'], icon: <Headphones size={18}/> },
     { name: 'Eyes', keywords: ['glass', 'goggle'], icon: <Eye size={18}/> },
-    { name: 'Respiratory', keywords: ['mask'], icon: <Wind size={18}/> },
-    { name: 'Body', keywords: ['suit', 'coverall', 'vest'], icon: <Shirt size={18}/> },
+    { name: 'Respiratory', keywords: ['mask', 'respirator'], icon: <Wind size={18}/> },
+    { name: 'Body', keywords: ['suit', 'coverall', 'vest', 'jacket'], icon: <Shirt size={18}/> },
     { name: 'Hands', keywords: ['glove'], icon: <Hand size={18}/> },
     { name: 'Foots', keywords: ['boot', 'shoe'], icon: <Footprints size={18}/> },
     { name: 'Others', keywords: [], icon: <MoreHorizontal size={18}/> }
@@ -54,7 +54,7 @@ export default function PPEPage() {
   const groupedInventory = useMemo(() => {
     const groups = {}
     inventory.forEach(item => {
-      const name = item.item_name
+      const name = item.item_name || "Unknown Item"
       if (!groups[name]) groups[name] = { name, variants: [] }
       groups[name].variants.push(item)
     })
@@ -78,15 +78,19 @@ export default function PPEPage() {
     const reqs = cart.map(i => ({
       crew_id: user.id,
       item_name: i.item_name,
-      size: i.size || i.Size,
-      color: i.color || null,
+      size: i.size || i.Size || i.item_size || null,
+      color: i.color || i.Color || i.item_color || null,
       status: 'pending',
       request_date: new Date().toISOString()
     }))
     const { error } = await supabase.from('ppe_requests').insert(reqs)
     if (!error) {
-      alert('เบิกอุปกรณ์เรียบร้อยแล้ว'); setCart([]); setShowCart(false);
+      alert('บันทึกคำขอเบิกเรียบร้อยแล้ว'); 
+      setCart([]); 
+      setShowCart(false);
       window.location.reload(); 
+    } else {
+      alert('Error: ' + error.message)
     }
     setLoading(false)
   }
@@ -94,19 +98,20 @@ export default function PPEPage() {
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-24">
-      <div className="bg-slate-900/90 backdrop-blur-md sticky top-0 z-50 border-b border-white/10 p-5">
+    <div className="min-h-screen bg-slate-950 text-white pb-24 font-sans">
+      {/* Navbar */}
+      <div className="bg-slate-900/95 backdrop-blur-md sticky top-0 z-50 border-b border-white/10 p-5">
         <div className="max-w-md mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-black">{user.full_name[0]}</div>
+            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-black shadow-lg shadow-blue-600/20">{user.full_name[0]}</div>
             <div>
-              <h2 className="text-xs font-black uppercase tracking-tight">{user.full_name}</h2>
+              <h2 className="text-sm font-bold truncate max-w-[150px]">{user.full_name}</h2>
               <p className="text-[9px] text-blue-400 font-bold uppercase tracking-widest">{user.position}</p>
             </div>
           </div>
-          <button onClick={() => setShowCart(true)} className="relative p-3 bg-white/5 rounded-2xl border border-white/10">
+          <button onClick={() => setShowCart(true)} className="relative p-3 bg-white/5 rounded-2xl border border-white/10 hover:bg-white/10 transition-colors">
             <ShoppingCart size={20} className="text-blue-400" />
-            {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center">{cart.length}</span>}
+            {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-950">{cart.length}</span>}
           </button>
         </div>
       </div>
@@ -127,17 +132,17 @@ export default function PPEPage() {
             <div key={cat.name} className="space-y-2">
               <button 
                 onClick={() => setExpandedCat(isCatOpen ? null : cat.name)}
-                className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${isCatOpen ? 'bg-blue-600 shadow-lg shadow-blue-900/40' : 'bg-white/5 border border-white/10'}`}
+                className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all duration-300 ${isCatOpen ? 'bg-blue-600 shadow-xl shadow-blue-600/20' : 'bg-white/5 border border-white/10'}`}
               >
                 <div className="flex items-center gap-3">
-                  {cat.icon}
+                  <div className={`${isCatOpen ? 'text-white' : 'text-blue-500'}`}>{cat.icon}</div>
                   <span className="text-[10px] font-black uppercase tracking-[0.2em]">{cat.name}</span>
                 </div>
-                {isCatOpen ? <ChevronUp size={16}/> : <ChevronDown size={16} className="text-slate-500"/>}
+                {isCatOpen ? <ChevronUp size={16}/> : <ChevronDown size={16} className="text-slate-600"/>}
               </button>
 
               {isCatOpen && (
-                <div className="space-y-2 pt-1">
+                <div className="space-y-2 pt-1 animate-in fade-in slide-in-from-top-2 duration-300">
                   {catItems.map((group) => {
                     const isItemOpen = expandedItem === group.name
                     const limit = getLimitStatus(group.name)
@@ -146,25 +151,29 @@ export default function PPEPage() {
                       <div key={group.name} className="bg-white/5 border border-white/5 rounded-2xl overflow-hidden">
                         <button 
                           onClick={() => setExpandedItem(isItemOpen ? null : group.name)}
-                          className="w-full p-4 flex items-center justify-between hover:bg-white/5"
+                          className="w-full p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
                         >
-                          <div className="flex flex-col items-start">
+                          <div className="flex flex-col items-start text-left">
                             <span className="text-xs font-bold">{group.name}</span>
                             {limit.reached && <span className="text-[8px] text-red-500 font-black uppercase flex items-center gap-1 mt-1"><ShieldAlert size={10}/> {limit.msg}</span>}
                           </div>
-                          <ChevronDown size={14} className={`text-slate-600 transition-transform ${isItemOpen ? 'rotate-180' : ''}`}/>
+                          <ChevronDown size={14} className={`text-slate-600 transition-transform duration-300 ${isItemOpen ? 'rotate-180' : ''}`}/>
                         </button>
 
                         {isItemOpen && (
                           <div className="px-4 pb-4 space-y-2 bg-black/20">
                             {group.variants.map((variant, vIdx) => {
+                              // Robust Stock Check: ตรวจสอบทุกชื่อคอลัมน์ที่เป็นไปได้
+                              const stock = variant.stock ?? variant.Quantity ?? variant.quantity ?? variant.qty ?? variant.stock_count ?? 0
+                              const isOutOfStock = stock <= 0
+                              
+                              const variantSize = variant.size ?? variant.Size ?? variant.item_size
+                              const variantColor = variant.color ?? variant.Color ?? variant.item_color
+
                               const isSuit = group.name.toLowerCase().includes('suit')
                               const isBoot = group.name.toLowerCase().includes('boot')
-                              const isLocked = (isSuit && (variant.color !== user.suit_color || variant.size !== user.suit_size)) ||
-                                               (isBoot && variant.size !== user.boot_size)
-                              
-                              const stock = variant.stock || variant.Quantity || 0
-                              const isOutOfStock = stock <= 0
+                              const isLocked = (isSuit && (variantColor !== user.suit_color || variantSize !== user.suit_size)) ||
+                                               (isBoot && variantSize !== user.boot_size)
 
                               if (isLocked) return null
 
@@ -172,7 +181,7 @@ export default function PPEPage() {
                                 <div key={vIdx} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
                                   <div className="flex flex-col">
                                     <span className="text-[11px] font-bold">
-                                      {variant.color && variant.size ? `${variant.color} - ${variant.size}` : (variant.color || variant.size || 'Standard')}
+                                      {variantColor && variantSize ? `${variantColor} - ${variantSize}` : (variantColor || variantSize || 'Standard')}
                                     </span>
                                     <span className={`text-[9px] font-black uppercase ${isOutOfStock ? 'text-red-500' : 'text-slate-500'}`}>
                                       {isOutOfStock ? 'OUT OF STOCK' : `Stock: ${stock}`}
@@ -181,7 +190,7 @@ export default function PPEPage() {
                                   <button 
                                     disabled={isOutOfStock || limit.reached}
                                     onClick={() => addToCart(variant)}
-                                    className="p-2 bg-blue-600 rounded-lg disabled:opacity-10 active:scale-90 transition-transform"
+                                    className="p-2 bg-blue-600 rounded-lg disabled:opacity-10 active:scale-90 transition-all shadow-lg shadow-blue-600/10"
                                   >
                                     <Plus size={14}/>
                                   </button>
@@ -200,25 +209,34 @@ export default function PPEPage() {
         })}
       </div>
 
+      {/* Cart Drawer */}
       {showCart && (
-        <div className="fixed inset-0 bg-slate-950 z-[60] flex flex-col animate-in slide-in-from-bottom">
+        <div className="fixed inset-0 bg-slate-950 z-[60] flex flex-col animate-in slide-in-from-bottom duration-300">
           <div className="p-6 border-b border-white/10 flex justify-between items-center bg-slate-900">
-            <h3 className="text-sm font-black uppercase tracking-widest text-blue-500">Cart Review</h3>
-            <button onClick={() => setShowCart(false)} className="p-2 bg-white/10 rounded-full"><X size={20}/></button>
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-blue-500">Cart Review</h3>
+              <p className="text-[9px] text-slate-500 font-bold uppercase">ยืนยันรายการเบิกอุปกรณ์</p>
+            </div>
+            <button onClick={() => setShowCart(false)} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"><X size={20}/></button>
           </div>
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {cart.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center opacity-20">
                 <Package size={64}/>
-                <p className="text-xs font-bold mt-4 uppercase">Cart is empty</p>
+                <p className="text-xs font-bold mt-4 uppercase tracking-[0.2em]">Cart is empty</p>
               </div>
             ) : cart.map((item) => (
               <div key={item.cartId} className="bg-white/5 p-4 rounded-2xl flex justify-between items-center border border-white/10">
                 <div>
                   <p className="text-xs font-bold">{item.item_name}</p>
-                  <p className="text-[10px] text-slate-500 font-bold uppercase">{item.color && `${item.color} | `}{item.size || item.Size}</p>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">
+                    {(item.color || item.Color) && `${item.color || item.Color} | `}
+                    {item.size || item.Size || item.item_size}
+                  </p>
                 </div>
-                <button onClick={() => setCart(cart.filter(i => i.cartId !== item.cartId))}><Trash2 size={18} className="text-red-500/50"/></button>
+                <button onClick={() => setCart(cart.filter(i => i.cartId !== item.cartId))} className="p-2 hover:bg-red-500/10 rounded-xl transition-colors">
+                  <Trash2 size={18} className="text-red-500/60"/>
+                </button>
               </div>
             ))}
           </div>
@@ -226,7 +244,7 @@ export default function PPEPage() {
             <button 
               disabled={cart.length === 0 || loading}
               onClick={handleCheckout}
-              className="w-full py-5 bg-blue-600 rounded-2xl font-black uppercase tracking-widest shadow-2xl shadow-blue-500/30 active:scale-95 transition-all"
+              className="w-full py-5 bg-blue-600 rounded-2xl font-black uppercase tracking-widest shadow-2xl shadow-blue-600/30 active:scale-95 transition-all disabled:opacity-20"
             >
               {loading ? 'Processing...' : `Confirm Request (${cart.length})`}
             </button>
