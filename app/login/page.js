@@ -22,24 +22,20 @@ export default function LoginPage() {
     fetchCrews()
   }, [])
 
-  const filteredCrews = crews.filter(c => 
-    c.full_name.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
   const handleLogin = async (e) => {
     e.preventDefault()
     if (!selectedCrew || pin.length !== 6) return
     setLoading(true)
     setError('')
 
-    // ตรวจสอบ PIN (รองรับทั้งคอลัมน์ pin_code และ pin เพื่อกันพลาด)
-    const dbPin = selectedCrew.pin_code || selectedCrew.pin
+    // ตรวจสอบ PIN (แปลงเป็น String ทั้งคู่เพื่อกันพลาด)
+    const dbPin = (selectedCrew.pin_code || selectedCrew.pin || "").toString()
     
-    if (dbPin === pin) {
+    if (dbPin === pin.toString()) {
       localStorage.setItem('kmt_user', JSON.stringify(selectedCrew))
       router.push('/ppe')
     } else {
-      setError('PIN Code ไม่ถูกต้อง (รหัสที่คุณใส่คือ: ' + pin + ')')
+      setError('PIN Code ไม่ถูกต้อง')
       setPin('')
     }
     setLoading(false)
@@ -54,13 +50,9 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
-          {/* เลือกชื่อ */}
           <div className="relative">
             <label className="text-[10px] font-black text-slate-500 uppercase ml-4 mb-2 block">Name</label>
-            <div 
-              onClick={() => setShowDropdown(!showDropdown)}
-              className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl flex justify-between items-center cursor-pointer hover:bg-white/10"
-            >
+            <div onClick={() => setShowDropdown(!showDropdown)} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl flex justify-between items-center cursor-pointer">
               <div className="flex items-center gap-3">
                 <UserIcon size={20} className="text-blue-500" />
                 <span className={selectedCrew ? "text-white font-bold" : "text-slate-500"}>
@@ -69,69 +61,30 @@ export default function LoginPage() {
               </div>
               <ChevronDown size={20} className="text-slate-600" />
             </div>
-
             {showDropdown && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl z-50 max-h-60 overflow-y-auto">
-                <div className="p-2 bg-slate-900 sticky top-0 border-b border-white/5">
-                  <input 
-                    autoFocus
-                    className="w-full bg-black/40 p-3 rounded-xl text-sm outline-none border border-white/10 focus:border-blue-500"
-                    placeholder="พิมพ์เพื่อค้นหา..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
+                <div className="p-2 sticky top-0 bg-slate-900 border-b border-white/5">
+                  <input autoFocus className="w-full bg-black/40 p-3 rounded-xl text-sm outline-none border border-white/10" placeholder="พิมพ์ชื่อ..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 </div>
-                {filteredCrews.map(crew => (
-                  <div 
-                    key={crew.id}
-                    onClick={() => { setSelectedCrew(crew); setShowDropdown(false); }}
-                    className="p-4 hover:bg-blue-600 cursor-pointer text-sm font-bold border-b border-white/5"
-                  >
-                    {crew.full_name}
-                  </div>
+                {crews.filter(c => c.full_name.toLowerCase().includes(searchTerm.toLowerCase())).map(crew => (
+                  <div key={crew.id} onClick={() => { setSelectedCrew(crew); setShowDropdown(false); }} className="p-4 hover:bg-blue-600 cursor-pointer text-sm font-bold border-b border-white/5">{crew.full_name}</div>
                 ))}
               </div>
             )}
           </div>
-
-          {/* PIN */}
           <div>
             <label className="text-[10px] font-black text-slate-500 uppercase ml-4 mb-2 block">6-Digit PIN</label>
-            <div className="relative">
-              <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
-              <input 
-                type="password"
-                maxLength={6}
-                inputMode="numeric"
-                className="w-full bg-white/5 border border-white/10 p-5 pl-14 rounded-2xl outline-none focus:border-blue-500 text-center tracking-[1em] font-black text-2xl"
-                placeholder="••••••"
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              />
-            </div>
+            <input type="password" maxLength={6} inputMode="numeric" className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-center tracking-[1em] font-black text-2xl" placeholder="••••••" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
           </div>
-
-          {error && <div className="text-red-500 text-[10px] font-black text-center uppercase border border-red-500/20 bg-red-500/5 p-3 rounded-xl">{error}</div>}
-
-          <button 
-            type="submit"
-            disabled={!selectedCrew || pin.length !== 6 || loading}
-            className="w-full py-5 bg-blue-600 rounded-2xl font-black uppercase tracking-widest active:scale-95 disabled:opacity-20 transition-all flex justify-center"
-          >
+          {error && <div className="text-red-500 text-[10px] font-black text-center uppercase p-3 bg-red-500/5 rounded-xl border border-red-500/20">{error}</div>}
+          <button type="submit" disabled={!selectedCrew || pin.length !== 6 || loading} className="w-full py-5 bg-blue-600 rounded-2xl font-black uppercase tracking-widest active:scale-95 disabled:opacity-20 transition-all flex justify-center">
             {loading ? <Loader2 className="animate-spin"/> : "Login"}
           </button>
         </form>
-
-        {/* ปุ่ม Register ที่หายไป */}
         <div className="pt-4 flex flex-col items-center gap-4">
           <div className="w-full h-[1px] bg-white/5"></div>
-          <p className="text-slate-600 text-[10px] font-bold uppercase">Don't have an account?</p>
-          <button 
-            onClick={() => router.push('/register')}
-            className="flex items-center gap-2 text-blue-500 font-black text-sm uppercase tracking-wider hover:text-blue-400 transition-colors"
-          >
-            <UserPlus size={18} />
-            Register New Crew
+          <button onClick={() => router.push('/register')} className="flex items-center gap-2 text-blue-500 font-black text-sm uppercase tracking-wider hover:text-blue-400">
+            <UserPlus size={18} /> Register New Crew
           </button>
         </div>
       </div>
