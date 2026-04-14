@@ -9,8 +9,7 @@ import {
   LogOut, 
   User as UserIcon, 
   Package, 
-  X,
-  Ruler
+  X
 } from 'lucide-react'
 
 export default function PPEPage() {
@@ -30,7 +29,8 @@ export default function PPEPage() {
     setUser(JSON.parse(cachedUser))
 
     async function fetchInventory() {
-      const { data } = await supabase.from('ppe_inventory').select('*')
+      // ดึงข้อมูล PPE ทั้งหมดเรียงตามชื่อ
+      const { data } = await supabase.from('ppe_inventory').select('*').order('item_name')
       if (data) setInventory(data)
     }
     fetchInventory()
@@ -41,40 +41,29 @@ export default function PPEPage() {
     router.push('/login')
   }
 
+  // Filter ข้อมูลตามหมวดหมู่
   const filteredItems = inventory.filter(item => {
     if (selectedCategory === 'All') return true
     return item.category === selectedCategory
   })
 
-  const groupedItems = filteredItems.reduce((acc, item) => {
-    const key = item.item_name
-    if (!acc[key]) {
-      acc[key] = { ...item, sizes: [], colors: [] }
-    }
-    if (item.size && !acc[key].sizes.includes(item.size)) acc[key].sizes.push(item.size)
-    if (item.color && !acc[key].colors.includes(item.color)) acc[key].colors.push(item.color)
-    return acc
-  }, {})
-
   const handleRequest = async () => {
     if (!requestItem) return
     setLoading(true)
     
-    const isBoot = requestItem.item_name.toLowerCase().includes('boot')
-    
     const { error } = await supabase.from('ppe_requests').insert({
       crew_id: user.id,
       item_name: requestItem.item_name,
-      size: isBoot ? user.boot_size : user.suit_size,
-      color: isBoot ? null : user.suit_color,
+      size: requestItem.size || requestItem.Size || null,
+      color: requestItem.color || null,
       status: 'pending',
       request_date: new Date().toISOString()
     })
 
     if (error) {
-      alert('เกิดข้อผิดพลาดในการส่งคำขอ')
+      alert('Error sending request')
     } else {
-      alert('ส่งคำขอเบิกเรียบร้อยแล้ว')
+      alert('Request sent successfully!')
       setRequestItem(null)
     }
     setLoading(false)
@@ -84,11 +73,11 @@ export default function PPEPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans pb-24">
-      {/* Top Header */}
+      {/* Header */}
       <div className="bg-slate-900/50 border-b border-white/10 p-6 backdrop-blur-xl sticky top-0 z-40">
         <div className="max-w-md mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full border-2 border-blue-500 overflow-hidden bg-slate-800">
+            <div className="w-10 h-10 rounded-full border border-blue-500/50 overflow-hidden bg-slate-800">
               {user.profile_url ? (
                 <img src={user.profile_url} alt="Profile" className="w-full h-full object-cover" />
               ) : (
@@ -96,131 +85,107 @@ export default function PPEPage() {
               )}
             </div>
             <div>
-              <h2 className="font-bold text-sm leading-none mb-1">{user.full_name}</h2>
-              <p className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Crew Member</p>
+              <h2 className="font-bold text-xs">{user.full_name}</h2>
+              <p className="text-[9px] text-blue-400 font-bold uppercase">Ready to Request</p>
             </div>
           </div>
-          <button onClick={handleLogout} className="p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-colors">
-            <LogOut size={18} className="text-slate-400" />
+          <button onClick={handleLogout} className="p-2 bg-white/5 rounded-lg text-slate-400">
+            <LogOut size={16} />
           </button>
         </div>
       </div>
 
-      <div className="max-w-md mx-auto p-6 space-y-8">
-        {/* Profile Sizes Stats */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-gradient-to-br from-blue-600/20 to-transparent border border-blue-500/20 p-5 rounded-[2rem]">
-            <p className="text-[10px] font-bold text-blue-400 uppercase mb-2">My Suit Size</p>
-            <p className="text-2xl font-black">{user.suit_size || '-'}</p>
-            <p className="text-[10px] text-slate-500 mt-1">Color: {user.suit_color || '-'}</p>
-          </div>
-          <div className="bg-gradient-to-br from-emerald-600/20 to-transparent border border-emerald-500/20 p-5 rounded-[2rem]">
-            <p className="text-[10px] font-bold text-emerald-400 uppercase mb-2">My Boot Size</p>
-            <p className="text-2xl font-black">{user.boot_size || '-'}</p>
-            <p className="text-[10px] text-slate-500 mt-1">EU Standard</p>
-          </div>
-        </div>
-
+      <div className="max-w-md mx-auto p-6 space-y-6">
         {/* Category Filters */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar py-2">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar">
           {['All', 'Clothing', 'Footwear', 'Protection'].map(cat => (
             <button 
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`px-6 py-2.5 rounded-2xl text-xs font-bold transition-all ${selectedCategory === cat ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'bg-white/5 border border-white/5 text-slate-400'}`}
+              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-400 border border-white/5'}`}
             >
               {cat}
             </button>
           ))}
         </div>
 
-        {/* PPE Cards */}
-        <div className="space-y-4">
-          <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Available Equipment</h3>
-          {Object.values(groupedItems).length > 0 ? Object.values(groupedItems).map((item, idx) => (
+        {/* PPE List (Simple List like before) */}
+        <div className="space-y-3">
+          {filteredItems.map((item) => (
             <div 
-              key={idx}
+              key={item.id}
               onClick={() => setRequestItem(item)}
-              className="group bg-white/5 border border-white/10 p-5 rounded-[2.5rem] flex items-center justify-between hover:bg-white/10 transition-all cursor-pointer active:scale-[0.98]"
+              className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between hover:bg-white/10 transition-all cursor-pointer"
             >
-              <div className="flex items-center gap-5">
-                <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center border border-white/5 group-hover:border-blue-500/50">
-                  <Package className="text-blue-500" size={24} />
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center border border-white/5">
+                  <Package className="text-blue-500/70" size={20} />
                 </div>
                 <div>
-                  <h4 className="font-bold text-base group-hover:text-blue-400 transition-colors">{item.item_name}</h4>
-                  <div className="flex gap-2 mt-1">
-                    {item.colors.length > 0 && (
-                      <span className="text-[9px] bg-white/5 px-2 py-0.5 rounded text-slate-400 uppercase font-bold">
-                        {item.colors.join(' / ')}
-                      </span>
-                    )}
+                  <h4 className="font-bold text-sm">{item.item_name}</h4>
+                  <div className="flex gap-2 mt-0.5">
+                    {item.size && <span className="text-[10px] text-slate-400">Size: {item.size}</span>}
+                    {item.color && <span className="text-[10px] text-slate-400">| Color: {item.color}</span>}
                   </div>
                 </div>
               </div>
-              <div className="bg-white/5 p-2 rounded-full">
-                <ChevronRight size={16} className="text-slate-600 group-hover:text-white" />
-              </div>
+              <ChevronRight size={16} className="text-slate-600" />
             </div>
-          )) : (
-            <div className="text-center py-10 bg-white/5 rounded-[2rem] border border-dashed border-white/10">
-              <Package size={40} className="mx-auto text-slate-700 mb-3" />
-              <p className="text-sm text-slate-500 font-bold">No items found in this category</p>
-            </div>
-          )}
+          ))}
         </div>
       </div>
 
-      {/* Request Dialog */}
+      {/* Simple Confirmation Modal */}
       {requestItem && (
-        <div className="fixed inset-0 bg-slate-950/95 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-md">
-          <div className="bg-white rounded-[3rem] w-full max-w-sm overflow-hidden animate-in slide-in-from-bottom duration-300 shadow-2xl">
-            <div className="p-8">
-              <div className="flex justify-between items-center mb-8">
-                <div className="bg-blue-50 p-4 rounded-3xl text-blue-600">
-                  <Package size={28} />
-                </div>
-                <button onClick={() => setRequestItem(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
-                  <X size={24} />
-                </button>
+        <div className="fixed inset-0 bg-slate-950/90 z-50 flex items-center justify-center p-6 backdrop-blur-md">
+          <div className="bg-white rounded-[2rem] w-full max-w-sm p-8 shadow-2xl animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-6">
+              <div className="bg-blue-50 p-3 rounded-2xl text-blue-600">
+                <Package size={24} />
               </div>
-              
-              <h3 className="text-slate-900 text-2xl font-black mb-2 uppercase italic tracking-tighter">{requestItem.item_name}</h3>
-              <p className="text-slate-400 text-xs font-bold leading-relaxed mb-8">ITEM WILL BE PREPARED BASED ON YOUR REGISTERED PROFILE DATA</p>
-
-              <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 mb-8">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-[10px] font-black text-slate-400 uppercase">My Size</span>
-                  <Ruler size={14} className="text-slate-300" />
-                </div>
-                <div className="text-2xl font-black text-slate-900">
-                  {requestItem.item_name.toLowerCase().includes('boot') 
-                    ? user.boot_size 
-                    : `${user.suit_size} - ${user.suit_color}`}
-                </div>
-              </div>
-
-              <button 
-                onClick={handleRequest}
-                disabled={loading}
-                className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-200 active:scale-95 transition-all disabled:opacity-50"
-              >
-                {loading ? 'SENDING REQUEST...' : 'CONFIRM REQUEST'}
+              <button onClick={() => setRequestItem(null)} className="text-slate-300 hover:text-slate-600">
+                <X size={24} />
               </button>
             </div>
+            
+            <h3 className="text-slate-900 text-xl font-black mb-1 uppercase">{requestItem.item_name}</h3>
+            <p className="text-slate-400 text-xs font-bold mb-6">CONFIRM YOUR SELECTION</p>
+
+            <div className="bg-slate-50 p-4 rounded-2xl mb-8 space-y-2">
+              {requestItem.size && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Selected Size:</span>
+                  <span className="font-bold text-slate-900">{requestItem.size}</span>
+                </div>
+              )}
+              {requestItem.color && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Selected Color:</span>
+                  <span className="font-bold text-slate-900">{requestItem.color}</span>
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={handleRequest}
+              disabled={loading}
+              className="w-full py-4 bg-blue-600 text-white rounded-xl font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+            >
+              {loading ? 'SENDING...' : 'CONFIRM REQUEST'}
+            </button>
           </div>
         </div>
       )}
 
-      {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-2xl border-t border-white/5 p-4 flex justify-around items-center z-40">
+      {/* Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-xl border-t border-white/5 p-4 flex justify-around items-center z-40">
         <button className="flex flex-col items-center gap-1 text-blue-500">
           <Box size={20} />
-          <span className="text-[9px] font-black uppercase tracking-tighter">Inventory</span>
+          <span className="text-[10px] font-bold">PPE</span>
         </button>
-        <button onClick={() => router.push('/history')} className="flex flex-col items-center gap-1 text-slate-500 hover:text-white transition-colors">
+        <button onClick={() => router.push('/history')} className="flex flex-col items-center gap-1 text-slate-500">
           <History size={20} />
-          <span className="text-[9px] font-black uppercase tracking-tighter">History</span>
+          <span className="text-[10px] font-bold">HISTORY</span>
         </button>
       </div>
     </div>
