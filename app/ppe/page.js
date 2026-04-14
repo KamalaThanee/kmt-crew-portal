@@ -2,221 +2,203 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
-import { ShoppingCart, ChevronDown, ChevronUp, HardHat, Eye, Ear, Wind, Shirt, Footprints, Box, User, LogOut, Camera, Image as ImageIcon } from 'lucide-react'
+import { 
+  Box, 
+  ChevronRight, 
+  History, 
+  LogOut, 
+  User as UserIcon, 
+  Package, 
+  CheckCircle2,
+  AlertCircle
+} from 'lucide-react'
 
-export default function PPERequest() {
+export default function PPEPage() {
   const [user, setUser] = useState(null)
-  const [groupedItems, setGroupedItems] = useState({})
-  const [expandedCat, setExpandedCat] = useState(null)
-  const [selectedItemName, setSelectedItemName] = useState(null)
-  const [cart, setCart] = useState([])
-  const [showCart, setShowCart] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [reason, setReason] = useState('')
-  const [evidenceFile, setEvidenceFile] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [sizeChartUrl, setSizeChartUrl] = useState('')
+  const [inventory, setInventory] = useState([])
+  const [selectedCategory, setSelectedCategory] = useState('All')
+  const [requestItem, setRequestItem] = useState(null)
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
 
-  const categoryOrder = [
-    "Head Protection", "Ears Protection", "Eyes Protection", 
-    "Respiratory Protection", "Body Protection", "Hands Protection", 
-    "Foots Protection", "Other"
-  ]
-
   useEffect(() => {
-    const savedUser = localStorage.getItem('kmt_user')
-    if (!savedUser) { router.push('/login'); return }
-    setUser(JSON.parse(savedUser))
-
-    async function fetchData() {
-      // ดึงข้อมูลสต็อก
-      const { data: stock } = await supabase.from('ppe_inventory').select('*')
-      if (stock) {
-        const grouped = stock.reduce((acc, item) => {
-          const cat = item.category || item.Category || "Other"
-          if (!acc[cat]) acc[cat] = {}
-          const name = item.item_name || item.ItemName
-          if (!acc[cat][name]) acc[cat][name] = []
-          acc[cat][name].push(item)
-          return acc
-        }, {})
-        setGroupedItems(grouped)
-      }
-      // ดึงรูป Size Chart ล่าสุด
-      const { data: settings } = await supabase.from('system_settings').select('value').eq('key', 'size_chart_url').single()
-      if (settings) setSizeChartUrl(settings.value)
-      setLoading(false)
+    const cachedUser = localStorage.getItem('kmt_user')
+    if (!cachedUser) {
+      router.push('/login')
+      return
     }
-    fetchData()
+    setUser(JSON.parse(cachedUser))
+
+    async function fetchInventory() {
+      const { data } = await supabase.from('ppe_inventory').select('*')
+      if (data) setInventory(data)
+    }
+    fetchInventory()
   }, [])
 
-  const submitRequest = async () => {
-    if (cart.length === 0 || !reason) return alert('กรุณาระบุเหตุผลการเบิกครับ')
-    setSubmitting(true)
+  const handleLogout = () => {
+    localStorage.removeItem('kmt_user')
+    router.push('/login')
+  }
+
+  // กรองไอเทมตามหมวดหมู่
+  const filteredItems = inventory.filter(item => {
+    if (selectedCategory === 'All') return true
+    return item.category === selectedCategory
+  })
+
+  // จัดกลุ่มไอเทมตามชื่อ เพื่อแสดงผล (เช่น Boiler Suit ทุกสี/ไซส์ รวมเป็น Card เดียว)
+  const groupedItems = filteredItems.reduce((acc, item) => {
+    const key = item.item_name
+    if (!acc[key]) {
+      acc[key] = { ...item, sizes: [], colors: [] }
+    }
+    if (item.size && !acc[key].sizes.includes(item.size)) acc[key].sizes.push(item.size)
+    if (item.color && !acc[key].colors.includes(item.color)) acc[key].colors.push(item.color)
+    return acc
+  }, {})
+
+  const handleRequest = async () => {
+    if (!requestItem) return
+    setLoading(true)
     
-    let evidenceUrl = ''
-    if (evidenceFile) {
-      const fileName = `evidence_${Date.now()}.jpg`
-      const { data } = await supabase.storage.from('ppe_assets').upload(`evidence/${fileName}`, evidenceFile)
-      if (data) {
-        const { data: urlData } = supabase.storage.from('ppe_assets').getPublicUrl(`evidence/${fileName}`)
-        evidenceUrl = urlData.publicUrl
-      }
-    }
-
-    const { error } = await supabase.from('ppe_requests').insert([{
+    const { error } = await supabase.from('ppe_requests').insert({
       crew_id: user.id,
-      items: cart,
-      reason,
-      evidence_url: evidenceUrl,
-      status: 'pending'
-    }])
+      item_name: requestItem.item_name,
+      size: user.suit_size || user.boot_size, // ดึงจากโปรไฟล์ที่ลงทะเบียนไว้
+      color: user.suit_color,
+      status: 'pending',
+      request_date: new Date().toISOString()
+    })
 
-    if (!error) {
-      alert('ส่งคำขอสำเร็จ!')
-      setCart([]); setReason(''); setEvidenceFile(null); setShowCart(false)
+    if (error) {
+      alert('เกิดข้อผิดพลาดในการเบิก')
+    } else {
+      alert('ส่งคำขอเบิกเรียบร้อยแล้ว')
+      setRequestItem(null)
     }
-    setSubmitting(false)
+    setLoading(false)
   }
-
-  const handleUpdateSizeChart = async (file) => {
-    if (!file) return
-    const { data } = await supabase.storage.from('ppe_assets').upload(`size_charts/current_chart.jpg`, file, { upsert: true })
-    if (data) {
-      const { data: urlData } = supabase.storage.from('ppe_assets').getPublicUrl(`size_charts/current_chart.jpg`)
-      await supabase.from('system_settings').update({ value: urlData.publicUrl }).eq('key', 'size_chart_url')
-      setSizeChartUrl(urlData.publicUrl)
-      alert('อัปเดต Size Chart แล้ว')
-    }
-  }
-
-  const isAdmin = user && ['Safety Officer', 'Barge Master', 'Chief Officer'].includes(user.position)
 
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 font-sans">
-      {/* Header Profile Section */}
-      <div className="sticky top-0 bg-white shadow-sm z-40 p-4 px-6 flex justify-between items-center border-b">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-slate-200 border-2 border-blue-500 overflow-hidden shadow-inner">
-            {user.profile_url ? <img src={user.profile_url} className="w-full h-full object-cover" /> : <User size={20} className="m-2 text-slate-400"/>}
+    <div className="min-h-screen bg-slate-950 text-white font-sans pb-20">
+      {/* Header Profile */}
+      <div className="bg-white/5 border-b border-white/10 p-6 backdrop-blur-xl sticky top-0 z-40">
+        <div className="max-w-md mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full border-2 border-blue-500 overflow-hidden bg-slate-800">
+              {user.profile_url ? (
+                <img src={user.profile_url} className="w-full h-full object-cover" />
+              ) : (
+                <UserIcon className="p-2 text-slate-500" />
+              )}
+            </div>
+            <div>
+              <h2 className="font-bold text-sm">{user.full_name}</h2>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest">{user.rank || 'CREW MEMBER'}</p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-bold text-sm text-slate-800 leading-none">{user.full_name}</h2>
-            <p className="text-[10px] text-blue-600 font-black uppercase mt-1 tracking-tighter">
-              {user.position} • {user.suit_size}/{user.boot_size}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {isAdmin && (
-            <label className="p-2 bg-amber-100 text-amber-700 rounded-full cursor-pointer">
-              <ImageIcon size={20} /><input type="file" className="hidden" onChange={e => handleUpdateSizeChart(e.target.files[0])}/>
-            </label>
-          )}
-          <button onClick={() => setShowCart(true)} className="relative p-2 bg-slate-100 rounded-full text-slate-600">
-            <ShoppingCart size={22} />
-            {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{cart.length}</span>}
+          <button onClick={handleLogout} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+            <LogOut size={20} className="text-slate-400" />
           </button>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto p-4 space-y-3">
-        {/* Size Chart View */}
-        {sizeChartUrl && (
-          <div className="mb-6 rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-white p-2">
-            <p className="text-[10px] font-bold text-slate-400 uppercase p-2 tracking-widest">Current Size Chart</p>
-            <img src={sizeChartUrl} className="w-full h-auto rounded-xl object-contain max-h-[300px]" alt="Size Guide" />
+      <div className="max-w-md mx-auto p-6 space-y-8">
+        {/* Stats / Info */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-blue-600/20 border border-blue-500/20 p-4 rounded-3xl">
+            <p className="text-[10px] font-bold text-blue-400 uppercase mb-1">Your Suit Size</p>
+            <p className="text-2xl font-black">{user.suit_size} <span className="text-xs font-normal opacity-50">({user.suit_color})</span></p>
           </div>
-        )}
-
-        {/* Categories List */}
-        {loading ? <p className="text-center py-20 text-slate-400 italic">Synchronizing Fleet Inventory...</p> : 
-          categoryOrder.map(cat => {
-            if (!groupedItems[cat]) return null
-            return (
-              <div key={cat} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                <button onClick={() => setExpandedCat(expandedCat === cat ? null : cat)} className="w-full flex items-center justify-between p-4">
-                  <span className="font-bold text-slate-700">{cat}</span>
-                  {expandedCat === cat ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
-                </button>
-                {expandedCat === cat && (
-                  <div className="p-2 bg-slate-50 space-y-1.5 border-t">
-                    {Object.keys(groupedItems[cat]).map(name => (
-                      <div key={name} className="bg-white p-4 rounded-xl flex justify-between items-center shadow-sm">
-                        <span className="text-xs font-bold text-slate-600">{name}</span>
-                        <button onClick={() => setSelectedItemName({name, cat})} className="text-[10px] font-black text-white bg-slate-900 px-4 py-2 rounded-lg">SELECT</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })
-        }
-      </div>
-
-      {/* Cart Drawer with Evidence Photo */}
-      {showCart && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex justify-end">
-          <div className="bg-white w-full max-w-md h-full p-6 shadow-2xl flex flex-col animate-in slide-in-from-right">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold">Review Request</h2>
-              <button onClick={() => setShowCart(false)} className="text-slate-300 text-2xl">×</button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto space-y-4">
-              {cart.map(item => (
-                <div key={item.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <p className="font-bold text-sm text-slate-800">{item.item_name}</p>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${
-                      (item.category.includes('Body') && item.size !== user.suit_size) || (item.category.includes('Foot') && item.size !== user.boot_size) 
-                      ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
-                    }`}>
-                      SIZE: {item.size} {(item.category.includes('Body') && item.size !== user.suit_size) && ' (NOT YOUR PROFILE SIZE!)'}
-                    </span>
-                    <button onClick={() => setCart(cart.filter(i => i.id !== item.id))} className="text-red-400 text-xs">Remove</button>
-                  </div>
-                </div>
-              ))}
-
-              <div className="mt-6 space-y-4">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Reason & Evidence</label>
-                <textarea className="w-full border rounded-2xl p-4 bg-slate-50 text-sm h-20 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Why do you need this? (e.g., Old one torn)" value={reason} onChange={e => setReason(e.target.value)} />
-                
-                <div className="flex items-center gap-4 p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                  <div className="flex-1">
-                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Attach Photo (Optional)</p>
-                    <p className="text-[10px] text-blue-400 mt-1">Proof of damage or old item</p>
-                  </div>
-                  <label className="bg-blue-600 text-white p-3 rounded-xl cursor-pointer shadow-lg active:scale-90 transition-transform">
-                    <Camera size={20} />
-                    <input type="file" capture="environment" className="hidden" onChange={e => setEvidenceFile(e.target.files[0])} />
-                  </label>
-                </div>
-                {evidenceFile && (
-                  <div className="relative rounded-2xl overflow-hidden border-2 border-emerald-500">
-                    <img src={URL.createObjectURL(evidenceFile)} className="w-full h-32 object-cover" />
-                    <button onClick={() => setEvidenceFile(null)} className="absolute top-2 right-2 bg-black/50 text-white w-6 h-6 rounded-full text-xs">×</button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <button 
-              disabled={submitting || cart.length === 0}
-              onClick={submitRequest}
-              className="w-full mt-6 py-4 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg shadow-emerald-900/20 disabled:opacity-50"
-            >
-              {submitting ? 'SENDING REQUEST...' : 'CONFIRM REQUEST'}
-            </button>
+          <div className="bg-emerald-600/20 border border-emerald-500/20 p-4 rounded-3xl">
+            <p className="text-[10px] font-bold text-emerald-400 uppercase mb-1">Your Boot Size</p>
+            <p className="text-2xl font-black">{user.boot_size}</p>
           </div>
         </div>
-      )}
-      {/* Selection Modal ลบออกชั่วคราวเพื่อความสั้น แต่ Logic Size ล็อคตามเดิม */}
+
+        {/* Category Filter */}
+        <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+          {['All', 'Clothing', 'Footwear', 'Protection'].map(cat => (
+            <button 
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-white text-slate-900 shadow-lg' : 'bg-white/5 border border-white/10'}`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* Item List */}
+        <div className="space-y-4">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em]">Available PPE</h3>
+          {Object.values(groupedItems).map((item, idx) => (
+            <div 
+              key={idx}
+              onClick={() => setRequestItem(item)}
+              className="group bg-white/5 border border-white/10 p-5 rounded-[2rem] flex items-center justify-between hover:bg-white/10 transition-all cursor-pointer active:scale-95"
+            >
+              <div className="flex items-center gap-5">
+                <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center border border-white/5 group-hover:border-blue-500/50 transition-colors">
+                  <Package className="text-blue-500" size={28} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-lg">{item.item_name}</h4>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Available in: {item.colors.length > 0 ? item.colors.join(', ') : 'Standard'}
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="text-slate-700 group-hover:text-white transition-colors" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Request Modal */}
+      {requestItem && (
+        <div className="fixed inset-0 bg-slate-950/90 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-[3rem] w-full max-w-sm overflow-hidden animate-in slide-in-from-bottom duration-300">
+            <div className="p-8">
+              <div className="flex justify-between items-start mb-6">
+                <div className="w-16 h-16 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600">
+                  <Package size={32} />
+                </div>
+                <button onClick={() => setRequestItem(null)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
+              </div>
+              
+              <h3 className="text-slate-900 text-2xl font-black mb-2 uppercase italic">{requestItem.item_name}</h3>
+              <p className="text-slate-500 text-sm mb-8">ระบบจะทำการจัดเตรียมของตามขนาดที่ท่านได้ลงทะเบียนไว้ในโปรไฟล์</p>
+
+              <div className="space-y-3 mb-8">
+                <div className="flex justify-between p-4 bg-slate-50 rounded-2xl">
+                  <span className="text-slate-400 text-xs font-bold uppercase">Your Registered Size</span>
+                  <span className="text-slate-900 font-black">
+                    {requestItem.item_name.toLowerCase().includes('boot') ? user.boot_size : `${user.suit_size} (${user.suit_color})`}
+                  </span>
+                </div>
+              </div>
+
+              <button 
+                onClick={handleRequest}
+                disabled={loading}
+                className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-200 active:scale-95 transition-all"
+              >
+                {loading ? 'SENDING...' : 'Confirm Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Nav */}
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/80 backdrop-blur-xl border-t border-white/5 p-4 flex justify-around items-center z-40">
+        <button className="flex flex-col items-center gap-1 text-blue-500"><Box size={24}/><span className="text-[10px] font-bold">PPE</span></button>
+        <button onClick={() => router.push('/history')} className="flex flex-col items-center gap-1 text-slate-500"><History size={24}/><span className="text-[10px] font-bold">HISTORY</span></button>
+      </div>
     </div>
   )
 }
