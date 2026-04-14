@@ -2,219 +2,142 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
-import { Camera, Search, Ruler, AlertTriangle, X } from 'lucide-react'
+import { Search, Lock, User as UserIcon, ChevronDown, Loader2 } from 'lucide-react'
 
-export default function AuthPage() {
-  const [step, setStep] = useState(1)
-  const [isRegister, setIsRegister] = useState(false)
-  const [crewList, setCrewList] = useState([])
-  const [inventory, setInventory] = useState([])
+export default function LoginPage() {
+  const [crews, setCrews] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [selectedCrew, setSelectedCrew] = useState(null)
+  const [pin, setPin] = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
   const [error, setError] = useState('')
-  const [showConfirm, setShowConfirm] = useState(false)
-  const [showSizeChart, setShowSizeChart] = useState(null)
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
-  
-  const [formData, setFormData] = useState({
-    id: '', fullName: '', phone: '', email: '', pin: '',
-    suitSize: '', suitColor: '', bootSize: '', profileImage: null
-  })
 
   useEffect(() => {
-    async function fetchData() {
-      const { data: crews } = await supabase.from('crews').select('*').order('full_name')
-      if (crews) setCrewList(crews)
-      const { data: inv } = await supabase.from('ppe_inventory').select('*')
-      if (inv) setInventory(inv)
+    async function fetchCrews() {
+      const { data } = await supabase.from('crews').select('*').order('full_name')
+      if (data) setCrews(data)
     }
-    fetchData()
+    fetchCrews()
   }, [])
 
-  // ฟังก์ชันช่วยเรียงไซส์เสื้อ (S, M, L, XL, 2XL...)
-  const sortSuitSize = (a, b) => {
-    const order = { 'S': 1, 'M': 2, 'L': 3, 'XL': 4, '2XL': 5, '3XL': 6, '4XL': 7, '5XL': 8 };
-    return (order[a] || 99) - (order[b] || 99);
-  };
-
-  // 1. ดึงสีชุด (Trim ตัดช่องว่าง + ตัดตัวซ้ำ + เรียงลำดับ)
-  const availableSuitColors = [...new Set(
-    inventory
-      .filter(i => i.item_name?.toLowerCase().includes('boiler suit'))
-      .map(i => i.color?.trim()) // เพิ่ม trim() ตรงนี้เพื่อแก้สีซ้ำจากช่องว่าง
-      .filter(Boolean)
-  )].sort();
-
-  // 2. ดึงไซส์ชุด
-  const availableSuitSizes = [...new Set(
-    inventory
-      .filter(i => i.item_name?.toLowerCase().includes('boiler suit'))
-      .map(i => i.size || i.Size)
-      .filter(Boolean)
-  )].sort(sortSuitSize);
-
-  // 3. ดึงไซส์รองเท้า (เฉพาะ Safety boot + เรียงจากน้อยไปมาก)
-  const availableBootSizes = [...new Set(
-    inventory
-      .filter(i => i.item_name?.toLowerCase() === 'safety boot')
-      .map(i => i.size || i.Size)
-      .filter(Boolean)
-  )].sort((a, b) => {
-    const numA = parseInt(a.replace(/[^0-9]/g, '')) || 0;
-    const numB = parseInt(b.replace(/[^0-9]/g, '')) || 0;
-    return numA - numB;
-  });
-
-  const filteredCrews = crewList.filter(c => (c.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()))
-
-  const handleRegister = async () => {
-    setLoading(true)
-    let profileUrl = ''
-    if (formData.profileImage) {
-      const fileName = `${Date.now()}_profile.jpg`
-      const { data } = await supabase.storage.from('ppe_assets').upload(`profiles/${fileName}`, formData.profileImage)
-      if (data) {
-        const { data: urlData } = supabase.storage.from('ppe_assets').getPublicUrl(`profiles/${fileName}`)
-        profileUrl = urlData.publicUrl
-      }
-    }
-
-    const { error: updateError } = await supabase.from('crews').update({
-      email: formData.email, pin: formData.pin, phone: formData.phone,
-      suit_size: formData.suitSize, suit_color: formData.suitColor, boot_size: formData.bootSize,
-      profile_url: profileUrl
-    }).eq('id', formData.id)
-
-    if (updateError) { setError('Registration Error'); setLoading(false); }
-    else { alert('ลงทะเบียนสำเร็จ! กรุณาล็อกอินเข้าสู่ระบบ'); setIsRegister(false); setStep(1); setLoading(false); }
-  }
+  const filteredCrews = crews.filter(c => 
+    c.full_name.toLowerCase().includes(searchTerm.toLowerCase())
+  )
 
   const handleLogin = async (e) => {
     e.preventDefault()
+    if (!selectedCrew || pin.length !== 6) return
     setLoading(true)
     setError('')
-    const { data, error: loginError } = await supabase.from('crews').select('*').eq('email', formData.email).eq('pin', formData.pin).single()
-    if (loginError || !data) {
-      setError('Email หรือ PIN ไม่ถูกต้อง')
-      setLoading(false)
-    } else {
-      localStorage.setItem('kmt_user', JSON.stringify(data))
+
+    // ตรวจสอบ PIN กับข้อมูลใน Database (คอลัมน์ pin_code)
+    if (selectedCrew.pin_code === pin) {
+      localStorage.setItem('kmt_user', JSON.stringify(selectedCrew))
       router.push('/ppe')
+    } else {
+      setError('Invalid PIN Code')
+      setPin('')
     }
+    setLoading(false)
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center justify-center font-sans">
-      <div className="w-full max-w-md bg-white/5 border border-white/10 backdrop-blur-3xl rounded-[3rem] p-8 shadow-2xl relative">
-        <h1 className="text-3xl font-black italic text-blue-500 text-center mb-8 uppercase tracking-tighter">KMT PORTAL</h1>
-
-        {isRegister ? (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            {step === 1 && (
-              <div className="space-y-4">
-                <div className="relative">
-                  <Search className="absolute left-4 top-4 text-slate-500" size={18} />
-                  <input className="w-full bg-white/10 border border-white/10 p-4 pl-12 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search your name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                </div>
-                <div className="max-h-48 overflow-y-auto space-y-2 custom-scrollbar">
-                  {filteredCrews.map(c => (
-                    <button key={c.id} onClick={() => { setFormData({...formData, id: c.id}); setSearchTerm(c.full_name); }} className={`w-full text-left p-4 rounded-xl ${formData.id === c.id ? 'bg-blue-600 font-bold' : 'bg-white/5'}`}>{c.full_name}</button>
-                  ))}
-                </div>
-                <button onClick={() => formData.id && setStep(2)} className="w-full py-4 bg-blue-600 rounded-2xl font-bold" disabled={!formData.id}>NEXT</button>
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="text-center">
-                <div className="w-48 h-48 bg-white/10 rounded-full mx-auto mb-6 flex items-center justify-center border-4 border-blue-500/20 overflow-hidden">
-                  {formData.profileImage ? <img src={URL.createObjectURL(formData.profileImage)} className="w-full h-full object-cover" /> : <Camera size={50} className="text-slate-700" />}
-                </div>
-                <label className="bg-blue-600 px-8 py-4 rounded-2xl font-bold cursor-pointer inline-block shadow-lg">
-                  TAKE PHOTO
-                  <input type="file" accept="image/*" capture="user" className="hidden" onChange={(e) => setFormData({...formData, profileImage: e.target.files[0]})} />
-                </label>
-                <button onClick={() => setStep(3)} className="w-full mt-10 py-4 border border-white/10 rounded-2xl font-bold">NEXT STEP</button>
-              </div>
-            )}
-
-            {step === 3 && (
-              <div className="space-y-6">
-                <div className="p-5 bg-white/5 rounded-3xl border border-white/10">
-                  <div className="flex justify-between items-center mb-4">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Boiler Suit</label>
-                    <button onClick={() => setShowSizeChart('suit')} className="text-[10px] text-blue-400 font-bold border border-blue-400/30 px-2 py-1 rounded-lg flex items-center gap-1"><Ruler size={12}/> SIZE CHART</button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <select className="bg-slate-900 border border-white/10 p-3 rounded-xl text-sm outline-none" onChange={e => setFormData({...formData, suitColor: e.target.value})}>
-                      <option value="">Color</option>
-                      {availableSuitColors.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <select className="bg-slate-900 border border-white/10 p-3 rounded-xl text-sm outline-none" onChange={e => setFormData({...formData, suitSize: e.target.value})}>
-                      <option value="">Size</option>
-                      {availableSuitSizes.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="p-5 bg-white/5 rounded-3xl border border-white/10">
-                  <div className="flex justify-between items-center mb-4">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Safety Boots</label>
-                    <button onClick={() => setShowSizeChart('boots')} className="text-[10px] text-blue-400 font-bold border border-blue-400/30 px-2 py-1 rounded-lg flex items-center gap-1"><Ruler size={12}/> SIZE CHART</button>
-                  </div>
-                  <select className="w-full bg-slate-900 border border-white/10 p-4 rounded-xl text-sm outline-none" onChange={e => setFormData({...formData, bootSize: e.target.value})}>
-                    <option value="">Choose Size (EU)</option>
-                    {availableBootSizes.map(b => <option key={b} value={b}>{b}</option>)}
-                  </select>
-                </div>
-                <button onClick={() => (formData.suitSize && formData.suitColor && formData.bootSize) ? setShowConfirm(true) : alert('Please select all sizes')} className="w-full py-4 bg-blue-600 rounded-2xl font-bold shadow-xl">NEXT</button>
-              </div>
-            )}
-
-            {step === 4 && (
-              <div className="space-y-4">
-                <input placeholder="Email Address" type="email" className="w-full bg-white/10 border border-white/10 p-4 rounded-2xl outline-none" onChange={e => setFormData({...formData, email: e.target.value})} />
-                <input placeholder="Phone Number" type="tel" className="w-full bg-white/10 border border-white/10 p-4 rounded-2xl outline-none" onChange={e => setFormData({...formData, phone: e.target.value})} />
-                <input placeholder="Set 6-Digit PIN" type="password" maxLength="6" className="w-full bg-white/10 border border-white/10 p-4 rounded-2xl text-center text-3xl font-bold outline-none tracking-widest" onChange={e => setFormData({...formData, pin: e.target.value})} />
-                <button onClick={handleRegister} disabled={loading} className="w-full py-5 bg-emerald-600 rounded-2xl font-black uppercase shadow-lg shadow-emerald-900/20">{loading ? 'Processing...' : 'Complete Registration'}</button>
-              </div>
-            )}
-            
-            <button onClick={() => setIsRegister(false)} className="w-full text-slate-500 text-[10px] font-bold uppercase tracking-widest hover:text-white mt-4">Already Registered? Log In</button>
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-center p-6 font-sans">
+      <div className="max-w-md mx-auto w-full space-y-10">
+        <div className="text-center space-y-3">
+          <div className="inline-block p-4 bg-blue-600/10 rounded-[2rem] border border-blue-500/20 mb-2">
+            <Lock className="text-blue-500" size={32} />
           </div>
-        ) : (
-          <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in duration-500">
-            <input placeholder="Email Address" type="email" required className="w-full bg-white/10 border border-white/10 p-5 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500" onChange={e => setFormData({...formData, email: e.target.value})} />
-            <input placeholder="6-DIGIT PIN" type="password" maxLength="6" required className="w-full bg-white/10 border border-white/10 p-5 rounded-2xl text-center text-3xl font-bold outline-none focus:ring-2 focus:ring-blue-500 tracking-widest" onChange={e => setFormData({...formData, pin: e.target.value})} />
-            {error && <p className="text-red-400 text-xs text-center font-bold bg-red-400/10 py-2 rounded-lg">{error}</p>}
-            <button type="submit" disabled={loading} className="w-full py-5 bg-blue-600 rounded-2xl font-black uppercase shadow-xl">LOG IN</button>
-            <button type="button" onClick={() => setIsRegister(true)} className="w-full mt-4 text-slate-500 text-[10px] font-bold uppercase tracking-widest hover:text-white">Register New Account</button>
-          </form>
-        )}
+          <h1 className="text-4xl font-black italic tracking-tighter italic uppercase">KMT PPE</h1>
+          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.4em]">Crew Access Portal</p>
+        </div>
 
-        {showConfirm && (
-          <div className="fixed inset-0 bg-slate-950/90 z-50 flex items-center justify-center p-6 backdrop-blur-md">
-            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-sm text-center shadow-2xl animate-in zoom-in-95">
-              <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6"><AlertTriangle size={32} /></div>
-              <h3 className="text-slate-900 text-xl font-black mb-4 uppercase">ยืนยันข้อมูลไซส์?</h3>
-              <p className="text-slate-500 text-sm mb-8 leading-relaxed font-bold">"กรุณาใส่ขนาดให้ตรงตามจริง จะให้เบิกตาม Size ที่ลงทะเบียนเท่านั้น"</p>
-              <div className="space-y-3">
-                <button onClick={() => { setShowConfirm(false); setStep(4); }} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase">ยืนยันถูกต้อง</button>
-                <button onClick={() => setShowConfirm(false)} className="w-full py-4 text-slate-400 font-bold">กลับไปแก้ไข</button>
+        <form onSubmit={handleLogin} className="space-y-6">
+          {/* ส่วนเลือกชื่อ */}
+          <div className="relative">
+            <label className="text-[10px] font-black text-blue-400 uppercase ml-4 mb-2 block tracking-widest">Select Your Name</label>
+            <div 
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl flex justify-between items-center cursor-pointer hover:bg-white/10 transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <UserIcon size={20} className="text-slate-500" />
+                <span className={selectedCrew ? "text-white font-bold" : "text-slate-500 font-medium"}>
+                  {selectedCrew ? selectedCrew.full_name : "Search for your name..."}
+                </span>
               </div>
+              <ChevronDown size={20} className={`text-slate-500 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+            </div>
+
+            {showDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-3 bg-slate-900 border border-white/10 rounded-[2rem] shadow-2xl z-50 max-h-72 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                <div className="p-4 border-b border-white/5 bg-white/5">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                    <input 
+                      autoFocus
+                      type="text"
+                      className="w-full bg-slate-950 p-3 pl-10 rounded-xl text-sm outline-none border border-white/10 focus:border-blue-500 transition-all"
+                      placeholder="Type to filter..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="overflow-y-auto">
+                  {filteredCrews.length > 0 ? filteredCrews.map(crew => (
+                    <div 
+                      key={crew.id}
+                      onClick={() => {
+                        setSelectedCrew(crew);
+                        setShowDropdown(false);
+                        setSearchTerm('');
+                      }}
+                      className="p-5 hover:bg-blue-600 cursor-pointer text-sm font-bold border-b border-white/5 last:border-none flex justify-between items-center group"
+                    >
+                      <span>{crew.full_name}</span>
+                      <span className="text-[9px] text-slate-500 group-hover:text-blue-200 uppercase">{crew.position}</span>
+                    </div>
+                  )) : (
+                    <div className="p-10 text-center text-slate-500 text-xs font-bold uppercase italic">No crew found</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ส่วนใส่ PIN 6 หลัก */}
+          <div className={!selectedCrew ? "opacity-20 pointer-events-none transition-opacity" : "transition-opacity"}>
+            <label className="text-[10px] font-black text-blue-400 uppercase ml-4 mb-2 block tracking-widest">Enter 6-Digit PIN</label>
+            <div className="relative">
+              <input 
+                type="password"
+                maxLength={6}
+                inputMode="numeric"
+                placeholder="••••••"
+                className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl outline-none focus:border-blue-500 text-center tracking-[1.2em] font-black text-2xl placeholder:text-slate-800"
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+              />
             </div>
           </div>
-        )}
 
-        {showSizeChart && (
-          <div className="fixed inset-0 bg-black/95 z-[60] flex items-center justify-center p-4">
-            <div className="relative w-full max-w-md bg-slate-900 rounded-3xl p-2">
-              <button onClick={() => setShowSizeChart(null)} className="absolute -top-12 right-0 text-white flex items-center gap-1 font-bold bg-white/10 px-4 py-2 rounded-full">CLOSE <X size={16}/></button>
-              <div className="overflow-auto max-h-[75vh] flex items-center justify-center bg-white rounded-2xl">
-                <img src={showSizeChart === 'suit' ? '/suit-size.png' : '/boots-size.png'} className="w-full h-auto object-contain" alt="Size Chart" onError={(e) => { e.target.src = 'https://via.placeholder.com/600x800?text=Size+Chart+Not+Found' }} />
-              </div>
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl text-red-500 text-[10px] font-black text-center uppercase tracking-widest animate-shake">
+              {error}
             </div>
-          </div>
-        )}
+          )}
+
+          <button 
+            type="submit"
+            disabled={!selectedCrew || pin.length !== 6 || loading}
+            className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-[1.5rem] font-black uppercase tracking-[0.2em] shadow-xl shadow-blue-900/40 active:scale-95 disabled:opacity-10 transition-all flex justify-center items-center"
+          >
+            {loading ? <Loader2 className="animate-spin" /> : "Access Portal"}
+          </button>
+        </form>
       </div>
     </div>
   )
