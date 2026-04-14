@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
-import { Search, Lock, User as UserIcon, ChevronDown, Loader2 } from 'lucide-react'
+import { Search, Lock, User as UserIcon, ChevronDown, Loader2, UserPlus } from 'lucide-react'
 
 export default function LoginPage() {
   const [crews, setCrews] = useState([])
@@ -32,112 +32,108 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    // ตรวจสอบ PIN กับข้อมูลใน Database (คอลัมน์ pin_code)
-    if (selectedCrew.pin_code === pin) {
+    // ตรวจสอบ PIN (รองรับทั้งคอลัมน์ pin_code และ pin เพื่อกันพลาด)
+    const dbPin = selectedCrew.pin_code || selectedCrew.pin
+    
+    if (dbPin === pin) {
       localStorage.setItem('kmt_user', JSON.stringify(selectedCrew))
       router.push('/ppe')
     } else {
-      setError('Invalid PIN Code')
+      setError('PIN Code ไม่ถูกต้อง (รหัสที่คุณใส่คือ: ' + pin + ')')
       setPin('')
     }
     setLoading(false)
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-center p-6 font-sans">
-      <div className="max-w-md mx-auto w-full space-y-10">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-center p-6">
+      <div className="max-w-md mx-auto w-full space-y-8">
         <div className="text-center space-y-3">
-          <div className="inline-block p-4 bg-blue-600/10 rounded-[2rem] border border-blue-500/20 mb-2">
-            <Lock className="text-blue-500" size={32} />
-          </div>
-          <h1 className="text-4xl font-black italic tracking-tighter italic uppercase">KMT PPE</h1>
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.4em]">Crew Access Portal</p>
+          <h1 className="text-4xl font-black italic tracking-tighter uppercase text-blue-500">KMT PPE</h1>
+          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em]">Crew Access Portal</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
-          {/* ส่วนเลือกชื่อ */}
+          {/* เลือกชื่อ */}
           <div className="relative">
-            <label className="text-[10px] font-black text-blue-400 uppercase ml-4 mb-2 block tracking-widest">Select Your Name</label>
+            <label className="text-[10px] font-black text-slate-500 uppercase ml-4 mb-2 block">Name</label>
             <div 
               onClick={() => setShowDropdown(!showDropdown)}
-              className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl flex justify-between items-center cursor-pointer hover:bg-white/10 transition-all"
+              className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl flex justify-between items-center cursor-pointer hover:bg-white/10"
             >
               <div className="flex items-center gap-3">
-                <UserIcon size={20} className="text-slate-500" />
-                <span className={selectedCrew ? "text-white font-bold" : "text-slate-500 font-medium"}>
-                  {selectedCrew ? selectedCrew.full_name : "Search for your name..."}
+                <UserIcon size={20} className="text-blue-500" />
+                <span className={selectedCrew ? "text-white font-bold" : "text-slate-500"}>
+                  {selectedCrew ? selectedCrew.full_name : "ค้นหาชื่อของคุณ..."}
                 </span>
               </div>
-              <ChevronDown size={20} className={`text-slate-500 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+              <ChevronDown size={20} className="text-slate-600" />
             </div>
 
             {showDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-3 bg-slate-900 border border-white/10 rounded-[2rem] shadow-2xl z-50 max-h-72 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
-                <div className="p-4 border-b border-white/5 bg-white/5">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-                    <input 
-                      autoFocus
-                      type="text"
-                      className="w-full bg-slate-950 p-3 pl-10 rounded-xl text-sm outline-none border border-white/10 focus:border-blue-500 transition-all"
-                      placeholder="Type to filter..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+              <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl z-50 max-h-60 overflow-y-auto">
+                <div className="p-2 bg-slate-900 sticky top-0 border-b border-white/5">
+                  <input 
+                    autoFocus
+                    className="w-full bg-black/40 p-3 rounded-xl text-sm outline-none border border-white/10 focus:border-blue-500"
+                    placeholder="พิมพ์เพื่อค้นหา..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                {filteredCrews.map(crew => (
+                  <div 
+                    key={crew.id}
+                    onClick={() => { setSelectedCrew(crew); setShowDropdown(false); }}
+                    className="p-4 hover:bg-blue-600 cursor-pointer text-sm font-bold border-b border-white/5"
+                  >
+                    {crew.full_name}
                   </div>
-                </div>
-                <div className="overflow-y-auto">
-                  {filteredCrews.length > 0 ? filteredCrews.map(crew => (
-                    <div 
-                      key={crew.id}
-                      onClick={() => {
-                        setSelectedCrew(crew);
-                        setShowDropdown(false);
-                        setSearchTerm('');
-                      }}
-                      className="p-5 hover:bg-blue-600 cursor-pointer text-sm font-bold border-b border-white/5 last:border-none flex justify-between items-center group"
-                    >
-                      <span>{crew.full_name}</span>
-                      <span className="text-[9px] text-slate-500 group-hover:text-blue-200 uppercase">{crew.position}</span>
-                    </div>
-                  )) : (
-                    <div className="p-10 text-center text-slate-500 text-xs font-bold uppercase italic">No crew found</div>
-                  )}
-                </div>
+                ))}
               </div>
             )}
           </div>
 
-          {/* ส่วนใส่ PIN 6 หลัก */}
-          <div className={!selectedCrew ? "opacity-20 pointer-events-none transition-opacity" : "transition-opacity"}>
-            <label className="text-[10px] font-black text-blue-400 uppercase ml-4 mb-2 block tracking-widest">Enter 6-Digit PIN</label>
+          {/* PIN */}
+          <div>
+            <label className="text-[10px] font-black text-slate-500 uppercase ml-4 mb-2 block">6-Digit PIN</label>
             <div className="relative">
+              <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
               <input 
                 type="password"
                 maxLength={6}
                 inputMode="numeric"
+                className="w-full bg-white/5 border border-white/10 p-5 pl-14 rounded-2xl outline-none focus:border-blue-500 text-center tracking-[1em] font-black text-2xl"
                 placeholder="••••••"
-                className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl outline-none focus:border-blue-500 text-center tracking-[1.2em] font-black text-2xl placeholder:text-slate-800"
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
               />
             </div>
           </div>
 
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl text-red-500 text-[10px] font-black text-center uppercase tracking-widest animate-shake">
-              {error}
-            </div>
-          )}
+          {error && <div className="text-red-500 text-[10px] font-black text-center uppercase border border-red-500/20 bg-red-500/5 p-3 rounded-xl">{error}</div>}
 
           <button 
             type="submit"
             disabled={!selectedCrew || pin.length !== 6 || loading}
-            className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-[1.5rem] font-black uppercase tracking-[0.2em] shadow-xl shadow-blue-900/40 active:scale-95 disabled:opacity-10 transition-all flex justify-center items-center"
+            className="w-full py-5 bg-blue-600 rounded-2xl font-black uppercase tracking-widest active:scale-95 disabled:opacity-20 transition-all flex justify-center"
           >
-            {loading ? <Loader2 className="animate-spin" /> : "Access Portal"}
+            {loading ? <Loader2 className="animate-spin"/> : "Login"}
           </button>
         </form>
+
+        {/* ปุ่ม Register ที่หายไป */}
+        <div className="pt-4 flex flex-col items-center gap-4">
+          <div className="w-full h-[1px] bg-white/5"></div>
+          <p className="text-slate-600 text-[10px] font-bold uppercase">Don't have an account?</p>
+          <button 
+            onClick={() => router.push('/register')}
+            className="flex items-center gap-2 text-blue-500 font-black text-sm uppercase tracking-wider hover:text-blue-400 transition-colors"
+          >
+            <UserPlus size={18} />
+            Register New Crew
+          </button>
+        </div>
       </div>
     </div>
   )
