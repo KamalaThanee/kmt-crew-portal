@@ -6,7 +6,7 @@ import {
   ShoppingCart, ChevronDown, ChevronUp, Plus, Trash2, Settings,
   HardHat, Headphones, Eye, Wind, Shirt, Hand, 
   Footprints, MoreHorizontal, X, Package, ShieldCheck, 
-  Upload, Loader2, Lock, AlertTriangle, Calendar
+  Upload, Loader2, Lock, AlertTriangle, Calendar, CheckCircle2
 } from 'lucide-react'
 
 export default function PPEPage() {
@@ -22,6 +22,7 @@ export default function PPEPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState({ suit: false, boot: false })
+  const [sizeCharts, setSizeCharts] = useState({ suit: '', boot: '' })
 
   const ADMIN_ROLES = ['Safety Officer', 'Chief Officer', 'Barge Master']
   const hasFullAccess = useMemo(() => {
@@ -37,14 +38,14 @@ export default function PPEPage() {
     setUser(u)
 
     async function fetchData() {
-      // 1. ดึง Inventory
       const { data: inv } = await supabase.from('ppe_inventory').select('*')
       if (inv) setInventory(inv)
 
-      // 2. เช็คโควตาปีปัจจุบัน (นับรายการที่เบิกไปแล้ว)
+      const { data: settings } = await supabase.from('ppe_settings').select('*').eq('id', 1).single()
+      if (settings) setSizeCharts({ suit: settings.suit_chart_url, boot: settings.boot_url })
+
       const currentYear = new Date().getFullYear()
       const startOfYear = `${currentYear}-01-01T00:00:00Z`
-      
       const { data: reqs } = await supabase.from('ppe_requests')
         .select('item_name')
         .eq('crew_id', u.id)
@@ -52,13 +53,31 @@ export default function PPEPage() {
         .gte('request_date', startOfYear)
 
       if (reqs) {
-        const suitCount = reqs.filter(r => r.item_name.toLowerCase().includes('suit')).length
-        const bootCount = reqs.filter(r => r.item_name.toLowerCase().includes('safety boot') && !r.item_name.toLowerCase().includes('rubber')).length
-        setQuotas({ suit: suitCount, boot: bootCount })
+        setQuotas({ 
+          suit: reqs.filter(r => r.item_name.toLowerCase().includes('suit')).length, 
+          boot: reqs.filter(r => r.item_name.toLowerCase().includes('safety boot') && !r.item_name.toLowerCase().includes('rubber')).length 
+        })
       }
     }
     fetchData()
   }, [router])
+
+  // Sorting Logic for Sizes
+  const sizeOrder = { 's': 1, 'm': 2, 'l': 3, 'xl': 4, '2xl': 5, '3xl': 6, '4xl': 7, 'std': 8 }
+  const sortVariants = (variants) => {
+    return variants.sort((a, b) => {
+      const cA = String(a.color || a.Color || '').toLowerCase()
+      const cB = String(b.color || b.Color || '').toLowerCase()
+      if (cA !== cB) return cA.localeCompare(cB)
+      
+      const sA = String(a.size || a.Size || '').toLowerCase()
+      const sB = String(b.size || b.Size || '').toLowerCase()
+      const numA = sizeOrder[sA] || 99
+      const numB = sizeOrder[sB] || 99
+      if (numA !== numB) return numA - numB
+      return sA.localeCompare(sB)
+    })
+  }
 
   const groupedInventory = useMemo(() => {
     const groups = {}
@@ -67,6 +86,8 @@ export default function PPEPage() {
       if (!groups[name]) groups[name] = { name, variants: [] }
       groups[name].variants.push(item)
     })
+    // Sort variants inside each group
+    Object.values(groups).forEach(g => { g.variants = sortVariants(g.variants) })
     return Object.values(groups)
   }, [inventory])
 
@@ -82,33 +103,76 @@ export default function PPEPage() {
   ]
 
   const addToCart = (variant) => {
-    setCart([...cart, { ...variant, cartId: Date.now() }])
+    const lowerName = variant.item_name.toLowerCase()
+    const isSuit = lowerName.includes('suit')
+    const isBoot = lowerName.includes('safety boot') && !lowerName.includes('rubber')
+    
+    const vSize = String(variant.size ?? variant.Size ?? "STD").trim()
+    const vColor = String(variant.color ?? variant.Color ?? "").trim()
+    const stock = Number(variant.quantity || variant.Quantity || variant.stock || variant.Stock || 0)
+
+    // 1. Check Stock Limit
+    const inCartOfThisVariant = cart.filter(i => i.item_name === variant.item_name && i.size === vSize && i.color === vColor).length
+    if (inCartOfThisVariant >= stock) {
+      alert(`ไม่สามารถเบิกเกินจำนวน Stock ที่มีได้ (เหลือ ${stock})`)
+      return
+    }
+
+    // 2. Check Yearly Quota Limit (DB + Cart)
+    if (isSuit) {
+      const inCartSuits = cart.filter(item => item.item_name.toLowerCase().includes('suit')).length
+      if (quotas.suit + inCartSuits >= 2) {
+        alert('โควตา Boiler Suit ของปีนี้เต็มแล้ว (สูงสุด 2 ชุด/ปี)')
+        return
+      }
+    }
+    if (isBoot) {
+      const inCartBoots = cart.filter(item => item.item_name.toLowerCase().includes('safety boot') && !item.item_name.toLowerCase().includes('rubber')).length
+      if (quotas.boot + inCartBoots >= 1) {
+        alert('โควตา Safety Boots ของปีนี้เต็มแล้ว (สูงสุด 1 คู่/ปี)')
+        return
+      }
+    }
+
+    setCart([...cart, { ...variant, size: vSize, color: vColor, cartId: Date.now() }])
+  }
+
+  const getColorHex = (colorName) => {
+    const c = colorName.toLowerCase();
+    if(c.includes('red')) return 'bg-red-500';
+    if(c.includes('navy') || c.includes('blue')) return 'bg-blue-800';
+    if(c.includes('orange')) return 'bg-orange-500';
+    if(c.includes('yellow')) return 'bg-yellow-400';
+    if(c.includes('green')) return 'bg-emerald-500';
+    if(c.includes('black')) return 'bg-neutral-900 border border-white/20';
+    return 'bg-slate-500';
   }
 
   if (!mounted || !user) return null
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-24 font-sans">
-      {/* Navbar */}
+      {/* Navbar - Reordered UI */}
       <div className="bg-slate-900/95 backdrop-blur-md sticky top-0 z-50 border-b border-white/10 p-5">
         <div className="max-w-md mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${hasFullAccess ? 'bg-amber-500' : 'bg-blue-600'}`}>
-              {hasFullAccess ? <ShieldCheck size={20}/> : user.full_name[0]}
+          <div className="flex items-center gap-4">
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black shadow-lg ${hasFullAccess ? 'bg-amber-500 shadow-amber-500/20' : 'bg-blue-600 shadow-blue-600/20'}`}>
+              {hasFullAccess ? <ShieldCheck size={22}/> : user.full_name[0]}
             </div>
-            <div>
-              <h2 className="text-sm font-bold truncate max-w-[120px]">{user.full_name}</h2>
-              <div className="flex gap-2">
-                <span className="text-[7px] bg-blue-500/20 text-blue-400 px-1 rounded font-bold">SUIT: {quotas.suit}/2</span>
-                <span className="text-[7px] bg-indigo-500/20 text-indigo-400 px-1 rounded font-bold">BOOT: {quotas.boot}/1</span>
+            <div className="flex flex-col">
+              <h2 className="text-sm font-bold truncate max-w-[150px]">{user.full_name}</h2>
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{user.position}</p>
+              <div className="flex gap-1.5 mt-1">
+                <span className={`text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider ${quotas.suit >= 2 ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>SUIT: {quotas.suit}/2</span>
+                <span className={`text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider ${quotas.boot >= 1 ? 'bg-red-500/20 text-red-400' : 'bg-indigo-500/20 text-indigo-400'}`}>BOOT: {quotas.boot}/1</span>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowSettings(true)} className="p-3 bg-white/5 rounded-2xl border border-white/10 text-slate-400"><Settings size={20}/></button>
-            <button onClick={() => setShowCart(true)} className="relative p-3 bg-blue-600 rounded-2xl text-white">
+            {hasFullAccess && <button onClick={() => setShowSettings(true)} className="p-3 bg-white/5 rounded-2xl border border-white/10 text-slate-400"><Settings size={20}/></button>}
+            <button onClick={() => setShowCart(true)} className="relative p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-600/20">
               <ShoppingCart size={20} />
-              {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-950">{cart.length}</span>}
+              {cart.length > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-900">{cart.length}</span>}
             </button>
           </div>
         </div>
@@ -127,7 +191,7 @@ export default function PPEPage() {
             <div key={cat.name} className={`rounded-[28px] border-2 transition-all ${isCatOpen ? `${cat.color} bg-black mb-6 shadow-2xl` : 'border-white/5 bg-slate-900'}`}>
               <button onClick={() => setExpandedCat(isCatOpen ? null : cat.name)} className="w-full p-6 flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className={`p-3 rounded-2xl ${isCatOpen ? 'bg-blue-600 text-white' : 'bg-black text-slate-400'}`}>{cat.icon}</div>
+                  <div className={`p-3 rounded-2xl ${isCatOpen ? 'bg-blue-600 text-white' : 'bg-black text-slate-400 border border-white/5'}`}>{cat.icon}</div>
                   <span className={`text-base font-black uppercase tracking-tighter ${isCatOpen ? 'text-white' : 'text-slate-300'}`}>{cat.name}</span>
                 </div>
                 {isCatOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} className="text-slate-500" />}
@@ -156,33 +220,40 @@ export default function PPEPage() {
                               const vSize = String(variant.size ?? variant.Size ?? "STD").trim()
                               const vColor = String(variant.color ?? variant.Color ?? "").trim()
                               
-                              // Logic MY SIZE: เฉพาะ Suit และ Boot เท่านั้น
-                              const isMySize = isStrict ? 
-                                (isSuit ? (vColor === user.suit_color && vSize === user.suit_size) : (vSize === user.boot_size)) 
-                                : true
-
-                              // Logic Quota: เช็คว่าเบิกเกินปีนี้หรือยัง
-                              const isQuotaFull = (isSuit && quotas.suit >= 2) || (isBoot && quotas.boot >= 1)
-                              const isOutOfStock = stock <= 0
+                              const inCartOfThisVariant = cart.filter(i => i.item_name === group.name && i.size === vSize && i.color === vColor).length
+                              const availableStock = stock - inCartOfThisVariant
+                              
+                              const isMySize = isStrict ? (isSuit ? (vColor === user.suit_color && vSize === user.suit_size) : (vSize === user.boot_size)) : true
+                              
+                              const inCartSuits = cart.filter(item => item.item_name.toLowerCase().includes('suit')).length
+                              const inCartBoots = cart.filter(item => item.item_name.toLowerCase().includes('safety boot') && !item.item_name.toLowerCase().includes('rubber')).length
+                              
+                              const isQuotaFull = (isSuit && (quotas.suit + inCartSuits) >= 2) || (isBoot && (quotas.boot + inCartBoots) >= 1)
+                              const isOutOfStock = availableStock <= 0
 
                               if (!isMySize && !hasFullAccess) return null
 
                               return (
-                                <div key={vIdx} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${isMySize ? 'border-blue-500/40 bg-blue-500/5' : 'border-white/5 bg-black/20 opacity-50'}`}>
-                                  <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[11px] font-black uppercase">{vColor} {vSize}</span>
-                                      {(isStrict && isMySize) && <span className="bg-blue-600 text-[7px] px-2 py-0.5 rounded-md font-black">MY SIZE</span>}
-                                    </div>
-                                    <div className="flex flex-col gap-0.5">
-                                      {isOutOfStock ? (
-                                        <span className="text-[10px] text-red-500 font-black flex items-center gap-1 uppercase"><AlertTriangle size={12}/> Out of Stock</span>
-                                      ) : (
-                                        <>
-                                          {isStrict && isQuotaFull && <span className="text-[9px] text-amber-500 font-black flex items-center gap-1 uppercase"><Calendar size={10}/> Yearly Quota Full</span>}
-                                          {hasFullAccess && <span className="text-[10px] text-slate-400 font-black">STOCK: {stock}</span>}
-                                        </>
-                                      )}
+                                <div key={vIdx} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${isMySize ? 'border-blue-500/40 bg-blue-500/5' : 'border-white/5 bg-black/20 opacity-60'}`}>
+                                  <div className="flex items-center gap-3">
+                                    {/* Color Indicator for Admin Sorting */}
+                                    {vColor && hasFullAccess && <div className={`w-3 h-3 rounded-full ${getColorHex(vColor)}`}></div>}
+                                    
+                                    <div className="flex flex-col gap-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`text-[11px] font-black uppercase ${!hasFullAccess && vColor ? getColorHex(vColor).replace('bg-', 'text-') : ''}`}>{vColor} {vSize}</span>
+                                        {(isStrict && isMySize) && <span className="bg-blue-600 text-[7px] px-2 py-0.5 rounded-md font-black text-white">MY SIZE</span>}
+                                      </div>
+                                      <div className="flex flex-col gap-0.5">
+                                        {isOutOfStock ? (
+                                          <span className="text-[10px] text-red-500 font-black flex items-center gap-1 uppercase"><AlertTriangle size={10}/> Out of Stock</span>
+                                        ) : (
+                                          <>
+                                            {isStrict && isQuotaFull && <span className="text-[9px] text-amber-500 font-black flex items-center gap-1 uppercase"><Calendar size={10}/> Yearly Quota Full</span>}
+                                            {hasFullAccess && <span className="text-[10px] text-slate-400 font-black">STOCK: {availableStock} {inCartOfThisVariant > 0 && <span className="text-blue-400">(-{inCartOfThisVariant})</span>}</span>}
+                                          </>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
                                   
@@ -229,8 +300,8 @@ export default function PPEPage() {
               const { error } = await supabase.from('ppe_requests').insert(cart.map(i => ({ 
                 crew_id: user.id, 
                 item_name: i.item_name, 
-                size: i.size || i.Size || 'STD', 
-                color: i.color || i.Color || null, 
+                size: i.size, 
+                color: i.color, 
                 status: 'pending', 
                 request_date: new Date().toISOString() 
               })));
@@ -243,30 +314,41 @@ export default function PPEPage() {
         </div>
       )}
 
-      {/* Settings Modal - Simplified for Size Charts */}
+      {/* Settings Modal - Upload Status Update */}
       {showSettings && (
         <div className="fixed inset-0 bg-slate-950/90 z-[70] flex items-center justify-center p-6 backdrop-blur-md">
           <div className="bg-slate-900 w-full max-w-md rounded-[40px] border border-white/10 p-8 space-y-6">
             <div className="flex justify-between items-center"><h3 className="font-black uppercase text-sm text-blue-500">System Settings</h3><button onClick={() => setShowSettings(false)}><X/></button></div>
             <p className="text-[10px] text-slate-500 font-bold uppercase">อัปโหลดตารางไซส์ให้ซิงค์ทุกเครื่อง</p>
-            {['suit', 'boot'].map(type => (
-              <div key={type} className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase">{type} chart image</label>
-                <input type="file" onChange={async (e) => {
-                  const file = e.target.files[0]; if (!file) return;
-                  setUploading(prev => ({ ...prev, [type]: true }));
-                  const fileName = `${type}_${Date.now()}.${file.name.split('.').pop()}`;
-                  await supabase.storage.from('ppe_assets').upload(`charts/${fileName}`, file);
-                  const { data: { publicUrl } } = supabase.storage.from('ppe_assets').getPublicUrl(`charts/${fileName}`);
-                  await supabase.from('ppe_settings').update({ [type === 'suit' ? 'suit_chart_url' : 'boot_url']: publicUrl }).eq('id', 1);
-                  setUploading(prev => ({ ...prev, [type]: false }));
-                  alert('Sync Done');
-                }} className="hidden" id={type}/>
-                <label htmlFor={type} className="w-full h-20 border-2 border-dashed border-white/10 rounded-2xl flex items-center justify-center cursor-pointer hover:border-blue-500">
-                  {uploading[type] ? <Loader2 className="animate-spin text-blue-500" /> : <Upload className="text-slate-600" />}
-                </label>
-              </div>
-            ))}
+            {['suit', 'boot'].map(type => {
+              const isUploaded = !!sizeCharts[type]
+              return (
+                <div key={type} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black text-slate-500 uppercase">{type} chart image</label>
+                    {isUploaded && <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-black flex items-center gap-1"><CheckCircle2 size={10}/> UPLOADED</span>}
+                  </div>
+                  <input type="file" onChange={async (e) => {
+                    const file = e.target.files[0]; if (!file) return;
+                    setUploading(prev => ({ ...prev, [type]: true }));
+                    const fileName = `${type}_${Date.now()}.${file.name.split('.').pop()}`;
+                    await supabase.storage.from('ppe_assets').upload(`charts/${fileName}`, file);
+                    const { data: { publicUrl } } = supabase.storage.from('ppe_assets').getPublicUrl(`charts/${fileName}`);
+                    await supabase.from('ppe_settings').update({ [type === 'suit' ? 'suit_chart_url' : 'boot_url']: publicUrl }).eq('id', 1);
+                    setSizeCharts(prev => ({ ...prev, [type]: publicUrl }))
+                    setUploading(prev => ({ ...prev, [type]: false }));
+                  }} className="hidden" id={type}/>
+                  <label htmlFor={type} className={`w-full h-16 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${isUploaded ? 'border-emerald-500/30 bg-emerald-500/5 hover:border-emerald-500' : 'border-white/10 hover:border-blue-500'}`}>
+                    {uploading[type] ? <Loader2 className="animate-spin text-blue-500" size={20}/> : (
+                      <>
+                        <Upload className={isUploaded ? "text-emerald-500 mb-1" : "text-slate-600 mb-1"} size={16}/>
+                        <span className={`text-[9px] font-black uppercase ${isUploaded ? 'text-emerald-500' : 'text-slate-500'}`}>{isUploaded ? 'อัปเดตไฟล์ใหม่ (Click to Update)' : 'คลิกเพื่ออัปโหลด'}</span>
+                      </>
+                    )}
+                  </label>
+                </div>
+              )
+            })}
             <button onClick={() => setShowSettings(false)} className="w-full py-4 bg-white/5 rounded-2xl font-black uppercase text-[10px]">Close</button>
           </div>
         </div>
