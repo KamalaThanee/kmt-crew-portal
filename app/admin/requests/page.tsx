@@ -1,64 +1,109 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { CheckCircle, XCircle, Clock } from "lucide-react";
+import { CheckCircle, XCircle, AlertTriangle, Clock } from "lucide-react";
 
-export default function AdminRequestsPage() {
+export default function AdminRequests() {
   const [requests, setRequests] = useState<any[]>([]);
-  const [rejectReason, setRejectReason] = useState("");
-  const [selectedReqId, setSelectedReqId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const fetchRequests = async () => {
-    const { data, error } = await supabase.from("ppe_requests").select("*").eq("status", "Pending").order("request_date", { ascending: false });
-    if (!error && data) setRequests(data);
+    setLoading(true);
+    // ดึงรายการที่รออนุมัติ
+    const { data } = await supabase
+      .from("ppe_requests")
+      .select("*")
+      .eq("status", "Pending")
+      .order("created_at", { ascending: false });
+    
+    if (data) setRequests(data);
+    setLoading(false);
   };
+
   useEffect(() => { fetchRequests(); }, []);
 
-  const handleApprove = async (id: string) => {
-    const { error } = await supabase.from("ppe_requests").update({ status: "Approved" }).eq("id", id);
-    if (!error) fetchRequests();
-  };
+  const handleAction = async (id: string, action: "Approved" | "Rejected") => {
+    const confirmAction = confirm(`คุณต้องการ ${action} รายการนี้ใช่หรือไม่?`);
+    if (!confirmAction) return;
 
-  const handleReject = async () => {
-    if (!selectedReqId || !rejectReason) return;
-    const { error } = await supabase.from("ppe_requests").update({ status: "Rejected", rejection_reason: rejectReason }).eq("id", selectedReqId);
-    if (!error) { setRejectReason(""); setSelectedReqId(null); fetchRequests(); }
+    // เปลี่ยนแค่สถานะ ยังไม่หักสต็อก!
+    const { error } = await supabase
+      .from("ppe_requests")
+      .update({ status: action })
+      .eq("id", id);
+    
+    if (!error) {
+      alert(`บันทึกสถานะเป็น ${action} เรียบร้อยแล้ว ระบบจะแจ้งให้ลูกเรือมารับของ`);
+      fetchRequests();
+    } else {
+      alert("เกิดข้อผิดพลาดในการอัปเดตสถานะ");
+    }
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto bg-gray-50 min-h-screen">
-      <h1 className="text-2xl font-bold mb-6 flex items-center gap-2 text-slate-800"><Clock className="text-blue-500" /> Pending Requests</h1>
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr><th className="p-4 font-semibold text-slate-700">Crew ID</th><th className="p-4 font-semibold text-slate-700">Item</th><th className="p-4 font-semibold text-slate-700">Variant</th><th className="p-4 font-semibold text-slate-700 text-center">Actions</th></tr>
-          </thead>
-          <tbody>
-            {requests.map((req) => (
-              <tr key={req.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
-                <td className="p-4 text-slate-600">{req.crew_id}</td>
-                <td className="p-4 font-bold text-slate-800">{req.item_name}</td>
-                <td className="p-4 text-slate-500">{req.size} / {req.color}</td>
-                <td className="p-4 flex justify-center gap-2">
-                  <button onClick={() => handleApprove(req.id)} className="flex items-center gap-1 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition shadow-sm"><CheckCircle size={16} /> Approve</button>
-                  <button onClick={() => setSelectedReqId(req.id)} className="flex items-center gap-1 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition shadow-sm"><XCircle size={16} /> Reject</button>
-                </td>
-              </tr>
-            ))}
-            {requests.length === 0 && <tr><td colSpan={4} className="p-10 text-center text-slate-400">No pending requests found.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      {selectedReqId && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-2xl shadow-xl w-96 border border-slate-200">
-            <h2 className="text-lg font-bold mb-4 text-slate-800">Reason for Rejection</h2>
-            <textarea className="w-full border border-slate-200 rounded-xl p-3 mb-4 focus:ring-2 focus:ring-rose-500 focus:outline-none" rows={3} placeholder="Enter reason..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setSelectedReqId(null)} className="px-4 py-2 text-slate-500 font-medium hover:bg-slate-100 rounded-lg">Cancel</button>
-              <button onClick={handleReject} className="px-4 py-2 bg-rose-500 text-white font-bold rounded-lg hover:bg-rose-600 transition">Submit</button>
+    <div className="p-6 md:p-12 max-w-5xl mx-auto">
+      <header className="mb-10 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-black text-emerald-500 tracking-tighter">PENDING REQUESTS</h1>
+          <p className="text-zinc-500 text-sm mt-1">อนุมัติหรือปฏิเสธคำขอเบิก PPE ของลูกเรือ</p>
+        </div>
+        <div className="bg-blue-500/10 text-blue-500 px-4 py-2 rounded-xl flex items-center gap-2 font-bold text-sm">
+          <Clock size={18} /> {requests.length} รายการ
+        </div>
+      </header>
+
+      {loading ? (
+        <p className="text-center text-zinc-500 py-10 animate-pulse">Loading requests...</p>
+      ) : requests.length === 0 ? (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-12 text-center">
+          <CheckCircle size={48} className="mx-auto text-zinc-700 mb-4" />
+          <h3 className="text-xl font-bold text-zinc-400">ไม่มีคำขอค้างในระบบ</h3>
+          <p className="text-zinc-600 text-sm mt-2">ยอดเยี่ยม! คุณเคลียร์งานทั้งหมดแล้ว</p>
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {requests.map((req) => (
+            <div key={req.id} className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="bg-zinc-800 px-3 py-1 rounded-lg text-xs font-black uppercase text-zinc-400">{req.crew_name}</span>
+                  <span className="text-xs text-zinc-600">{new Date(req.created_at).toLocaleDateString('th-TH')}</span>
+                </div>
+                <h3 className="text-xl font-black text-white">{req.item_name}</h3>
+                <p className="text-zinc-400 text-sm mt-1">
+                  Size: <span className="text-white font-bold">{req.size}</span> | 
+                  จำนวน: <span className="text-white font-bold">1</span>
+                </p>
+                
+                {/* ระบบแจ้งเตือนโควตาเบื้องต้น */}
+                {req.item_name.toLowerCase().includes("boiler") && (
+                  <p className="flex items-center gap-1 text-[10px] text-amber-500 font-bold mt-3 bg-amber-500/10 w-fit px-2 py-1 rounded">
+                    <AlertTriangle size={12} /> Limit Check: โควตาสูงสุด 2 ชุด/ปี
+                  </p>
+                )}
+                {req.item_name.toLowerCase().includes("boot") && (
+                  <p className="flex items-center gap-1 text-[10px] text-amber-500 font-bold mt-3 bg-amber-500/10 w-fit px-2 py-1 rounded">
+                    <AlertTriangle size={12} /> Limit Check: โควตาสูงสุด 1 คู่/ปี
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-3 w-full md:w-auto">
+                <button 
+                  onClick={() => handleAction(req.id, "Approved")}
+                  className="flex-1 md:flex-none bg-emerald-600/20 text-emerald-500 hover:bg-emerald-600 hover:text-white border border-emerald-500/30 px-6 py-3 rounded-xl font-black transition flex items-center justify-center gap-2"
+                >
+                  <CheckCircle size={18} /> APPROVE
+                </button>
+                <button 
+                  onClick={() => handleAction(req.id, "Rejected")}
+                  className="flex-1 md:flex-none bg-rose-600/20 text-rose-500 hover:bg-rose-600 hover:text-white border border-rose-500/30 px-6 py-3 rounded-xl font-black transition flex items-center justify-center gap-2"
+                >
+                  <XCircle size={18} /> REJECT
+                </button>
+              </div>
             </div>
-          </div>
+          ))}
         </div>
       )}
     </div>
