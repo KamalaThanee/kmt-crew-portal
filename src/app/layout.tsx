@@ -1,5 +1,5 @@
 import './globals.css'
-import Navbar from '../components/Navbar'
+import Navbar from './Navbar'
 
 export const metadata = {
   title: 'KMT Crew Portal',
@@ -13,9 +13,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-gray-50 min-h-screen">
+      <body className="bg-gray-50 min-h-screen flex flex-col">
         <Navbar />
-        <main>{children}</main>
+        <main className="flex-grow">{children}</main>
       </body>
     </html>
   )
