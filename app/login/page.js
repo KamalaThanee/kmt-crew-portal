@@ -28,12 +28,21 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    // ตรวจสอบ PIN (แปลงเป็น String ทั้งคู่เพื่อกันพลาด)
     const dbPin = (selectedCrew.pin_code || selectedCrew.pin || "").toString()
     
     if (dbPin === pin.toString()) {
+      // เซฟข้อมูลลงเครื่อง
       localStorage.setItem('kmt_user', JSON.stringify(selectedCrew))
-      router.push('/ppe')
+      
+      // 🎯 SMART REDIRECT LOGIC
+      const role = selectedCrew.rank || selectedCrew.position || "";
+      const adminRoles = ["Safety Officer", "Chief Officer", "Barge Master"];
+      
+      if (adminRoles.includes(role)) {
+        router.push('/admin/dashboard') // ไป Dashboard ถ้าเป็นแอดมิน
+      } else {
+        router.push('/ppe') // ลูกเรือทั่วไปไปหน้าเบิกของ
+      }
     } else {
       setError('PIN Code ไม่ถูกต้อง')
       setPin('')
@@ -77,13 +86,13 @@ export default function LoginPage() {
             <input type="password" maxLength={6} inputMode="numeric" className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-center tracking-[1em] font-black text-2xl" placeholder="••••••" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
           </div>
           {error && <div className="text-red-500 text-[10px] font-black text-center uppercase p-3 bg-red-500/5 rounded-xl border border-red-500/20">{error}</div>}
-          <button type="submit" disabled={!selectedCrew || pin.length !== 6 || loading} className="w-full py-5 bg-blue-600 rounded-2xl font-black uppercase tracking-widest active:scale-95 disabled:opacity-20 transition-all flex justify-center">
+          <button type="submit" disabled={!selectedCrew || pin.length !== 6 || loading} className="w-full py-5 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black uppercase tracking-widest active:scale-95 disabled:opacity-20 transition-all flex justify-center">
             {loading ? <Loader2 className="animate-spin"/> : "Login"}
           </button>
         </form>
         <div className="pt-4 flex flex-col items-center gap-4">
           <div className="w-full h-[1px] bg-white/5"></div>
-          <button onClick={() => router.push('/register')} className="flex items-center gap-2 text-blue-500 font-black text-sm uppercase tracking-wider hover:text-blue-400">
+          <button onClick={() => router.push('/register')} className="flex items-center gap-2 text-slate-400 font-bold text-sm uppercase tracking-wider hover:text-blue-400 transition-colors">
             <UserPlus size={18} /> Register New Crew
           </button>
         </div>
