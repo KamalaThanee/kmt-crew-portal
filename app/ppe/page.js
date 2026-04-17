@@ -111,7 +111,7 @@ function PPEContent() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-24 font-sans pt-4 md:pt-4">
-      {/* 🎯 pt-4 ขยับขึ้นแทนที่ Header เก่าแล้ว */}
+      {/* ขยับเนื้อหาขึ้นมาแทนที่ Header เดิม */}
       <div className="max-w-md mx-auto p-4 space-y-4 pt-16">
         {categories.map(cat => {
           const catItems = groupedInventory.filter(group => {
@@ -139,7 +139,7 @@ function PPEContent() {
                       </button>
                       {expandedItem === group.name && (
                         <div className="p-3 space-y-2 bg-slate-900/50">
-                          {group.variants.map((variant: any, vIdx: number) => {
+                          {group.variants.map((variant, vIdx) => {
                             const stock = Number(variant.quantity || 0)
                             const vSize = String(variant.size || "STD").trim()
                             const vColor = String(variant.color || "").trim()
@@ -154,11 +154,11 @@ function PPEContent() {
                                 <div className="flex flex-col gap-1">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[11px] font-black uppercase">{vColor} {vSize}</span>
-                                    {isMySize && isStrict && <span className="bg-blue-600 text-[7px] px-2 py-0.5 rounded-md font-black text-white">MY SIZE</span>}
+                                    {isMySize && isStrict && <span className="bg-blue-600 text-[7px] px-2 py-0.5 rounded-md font-black text-white uppercase tracking-wider">MY SIZE</span>}
                                   </div>
                                   <div className="text-[10px] text-slate-500">{isOutOfStock ? "Out of Stock" : `Stock: ${stock}`}</div>
                                 </div>
-                                <button disabled={isOutOfStock} onClick={() => setCart([...cart, {...variant, cartId: Date.now()}])} className="p-3 bg-blue-600 text-white rounded-xl shadow-lg disabled:opacity-20"><Plus size={18}/></button>
+                                <button disabled={isOutOfStock} onClick={() => setCart([...cart, {...variant, cartId: Date.now()}])} className="p-3 bg-blue-600 text-white rounded-xl shadow-lg disabled:opacity-20 active:scale-95 transition-transform"><Plus size={18}/></button>
                               </div>
                             )
                           })}
@@ -172,7 +172,84 @@ function PPEContent() {
           )
         })}
       </div>
-      {/* Drawer components remain the same... */}
+
+      {/* Cart Drawer */}
+      {showCart && (
+        <div className="fixed inset-0 bg-slate-950 z-[100] flex flex-col animate-in slide-in-from-bottom duration-300">
+          <div className="p-6 border-b border-white/10 flex justify-between items-center bg-slate-900 mt-16 md:mt-0">
+            <h3 className="text-sm font-black uppercase text-blue-500 tracking-widest">My Selection</h3>
+            <button onClick={() => setShowCart(false)} className="p-3 bg-white/10 rounded-2xl"><X size={20}/></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {cart.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center opacity-20"><Package size={64}/><p className="text-[10px] font-black mt-4 uppercase tracking-[0.2em]">No Items Selected</p></div>
+            ) : cart.map((item) => (
+              <div key={item.cartId} className="bg-white/5 p-4 rounded-2xl flex justify-between items-center border border-white/10">
+                <div><p className="text-xs font-black uppercase tracking-tight">{item.item_name}</p><p className="text-[10px] text-blue-400 font-bold uppercase">{item.color} {item.size}</p></div>
+                <button onClick={() => setCart(cart.filter(i => i.cartId !== item.cartId))} className="p-2 text-red-500 hover:text-red-400 transition-colors"><Trash2 size={18}/></button>
+              </div>
+            ))}
+          </div>
+          <div className="p-8 border-t border-white/10 bg-slate-900/50 pb-safe">
+            <button disabled={cart.length === 0 || loading} onClick={async () => {
+              setLoading(true);
+              const { error } = await supabase.from('ppe_requests').insert(cart.map(i => ({ 
+                crew_id: user.id, 
+                item_name: i.item_name, 
+                size: i.size, 
+                color: i.color, 
+                status: 'pending', 
+                request_date: new Date().toISOString() 
+              })));
+              if (!error) { alert('Request Sent!'); setCart([]); setShowCart(false); window.location.reload(); }
+              setLoading(false);
+            }} className="w-full py-5 bg-blue-600 rounded-3xl font-black uppercase shadow-2xl active:scale-95 transition-all tracking-[0.1em]">
+              {loading ? 'Processing...' : `Confirm Request (${cart.length})`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettings && hasFullAccess && (
+        <div className="fixed inset-0 bg-slate-950/90 z-[100] flex items-center justify-center p-6 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-slate-900 w-full max-w-md rounded-[40px] border border-white/10 p-8 space-y-6 shadow-2xl">
+            <div className="flex justify-between items-center"><h3 className="font-black uppercase text-sm text-blue-500 tracking-widest text-center w-full ml-6">System Settings</h3><button onClick={() => setShowSettings(false)} className="p-2 hover:bg-white/5 rounded-full"><X/></button></div>
+            <div className="space-y-4">
+              {['suit', 'boot'].map(type => {
+                const isUploaded = !!sizeCharts[type]
+                return (
+                  <div key={type} className="space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{type} chart image</label>
+                      {isUploaded && <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-black flex items-center gap-1 uppercase tracking-wider"><CheckCircle2 size={10}/> Uploaded</span>}
+                    </div>
+                    <input type="file" onChange={async (e) => {
+                      const file = e.target.files[0]; if (!file) return;
+                      setUploading(prev => ({ ...prev, [type]: true }));
+                      const fileName = `${type}_${Date.now()}.${file.name.split('.').pop()}`;
+                      await supabase.storage.from('ppe_assets').upload(`charts/${fileName}`, file);
+                      const { data: { publicUrl } } = supabase.storage.from('ppe_assets').getPublicUrl(`charts/${fileName}`);
+                      await supabase.from('ppe_settings').update({ [type === 'suit' ? 'suit_chart_url' : 'boot_url']: publicUrl }).eq('id', 1);
+                      setSizeCharts(prev => ({ ...prev, [type]: publicUrl }))
+                      setUploading(prev => ({ ...prev, [type]: false }));
+                    }} className="hidden" id={type}/>
+                    <label htmlFor={type} className={`w-full h-16 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${isUploaded ? 'border-emerald-500/30 bg-emerald-500/5 hover:border-emerald-500' : 'border-white/10 hover:border-blue-500'}`}>
+                      {uploading[type] ? <Loader2 className="animate-spin text-blue-500" size={20}/> : (
+                        <>
+                          <Upload className={isUploaded ? "text-emerald-500 mb-1" : "text-slate-600 mb-1"} size={16}/>
+                          <span className={`text-[9px] font-black uppercase tracking-wider ${isUploaded ? 'text-emerald-500' : 'text-slate-500'}`}>{isUploaded ? 'Update File' : 'Click to Upload'}</span>
+                        </>
+                      )}
+                    </label>
+                  </div>
+                )
+              })}
+            </div>
+            <button onClick={() => setShowSettings(false)} className="w-full py-4 bg-white/5 hover:bg-white/10 transition-colors rounded-2xl font-black uppercase text-[10px] tracking-[0.2em]">Close</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
