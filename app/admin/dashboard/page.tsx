@@ -2,7 +2,8 @@
 import { Package, AlertTriangle, Archive, ArrowRight, BarChart3, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabase";
+// 🎯 แก้ไขพาธตรงนี้: ถอยหลัง 3 ชั้น เพื่อไปหาโฟลเดอร์ lib
+import { supabase } from "../../../lib/supabase";
 
 export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true);
@@ -23,7 +24,6 @@ export default function AdminDashboard() {
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
-      // 1. ดึงข้อมูลคลัง (Inventory & Low Stock)
       const { data: inventory } = await supabase.from('ppe_inventory').select('quantity, threshold');
       let lowStock = 0;
       let totalQty = 0;
@@ -34,7 +34,6 @@ export default function AdminDashboard() {
         });
       }
 
-      // 2. ดึงข้อมูลประวัติรับของล่าสุด (Restock)
       const { data: restock } = await supabase.from('restock_history')
         .select('created_at').order('created_at', { ascending: false }).limit(1);
       
@@ -44,27 +43,20 @@ export default function AdminDashboard() {
 
       setStats({ lowStockCount: lowStock, totalInventory: totalQty, lastRestockDate: lastDate });
 
-      // 3. ดึงข้อมูลคำขอเบิก (เพื่อทำ Usage Summary)
       const { data: reqs } = await supabase.from('ppe_requests').select('created_at, items, status');
       if (reqs) {
         setRequests(reqs);
-        
-        // สร้างรายการเดือนที่มีการเบิก (เช่น "Apr 2026")
         const months = Array.from(new Set(reqs.map(r => {
           const d = new Date(r.created_at);
           return `${d.toLocaleString('en-US', { month: 'short' })} ${d.getFullYear()}`;
         })));
-        
-        // ถ้าไม่มีข้อมูลเลย ให้ใส่เดือนปัจจุบัน
         if (months.length === 0) {
           const now = new Date();
           months.push(`${now.toLocaleString('en-US', { month: 'short' })} ${now.getFullYear()}`);
         }
-        
-        // เรียงเดือนจากใหม่ไปเก่า (คร่าวๆ)
         months.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
         setAvailableMonths(months);
-        setSelectedMonth(months[0]); // เลือกเดือนล่าสุดเป็นค่าเริ่มต้น
+        setSelectedMonth(months[0]);
       }
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -72,10 +64,8 @@ export default function AdminDashboard() {
     setIsLoading(false);
   };
 
-  // คำนวณ Usage Summary ตามเดือนที่เลือก
   const calculateUsage = () => {
     if (!selectedMonth) return { totalRequests: 0, pending: 0, itemsIssued: 0 };
-    
     const filteredReqs = requests.filter(r => {
       const d = new Date(r.created_at);
       return `${d.toLocaleString('en-US', { month: 'short' })} ${d.getFullYear()}` === selectedMonth;
@@ -86,7 +76,6 @@ export default function AdminDashboard() {
     
     filteredReqs.forEach(r => {
       if (r.status !== 'rejected' && r.items) {
-        // ประเมินว่า 1 object ใน array คือ 1 ชิ้น (ถ้าตารางเก็บจำนวนด้วย ค่อยคูณจำนวนเข้าไป)
         itemsIssued += Array.isArray(r.items) ? r.items.length : 0;
       }
     });
@@ -96,12 +85,11 @@ export default function AdminDashboard() {
 
   const usage = calculateUsage();
 
-  if (isLoading) return <div className="p-10 text-center text-white font-bold">Loading Dashboard Data...</div>;
+  if (isLoading) return <div className="p-10 text-center text-white font-bold pt-24">Loading Dashboard Data...</div>;
 
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-6xl mx-auto pt-24">
       
-      {/* 1. USAGE SUMMARY SECTION */}
       <div className="bg-slate-900 border border-white/10 rounded-3xl p-6 md:p-8 space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/5 pb-4">
           <div className="flex items-center gap-3">
@@ -140,7 +128,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 2. QUICK ACTION CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
         <Link href="/admin/inventory?filter=low-stock" className="bg-slate-900 border border-white/10 p-6 rounded-3xl flex flex-col gap-6 hover:border-red-500/50 transition-all group relative overflow-hidden">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-red-500/10 rounded-full blur-2xl group-hover:bg-red-500/20 transition-all"></div>
