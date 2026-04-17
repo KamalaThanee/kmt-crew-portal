@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { 
@@ -9,7 +9,8 @@ import {
   Upload, Loader2, Lock, AlertTriangle, Calendar, CheckCircle2
 } from 'lucide-react'
 
-export default function PPEPage() {
+// 🎯 แยกเนื้อหาออกมาเป็น Component ย่อย
+function PPEContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [mounted, setMounted] = useState(false)
@@ -39,10 +40,8 @@ export default function PPEPage() {
     const u = JSON.parse(cachedUser)
     setUser(u)
 
-    // 🎯 ตรวจสอบพารามิเตอร์จาก URL ว่าต้องเปิด Setting เลยไหม
     if (searchParams.get('settings') === 'true') {
       setShowSettings(true)
-      // เคลียร์ URL ให้สะอาด
       window.history.replaceState({}, '', window.location.pathname)
     }
 
@@ -170,10 +169,6 @@ export default function PPEPage() {
                 <div className="px-4 pb-6 space-y-4">
                   {catItems.map((group) => {
                     const isItemOpen = expandedItem === group.name
-                    const lowerName = group.name.toLowerCase()
-                    const isSuit = lowerName.includes('suit')
-                    const isBoot = lowerName.includes('safety boot') && !lowerName.includes('rubber')
-                    const isStrict = isSuit || isBoot
                     return (
                       <div key={group.name} className="bg-slate-800 rounded-2xl overflow-hidden border border-white/10">
                         <button onClick={() => setExpandedItem(isItemOpen ? null : group.name)} className="w-full p-4 flex items-center justify-between gap-2 text-left">
@@ -188,6 +183,9 @@ export default function PPEPage() {
                               const vColor = String(variant.color ?? variant.Color ?? "").trim()
                               const inCartOfThisVariant = cart.filter(i => i.item_name === group.name && i.size === vSize && i.color === vColor).length
                               const availableStock = stock - inCartOfThisVariant
+                              const isSuit = group.name.toLowerCase().includes('suit')
+                              const isBoot = group.name.toLowerCase().includes('safety boot') && !group.name.toLowerCase().includes('rubber')
+                              const isStrict = isSuit || isBoot
                               const isMySize = isStrict ? (isSuit ? (vColor === user.suit_color && vSize === user.suit_size) : (vSize === user.boot_size)) : true
                               const inCartSuits = cart.filter(item => item.item_name.toLowerCase().includes('suit')).length
                               const inCartBoots = cart.filter(item => item.item_name.toLowerCase().includes('safety boot') && !item.item_name.toLowerCase().includes('rubber')).length
@@ -197,7 +195,6 @@ export default function PPEPage() {
                               return (
                                 <div key={vIdx} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${isMySize ? 'border-blue-500/40 bg-blue-500/5' : 'border-white/5 bg-black/20 opacity-60'}`}>
                                   <div className="flex items-center gap-3">
-                                    {vColor && hasFullAccess && <div className={`w-3 h-3 rounded-full ${getColorHex(vColor)}`}></div>}
                                     <div className="flex flex-col gap-1">
                                       <div className="flex items-center gap-2">
                                         <span className={`text-[11px] font-black uppercase ${!hasFullAccess && vColor ? getColorHex(vColor).replace('bg-', 'text-') : ''}`}>{vColor} {vSize}</span>
@@ -311,5 +308,14 @@ export default function PPEPage() {
         </div>
       )}
     </div>
+  )
+}
+
+// 🎯 หุ้มด้วย Suspense เพื่อให้ Build ผ่าน
+export default function PPEPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-blue-500 font-black uppercase tracking-[0.3em] animate-pulse">Initializing Portal...</div>}>
+      <PPEContent />
+    </Suspense>
   )
 }
