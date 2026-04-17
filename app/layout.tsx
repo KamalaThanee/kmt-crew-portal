@@ -1,28 +1,13 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 
-const inter = Inter({ subsets: ["latin"] });
-
-export const metadata: Metadata = {
-  title: "KMT Crew Portal",
-  description: "PPE & Inventory Management System",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const userRole = "Safety Officer"; // แก้เป็นดึงจาก DB ภายหลัง
   return (
-    <html lang="en">
-      <body className={`${inter.className} bg-zinc-950 text-white min-h-screen`}>
-        <Navbar />
-        {/* เว้นที่ว่างด้านบนไว้ให้ Navbar ที่ Fix ไว้ */}
-        <main className="pt-16">
-          {children}
-        </main>
+    <html lang="en" className="dark">
+      <body className="bg-zinc-950 text-zinc-100 antialiased">
+        <Navbar userRole={userRole} />
+        <main>{children}</main>
       </body>
     </html>
   );
