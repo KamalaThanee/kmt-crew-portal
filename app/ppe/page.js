@@ -26,8 +26,9 @@ export default function PPEPage() {
 
   const ADMIN_ROLES = ['Safety Officer', 'Chief Officer', 'Barge Master']
   const hasFullAccess = useMemo(() => {
-    if (!user?.position) return false
-    return ADMIN_ROLES.some(pos => pos.toLowerCase() === user.position.toLowerCase())
+    if (!user?.position && !user?.rank) return false
+    const pos = user.position || user.rank || ""
+    return ADMIN_ROLES.some(p => p.toLowerCase() === pos.toLowerCase())
   }, [user])
 
   useEffect(() => {
@@ -60,9 +61,25 @@ export default function PPEPage() {
       }
     }
     fetchData()
+
+    // 🎧 รอรับคำสั่งเปิดตระกร้าและตั้งค่าจาก Navbar
+    const handleOpenCart = () => setShowCart(true)
+    const handleOpenSettings = () => setShowSettings(true)
+    
+    window.addEventListener('open-cart', handleOpenCart)
+    window.addEventListener('open-settings', handleOpenSettings)
+
+    return () => {
+      window.removeEventListener('open-cart', handleOpenCart)
+      window.removeEventListener('open-settings', handleOpenSettings)
+    }
   }, [router])
 
-  // Sorting Logic for Sizes
+  // 📢 ตะโกนบอก Navbar ทุกครั้งที่ของในตระกร้าเปลี่ยนไป
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('cart-updated', { detail: cart.length }))
+  }, [cart])
+
   const sizeOrder = { 's': 1, 'm': 2, 'l': 3, 'xl': 4, '2xl': 5, '3xl': 6, '4xl': 7, 'std': 8 }
   const sortVariants = (variants) => {
     return variants.sort((a, b) => {
@@ -86,7 +103,6 @@ export default function PPEPage() {
       if (!groups[name]) groups[name] = { name, variants: [] }
       groups[name].variants.push(item)
     })
-    // Sort variants inside each group
     Object.values(groups).forEach(g => { g.variants = sortVariants(g.variants) })
     return Object.values(groups)
   }, [inventory])
@@ -111,14 +127,12 @@ export default function PPEPage() {
     const vColor = String(variant.color ?? variant.Color ?? "").trim()
     const stock = Number(variant.quantity || variant.Quantity || variant.stock || variant.Stock || 0)
 
-    // 1. Check Stock Limit
     const inCartOfThisVariant = cart.filter(i => i.item_name === variant.item_name && i.size === vSize && i.color === vColor).length
     if (inCartOfThisVariant >= stock) {
       alert(`ไม่สามารถเบิกเกินจำนวน Stock ที่มีได้ (เหลือ ${stock})`)
       return
     }
 
-    // 2. Check Yearly Quota Limit (DB + Cart)
     if (isSuit) {
       const inCartSuits = cart.filter(item => item.item_name.toLowerCase().includes('suit')).length
       if (quotas.suit + inCartSuits >= 2) {
@@ -151,33 +165,8 @@ export default function PPEPage() {
   if (!mounted || !user) return null
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-24 font-sans">
-      {/* Navbar - Reordered UI */}
-      <div className="bg-slate-900/95 backdrop-blur-md sticky top-0 z-50 border-b border-white/10 p-5">
-        <div className="max-w-md mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black shadow-lg ${hasFullAccess ? 'bg-amber-500 shadow-amber-500/20' : 'bg-blue-600 shadow-blue-600/20'}`}>
-              {hasFullAccess ? <ShieldCheck size={22}/> : user.full_name[0]}
-            </div>
-            <div className="flex flex-col">
-              <h2 className="text-sm font-bold truncate max-w-[150px]">{user.full_name}</h2>
-              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{user.position}</p>
-              <div className="flex gap-1.5 mt-1">
-                <span className={`text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider ${quotas.suit >= 2 ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>SUIT: {quotas.suit}/2</span>
-                <span className={`text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider ${quotas.boot >= 1 ? 'bg-red-500/20 text-red-400' : 'bg-indigo-500/20 text-indigo-400'}`}>BOOT: {quotas.boot}/1</span>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {hasFullAccess && <button onClick={() => setShowSettings(true)} className="p-3 bg-white/5 rounded-2xl border border-white/10 text-slate-400"><Settings size={20}/></button>}
-            <button onClick={() => setShowCart(true)} className="relative p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-600/20">
-              <ShoppingCart size={20} />
-              {cart.length > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-900">{cart.length}</span>}
-            </button>
-          </div>
-        </div>
-      </div>
-
+    <div className="min-h-screen bg-slate-950 text-white pb-24 font-sans pt-24">
+      {/* 🎯 แถบ Header โควต้าเก่าถูกลบทิ้งไปแล้ว ทำให้ UI สะอาดขึ้นมาก */}
       <div className="max-w-md mx-auto p-4 space-y-4">
         {categories.map(cat => {
           const catItems = groupedInventory.filter(group => {
@@ -209,8 +198,8 @@ export default function PPEPage() {
                     return (
                       <div key={group.name} className="bg-slate-800 rounded-2xl overflow-hidden border border-white/10">
                         <button onClick={() => setExpandedItem(isItemOpen ? null : group.name)} className="w-full p-4 flex items-center justify-between">
-                          <span className="text-[12px] font-black text-blue-300 uppercase">{group.name}</span>
-                          <ChevronDown size={16} className={`text-slate-500 transition-transform ${isItemOpen ? 'rotate-180' : ''}`} />
+                          <span className="text-[12px] font-black text-blue-300 uppercase text-left">{group.name}</span>
+                          <ChevronDown size={16} className={`text-slate-500 transition-transform flex-shrink-0 ${isItemOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         {isItemOpen && (
@@ -236,9 +225,7 @@ export default function PPEPage() {
                               return (
                                 <div key={vIdx} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${isMySize ? 'border-blue-500/40 bg-blue-500/5' : 'border-white/5 bg-black/20 opacity-60'}`}>
                                   <div className="flex items-center gap-3">
-                                    {/* Color Indicator for Admin Sorting */}
                                     {vColor && hasFullAccess && <div className={`w-3 h-3 rounded-full ${getColorHex(vColor)}`}></div>}
-                                    
                                     <div className="flex flex-col gap-1">
                                       <div className="flex items-center gap-2">
                                         <span className={`text-[11px] font-black uppercase ${!hasFullAccess && vColor ? getColorHex(vColor).replace('bg-', 'text-') : ''}`}>{vColor} {vSize}</span>
@@ -277,10 +264,9 @@ export default function PPEPage() {
         })}
       </div>
 
-      {/* Cart Drawer */}
       {showCart && (
         <div className="fixed inset-0 bg-slate-950 z-[100] flex flex-col animate-in slide-in-from-bottom">
-          <div className="p-6 border-b border-white/10 flex justify-between items-center bg-slate-900">
+          <div className="p-6 border-b border-white/10 flex justify-between items-center bg-slate-900 mt-16 md:mt-0">
             <h3 className="text-sm font-black uppercase text-blue-500 tracking-widest">My Selection</h3>
             <button onClick={() => setShowCart(false)} className="p-3 bg-white/10 rounded-2xl"><X size={20}/></button>
           </div>
@@ -294,7 +280,7 @@ export default function PPEPage() {
               </div>
             ))}
           </div>
-          <div className="p-8 border-t border-white/10 bg-slate-900/50">
+          <div className="p-8 border-t border-white/10 bg-slate-900/50 pb-safe">
             <button disabled={cart.length === 0 || loading} onClick={async () => {
               setLoading(true);
               const { error } = await supabase.from('ppe_requests').insert(cart.map(i => ({ 
@@ -314,9 +300,8 @@ export default function PPEPage() {
         </div>
       )}
 
-      {/* Settings Modal - Upload Status Update */}
-      {showSettings && (
-        <div className="fixed inset-0 bg-slate-950/90 z-[70] flex items-center justify-center p-6 backdrop-blur-md">
+      {showSettings && hasFullAccess && (
+        <div className="fixed inset-0 bg-slate-950/90 z-[100] flex items-center justify-center p-6 backdrop-blur-md">
           <div className="bg-slate-900 w-full max-w-md rounded-[40px] border border-white/10 p-8 space-y-6">
             <div className="flex justify-between items-center"><h3 className="font-black uppercase text-sm text-blue-500">System Settings</h3><button onClick={() => setShowSettings(false)}><X/></button></div>
             <p className="text-[10px] text-slate-500 font-bold uppercase">อัปโหลดตารางไซส์ให้ซิงค์ทุกเครื่อง</p>

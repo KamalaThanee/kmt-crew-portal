@@ -12,6 +12,7 @@ export default function Navbar() {
   const [mounted, setMounted] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [cartCount, setCartCount] = useState(0); // เก็บจำนวนของในตระกร้า
 
   useEffect(() => {
     setMounted(true);
@@ -19,19 +20,19 @@ export default function Navbar() {
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
       setUser(parsedUser);
-      
-      const role = parsedUser.rank || parsedUser.position || "";
-      if (["Safety Officer", "Chief Officer", "Barge Master"].includes(role)) {
+      if (["Safety Officer", "Chief Officer", "Barge Master"].includes(parsedUser.rank || parsedUser.position || "")) {
         fetchPendingCount();
       }
     }
+
+    // 🎧 รอฟังเสียงตะโกนจากหน้า PPE ว่ามีของในตระกร้ากี่ชิ้น
+    const handleCartUpdate = (e: any) => setCartCount(e.detail);
+    window.addEventListener('cart-updated', handleCartUpdate);
+    return () => window.removeEventListener('cart-updated', handleCartUpdate);
   }, [pathname]);
 
   const fetchPendingCount = async () => {
-    const { count } = await supabase
-      .from('ppe_requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending');
+    const { count } = await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending');
     setPendingCount(count || 0);
   };
 
@@ -40,7 +41,6 @@ export default function Navbar() {
   const role = user?.rank || user?.position || "";
   const isAdmin = ["Safety Officer", "Chief Officer", "Barge Master"].includes(role);
 
-  // เมนูที่ถูกต้อง: Admin ต้องมี Request PPE ด้วย
   const menuItems = isAdmin ? [
     { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'Approvals', href: '/admin/approvals', icon: ClipboardCheck },
@@ -56,27 +56,38 @@ export default function Navbar() {
     router.push('/login');
   };
 
-  // Profile Dropdown Drawer
+  // 📢 ฟังก์ชันตะโกนบอกให้เปิดตระกร้า
+  const openCart = () => {
+    if (pathname === '/ppe') {
+      window.dispatchEvent(new CustomEvent('open-cart'));
+    } else {
+      router.push('/ppe'); // ถ้าไม่ได้อยู่หน้า PPE ให้ไปหน้า PPE ก่อน
+    }
+  };
+
+  // 📢 ฟังก์ชันตะโกนบอกให้เปิดตั้งค่า
+  const openSettings = () => {
+    if (pathname === '/ppe') {
+      window.dispatchEvent(new CustomEvent('open-settings'));
+      setShowProfile(false);
+    } else {
+      router.push('/ppe');
+    }
+  };
+
   const ProfileMenu = () => (
     <div className="absolute right-0 top-14 w-72 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50">
       <div className="p-4 bg-slate-800/50 border-b border-white/5">
         <p className="text-white font-bold text-sm truncate">{user?.full_name}</p>
         <p className="text-blue-400 text-xs font-black uppercase mt-1">{role}</p>
       </div>
-      <div className="p-4 space-y-4 border-b border-white/5">
-        <div>
-          <div className="flex justify-between text-xs font-bold text-slate-400 mb-1 uppercase"><span>Boiler Suit</span><span>0 / 2</span></div>
-          <div className="w-full bg-slate-950 rounded-full h-2"><div className="bg-blue-500 h-2 rounded-full w-0"></div></div>
-        </div>
-        <div>
-          <div className="flex justify-between text-xs font-bold text-slate-400 mb-1 uppercase"><span>Safety Boots</span><span>0 / 1</span></div>
-          <div className="w-full bg-slate-950 rounded-full h-2"><div className="bg-orange-500 h-2 rounded-full w-0"></div></div>
-        </div>
-      </div>
       <div className="p-2">
-        <button className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
-          <Settings size={16} /> Settings
-        </button>
+        {/* ซ่อนปุ่มตั้งค่าให้เฉพาะ Admin */}
+        {isAdmin && (
+          <button onClick={openSettings} className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+            <Settings size={16} /> Settings
+          </button>
+        )}
         <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors">
           <LogOut size={16} /> Logout
         </button>
@@ -100,7 +111,10 @@ export default function Navbar() {
       </div>
       
       <div className="flex items-center gap-3 relative">
-        <Link href="/cart" className="p-2 text-slate-400 hover:text-white bg-white/5 rounded-full"><ShoppingCart size={20} /></Link>
+        <button onClick={openCart} className="relative p-2 text-slate-400 hover:text-white bg-white/5 rounded-full">
+          <ShoppingCart size={20} />
+          {cartCount > 0 && <span className="absolute -top-1 -right-1 min-w-[20px] h-[20px] flex items-center justify-center bg-blue-600 text-white text-[10px] font-black rounded-full border-2 border-slate-950">{cartCount}</span>}
+        </button>
         
         {isAdmin && (
           <Link href="/admin/approvals" className="relative p-2 text-slate-400 hover:text-white bg-white/5 rounded-full">
