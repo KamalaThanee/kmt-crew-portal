@@ -14,6 +14,7 @@ function PPEContent() {
   const searchParams = useSearchParams()
   const [mounted, setMounted] = useState(false)
   const [user, setUser] = useState<any>(null)
+  const [isAdmin, setIsAdmin] = useState(false) // 🎯 สร้าง State เช็คแอดมิน
   const [inventory, setInventory] = useState<any[]>([])
   const [cart, setCart] = useState<any[]>([])
   const [quotas, setQuotas] = useState({ suit: 0, boot: 0 })
@@ -34,14 +35,17 @@ function PPEContent() {
     if (!cachedUser) { router.push('/login'); return; }
     const u = JSON.parse(cachedUser)
     setUser(u)
-    loadCart()
+    
+    // 🎯 เช็คว่าใช่แอดมินหรือไม่
+    const adminRoles = ["Safety Officer", "Chief Officer", "Barge Master"]
+    setIsAdmin(adminRoles.includes(u.position))
 
+    loadCart()
     if (searchParams.get('settings') === 'true') setShowSettings(true)
 
     async function fetchData() {
       const { data: inv } = await supabase.from('ppe_inventory').select('*')
       if (inv) setInventory(inv)
-      
       const { data: st } = await supabase.from('ppe_settings').select('*').eq('id', 1).single()
       if (st) setSizeCharts({ suit: st.suit_chart_url || '', boot: st.boot_url || '' })
 
@@ -65,22 +69,15 @@ function PPEContent() {
     if (!file) return;
     setUploading(prev => ({ ...prev, [type]: true }));
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${type}_chart_${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('size-charts').upload(fileName, file);
-      if (uploadError) throw uploadError;
-
+      const fileName = `${type}_chart_${Date.now()}.jpg`;
+      await supabase.storage.from('size-charts').upload(fileName, file);
       const { data: { publicUrl } } = supabase.storage.from('size-charts').getPublicUrl(fileName);
       const column = type === 'suit' ? 'suit_chart_url' : 'boot_url';
       await supabase.from('ppe_settings').update({ [column]: publicUrl }).eq('id', 1);
-      
       setSizeCharts(prev => ({ ...prev, [type]: publicUrl }));
       toast.success('อัปเดต Size Chart สำเร็จ');
-    } catch (error) {
-      toast.error('อัปโหลดไม่สำเร็จ');
-    } finally {
-      setUploading(prev => ({ ...prev, [type]: false }));
-    }
+    } catch (error) { toast.error('อัปโหลดไม่สำเร็จ'); } 
+    finally { setUploading(prev => ({ ...prev, [type]: false })); }
   };
 
   const groupedInventory = useMemo(() => {
@@ -107,20 +104,16 @@ function PPEContent() {
   const addToCart = (variant: any) => {
     const stock = Number(variant.quantity || 0)
     const inCart = cart.filter((i: any) => i.id === variant.id).length
-    if (inCart >= stock) { toast.error("สต๊อกไม่พอ"); return; }
+    if (inCart >= stock) return toast.error("สต๊อกไม่พอ");
 
     const name = variant.item_name.toLowerCase()
-    const isSuit = name.includes('suit')
-    const isBoot = name.includes('safety boot') && !name.includes('rubber')
+    const isSuit = name.includes('suit'); const isBoot = name.includes('safety boot') && !name.includes('rubber');
 
     if (isSuit || isBoot) {
       const limit = isSuit ? 2 : 1
       const currentQuota = isSuit ? quotas.suit : quotas.boot
       const inCartCount = cart.filter((i: any) => isSuit ? i.item_name.toLowerCase().includes('suit') : (i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber'))).length
-      if (currentQuota + inCartCount >= limit) {
-        toast.warning(`โควตาจำกัด ${limit} ${isSuit ? 'ชุด' : 'คู่'} ต่อปี`);
-        return;
-      }
+      if (currentQuota + inCartCount >= limit) return toast.warning(`โควตาจำกัด ${limit} ${isSuit ? 'ชุด' : 'คู่'} ต่อปี`);
     }
 
     const newCart = [...cart, { ...variant, cartId: Date.now() }]
@@ -154,15 +147,13 @@ function PPEContent() {
               {isCatOpen && (
                 <div className="px-4 pb-6 space-y-4 animate-in slide-in-from-top duration-300">
                   {catItems.map((group: any) => {
-                    // 🎯 FILTER: กรองเฉพาะไซส์และสีของตัวเองเท่านั้น สำหรับ Suit และ Boots
                     const name = group.name.toLowerCase()
-                    const isSuit = name.includes('suit')
-                    const isBoot = name.includes('safety boot') && !name.includes('rubber')
+                    const isSuit = name.includes('suit'); const isBoot = name.includes('safety boot') && !name.includes('rubber');
                     
                     const visibleVariants = group.variants.filter((v: any) => {
                       if (isSuit) return String(v.size) === String(user.suit_size) && String(v.color) === String(user.suit_color);
                       if (isBoot) return String(v.size) === String(user.boot_size);
-                      return true; // หมวดอื่นโชว์ปกติ
+                      return true;
                     })
 
                     if (visibleVariants.length === 0) return null;
@@ -186,10 +177,17 @@ function PPEContent() {
                                   <div className="flex flex-col gap-1">
                                     <div className="flex items-center gap-2">
                                       <span className="text-[11px] font-black uppercase">{variant.color} {variant.size}</span>
-                                      {(isSuit || isBoot) && <span className="bg-blue-600 text-[7px] px-2 py-0.5 rounded-md font-black text-white uppercase tracking-wider">MY REGISTERED SIZE</span>}
+                                      {(isSuit || isBoot) && <span className="bg-blue-600 text-[7px] px-2 py-0.5 rounded-md font-black text-white uppercase tracking-wider">MY SIZE</span>}
                                     </div>
                                     <div className="text-[10px] font-bold">
-                                      {currentStock <= 0 ? <span className="text-red-500 uppercase flex items-center gap-1"><AlertTriangle size={10}/> Out of Stock</span> : <span className="text-slate-500">Stock: {currentStock}</span>}
+                                      {/* 🎯 Logic ซ่อนจำนวนสต๊อกสำหรับคนไม่ใช่แอดมิน */}
+                                      {currentStock <= 0 ? (
+                                        <span className="text-red-500 uppercase flex items-center gap-1"><AlertTriangle size={10}/> Out of Stock</span>
+                                      ) : isAdmin ? (
+                                        <span className="text-slate-500">Stock: {currentStock}</span>
+                                      ) : (
+                                        <span className="text-emerald-500 uppercase tracking-widest text-[9px]">● In Stock</span>
+                                      )}
                                     </div>
                                   </div>
                                   {canAdd ? (
@@ -211,7 +209,7 @@ function PPEContent() {
           )
         })}
       </div>
-
+      {/* Settings Modal คงเดิม... */}
       {showSettings && (
         <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col p-6 overflow-y-auto animate-in fade-in">
            <div className="flex justify-between items-center mb-8">
@@ -223,12 +221,7 @@ function PPEContent() {
                 <div key={item.id} className="p-6 bg-slate-900 rounded-[32px] border border-white/5 space-y-4">
                   <div className="flex items-center gap-3"><ImageIcon className="text-blue-500"/><span className="font-black uppercase tracking-tighter text-sm">{item.label}</span></div>
                   {sizeCharts[item.id as 'suit' | 'boot'] ? (
-                    <div className="relative group">
-                      <img src={sizeCharts[item.id as 'suit' | 'boot']} alt="Chart" className="w-full h-48 object-contain bg-black rounded-2xl border border-white/10" />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-2xl">
-                        <p className="text-[10px] font-bold uppercase text-white">Current Chart</p>
-                      </div>
-                    </div>
+                    <img src={sizeCharts[item.id as 'suit' | 'boot']} alt="Chart" className="w-full h-48 object-contain bg-black rounded-2xl border border-white/10" />
                   ) : (
                     <div className="w-full h-48 bg-black rounded-2xl border border-dashed border-white/10 flex flex-col items-center justify-center text-slate-600">
                       <ImageIcon size={32} className="mb-2 opacity-20"/>
