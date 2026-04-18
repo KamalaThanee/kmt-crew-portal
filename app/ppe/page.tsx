@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase'
 import { 
   HardHat, Headphones, Eye, Wind, Shirt, Hand, 
   Footprints, MoreHorizontal, ChevronDown, ChevronUp, 
-  Plus, Lock, AlertTriangle
+  Plus, Lock, AlertTriangle, ShieldCheck 
 } from 'lucide-react'
 
 function PPEContent() {
@@ -14,8 +14,8 @@ function PPEContent() {
   const searchParams = useSearchParams()
   const [mounted, setMounted] = useState(false)
   const [user, setUser] = useState<any>(null)
-  const [inventory, setInventory] = useState<any[]>([]); // ระบุ Type ป้องกัน Build Error
-  const [cart, setCart] = useState<any[]>([]);           // ระบุ Type ป้องกัน Build Error
+  const [inventory, setInventory] = useState<any[]>([])
+  const [cart, setCart] = useState<any[]>([])
   const [quotas, setQuotas] = useState({ suit: 0, boot: 0 })
   const [expandedCat, setExpandedCat] = useState<string | null>(null)
   const [expandedItem, setExpandedItem] = useState<string | null>(null)
@@ -82,58 +82,38 @@ function PPEContent() {
   ]
 
   const addToCart = (variant: any) => {
-    const lowerName = variant.item_name.toLowerCase()
-    const isSuit = lowerName.includes('suit')
-    const isBoot = lowerName.includes('safety boot') && !lowerName.includes('rubber')
-    const isStrict = isSuit || isBoot
-
-    const vSize = String(variant.size || "STD").trim()
-    const vColor = String(variant.color || "").trim()
     const stock = Number(variant.quantity || 0)
-
     const inCartOfThisVariant = cart.filter((i: any) => i.id === variant.id).length
     if (inCartOfThisVariant >= stock) {
       toast.error("ขออภัย! สินค้าในสต็อกไม่พอ");
       return;
     }
 
-    if (isStrict) {
+    const lowerName = variant.item_name.toLowerCase()
+    const isSuit = lowerName.includes('suit')
+    const isBoot = lowerName.includes('safety boot') && !lowerName.includes('rubber')
+    
+    if (isSuit || isBoot) {
       const mySize = isSuit ? user.suit_size : user.boot_size;
       const myColor = isSuit ? user.suit_color : null;
-      if (vSize !== mySize) {
+      if (String(variant.size).trim() !== String(mySize).trim()) {
         toast.error(`ผิดไซส์! คุณลงทะเบียนไซส์ ${mySize} ไว้`);
         return;
       }
-      if (isSuit && vColor !== myColor) {
+      if (isSuit && String(variant.color).trim() !== String(myColor).trim()) {
         toast.error(`ผิดสี! คุณลงทะเบียนสี ${myColor} ไว้`);
         return;
       }
     }
 
-    if (isSuit) {
-      const inCartSuits = cart.filter((item: any) => item.item_name.toLowerCase().includes('suit')).length
-      if (quotas.suit + inCartSuits >= 2) {
-        toast.warning("เบิก Boiler suit ได้สูงสุด 2 ชุดต่อปี");
-        return;
-      }
-    }
-    if (isBoot) {
-      const inCartBoots = cart.filter((item: any) => item.item_name.toLowerCase().includes('safety boot') && !item.item_name.toLowerCase().includes('rubber')).length
-      if (quotas.boot + inCartBoots >= 1) {
-        toast.warning("เบิก Safety Boots ได้สูงสุด 1 คู่ต่อปี");
-        return;
-      }
-    }
-
     setCart([...cart, { ...variant, cartId: Date.now() }])
-    toast.success(`เพิ่ม ${variant.item_name} แล้ว`);
+    toast.success(`เพิ่ม ${variant.item_name} ลงตะกร้าแล้ว`);
   };
 
   if (!mounted || !user) return null
 
   return (
     <div className="min-h-[80vh] bg-slate-950 text-white pb-24 font-sans">
-      {/* 🎯 ลด Padding Top ตรงนี้ให้เหลือน้อยที่สุด เพราะ Layout คุมไว้แล้ว */}
       <div className="max-w-md mx-auto p-4 space-y-4 pt-2">
         {categories.map(cat => {
           const catItems: any = groupedInventory.filter((group: any) => {
@@ -165,25 +145,22 @@ function PPEContent() {
                             const stock = Number(variant.quantity || 0)
                             const isSuit = group.name.toLowerCase().includes('suit')
                             const isBoot = group.name.toLowerCase().includes('safety boot') && !group.name.toLowerCase().includes('rubber')
-                            const isStrict = isSuit || isBoot
-                            const mySize = isStrict ? (isSuit ? user.suit_size : user.boot_size) : null;
-                            const myColor = isSuit ? user.suit_color : null;
-                            const isMySize = isStrict ? (isSuit ? (variant.color === myColor && variant.size === mySize) : (variant.size === mySize)) : true
+                            const mySize = (isSuit || isBoot) ? (isSuit ? user.suit_size : user.boot_size) : null;
+                            const isMySize = (isSuit || isBoot) ? (variant.size === mySize) : true
                             const isOutOfStock = stock <= 0
-                            const canRequest = isMySize && !isOutOfStock
 
                             return (
                               <div key={vIdx} className={`flex items-center justify-between p-4 rounded-xl border ${isMySize ? 'border-blue-500/30 bg-blue-500/5' : 'border-white/5 opacity-40'}`}>
                                 <div className="flex flex-col gap-1">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[11px] font-black uppercase">{variant.color} {variant.size}</span>
-                                    {isMySize && isStrict && <span className="bg-blue-600 text-[7px] px-2 py-0.5 rounded-md font-black text-white uppercase tracking-wider">MY SIZE</span>}
+                                    {isMySize && (isSuit || isBoot) && <span className="bg-blue-600 text-[7px] px-2 py-0.5 rounded-md font-black text-white uppercase tracking-wider">MY SIZE</span>}
                                   </div>
                                   <div className="text-[10px] font-bold">
                                     {isOutOfStock ? <span className="text-red-500 uppercase flex items-center gap-1"><AlertTriangle size={10}/> Out of Stock</span> : <span className="text-slate-500">Stock: {stock}</span>}
                                   </div>
                                 </div>
-                                {canRequest ? (
+                                {isMySize && !isOutOfStock ? (
                                   <button onClick={() => addToCart(variant)} className="p-3 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-500 transition-colors active:scale-95"><Plus size={18}/></button>
                                 ) : (
                                   <div className="p-3 text-slate-700 bg-white/5 rounded-xl"><Lock size={18}/></div>
@@ -202,7 +179,6 @@ function PPEContent() {
         })}
       </div>
 
-      {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col p-6 animate-in fade-in">
            <div className="flex justify-between items-center mb-8">
@@ -211,7 +187,7 @@ function PPEContent() {
            </div>
            <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
               <ShieldCheck size={48} className="mb-4 opacity-20"/>
-              <p>Settings Content</p>
+              <p className="font-bold uppercase tracking-widest text-[10px]">Portal Settings</p>
            </div>
         </div>
       )}
