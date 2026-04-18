@@ -1,7 +1,19 @@
 "use client";
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Package, ShieldCheck, Bell, LogOut, ClipboardCheck, ShoppingCart, User, Settings, Clock, History } from 'lucide-react';
+import { 
+  LayoutDashboard, 
+  Package, 
+  ShieldCheck, 
+  Bell, 
+  LogOut, 
+  ClipboardCheck, 
+  ShoppingCart, 
+  User, 
+  Settings, 
+  History,
+  PlusCircle
+} from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
@@ -75,96 +87,112 @@ export default function Navbar() {
   const role = user?.rank || user?.position || "";
   const isAdmin = ["Safety Officer", "Chief Officer", "Barge Master"].includes(role);
 
-  // 🎯 เพิ่ม My Requests ให้กับ Admin ด้วย
   const menuItems = isAdmin ? [
-    { name: 'Dashboard', href: '/admin/dashboard' },
-    { name: 'Approvals', href: '/admin/approvals' },
-    { name: 'Request PPE', href: '/ppe' },
-    { name: 'Inventory', href: '/admin/inventory' },
-    { name: 'My Requests', href: '/my-requests' },
+    { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
+    { name: 'Approvals', href: '/admin/approvals', icon: ClipboardCheck },
+    { name: 'Request', href: '/ppe', icon: PlusCircle },
+    { name: 'Inventory', href: '/admin/inventory', icon: Package },
+    { name: 'My Req', href: '/my-requests', icon: History },
   ] : [
-    { name: 'Request PPE', href: '/ppe' },
-    { name: 'My Requests', href: '/my-requests' },
+    { name: 'Request PPE', href: '/ppe', icon: PlusCircle },
+    { name: 'My Requests', href: '/my-requests', icon: History },
   ];
 
   return (
-    <nav className="fixed top-0 w-full h-16 bg-slate-950/90 backdrop-blur-xl border-b border-white/10 px-6 flex items-center justify-between z-[60]">
-      <div className="flex items-center gap-10">
-        <div className="flex items-center gap-2 font-black text-blue-500 uppercase text-2xl tracking-tighter cursor-pointer" onClick={() => router.push(isAdmin ? '/admin/dashboard' : '/ppe')}>
-          <ShieldCheck size={28} className="text-blue-600" /> KMT
-        </div>
-        <div className="hidden md:flex items-center gap-1 font-black uppercase text-[10px] tracking-widest">
-          {menuItems.map((item) => (
-            <Link key={item.href} href={item.href} className={`px-4 py-2 rounded-lg border transition-all ${pathname === item.href ? 'bg-blue-600/10 text-blue-400 border-blue-500/20' : 'text-slate-400 border-transparent hover:text-slate-200'}`}>
-              {item.name}
-            </Link>
-          ))}
-        </div>
-      </div>
-      
-      <div className="flex items-center gap-3 relative" ref={profileRef}>
-        <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="relative p-2.5 text-slate-400 hover:text-white bg-white/5 rounded-full border border-white/5 transition-colors">
-          <ShoppingCart size={20} />
-          {cartCount > 0 && <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center bg-blue-600 text-white text-[9px] font-black rounded-full border-2 border-slate-950 px-1">{cartCount}</span>}
-        </button>
-        
-        <Link href={isAdmin ? "/admin/approvals" : "/my-requests"} className="relative p-2.5 text-slate-400 hover:text-white bg-white/5 rounded-full border border-white/5 transition-colors">
-          <Bell size={20} />
-          {notifCount > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[9px] font-black rounded-full border-2 border-slate-950 px-1">
-              {notifCount}
-            </span>
-          )}
-        </Link>
-        
-        <div className="w-[1px] h-6 bg-white/10 mx-1"></div>
-        
-        <button onClick={() => setShowProfile(!showProfile)} className={`w-10 h-10 flex items-center justify-center rounded-full border transition-all ${showProfile ? 'bg-blue-600 text-white border-blue-400' : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'}`}>
-          <User size={20} />
-        </button>
-        
-        {showProfile && (
-          <div className="absolute right-0 top-14 w-72 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[70] animate-in fade-in zoom-in duration-200">
-            <div className="p-5 bg-slate-800/50 border-b border-white/5">
-              <p className="text-white font-bold text-base truncate">{user?.full_name}</p>
-              <p className="text-blue-400 text-[10px] font-black uppercase mt-1 tracking-widest">{role}</p>
-            </div>
-            
-            <div className="p-5 space-y-4 border-b border-white/5 bg-slate-900/30">
-              <Link href="/my-requests" className="block group">
-                <div className="flex justify-between text-[10px] font-black text-slate-400 mb-1.5 uppercase tracking-widest group-hover:text-blue-400 transition-colors">
-                  <span className="flex items-center gap-1"><History size={10}/> Boiler Suit</span>
-                  <span className={quotas.suit >= 2 ? "text-red-400" : "text-blue-400"}>{quotas.suit} / 2</span>
-                </div>
-                <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5">
-                  <div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.suit >= 2 ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${Math.min((quotas.suit / 2) * 100, 100)}%` }}></div>
-                </div>
-              </Link>
-              
-              <Link href="/my-requests" className="block group">
-                <div className="flex justify-between text-[10px] font-black text-slate-400 mb-1.5 uppercase tracking-widest group-hover:text-indigo-400 transition-colors">
-                  <span className="flex items-center gap-1"><History size={10}/> Safety Boots</span>
-                  <span className={quotas.boot >= 1 ? "text-red-400" : "text-indigo-400"}>{quotas.boot} / 1</span>
-                </div>
-                <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5">
-                  <div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.boot >= 1 ? 'bg-red-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min((quotas.boot / 1) * 100, 100)}%` }}></div>
-                </div>
-              </Link>
-            </div>
-
-            <div className="p-2">
-              {isAdmin && (
-                <button onClick={() => { router.push('/ppe?settings=true'); setShowProfile(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
-                  <Settings size={18} /> Settings
-                </button>
-              )}
-              <button onClick={() => { localStorage.removeItem('kmt_user'); router.push('/login'); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors font-bold uppercase tracking-widest text-[11px]">
-                <LogOut size={18} /> Logout
-              </button>
-            </div>
+    <>
+      {/* TOP NAVBAR */}
+      <nav className="fixed top-0 w-full h-14 md:h-16 bg-slate-950/80 backdrop-blur-xl border-b border-white/10 px-4 md:px-6 flex items-center justify-between z-[60]">
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-2 font-black text-blue-500 uppercase text-xl md:text-2xl tracking-tighter cursor-pointer" onClick={() => router.push(isAdmin ? '/admin/dashboard' : '/ppe')}>
+            <ShieldCheck size={24} className="text-blue-600 md:w-[28px] md:h-[28px]" /> <span>KMT</span>
           </div>
-        )}
-      </div>
-    </nav>
+          <div className="hidden md:flex items-center gap-1 font-black uppercase text-[10px] tracking-widest">
+            {menuItems.map((item) => (
+              <Link key={item.href} href={item.href} className={`px-4 py-2 rounded-lg border transition-all ${pathname === item.href ? 'bg-blue-600/10 text-blue-400 border-blue-500/20' : 'text-slate-400 border-transparent hover:text-slate-200'}`}>
+                {item.name}
+              </Link>
+            ))}
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2 md:gap-3 relative" ref={profileRef}>
+          <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="relative p-2 md:p-2.5 text-slate-400 hover:text-white bg-white/5 rounded-full border border-white/5 transition-colors">
+            <ShoppingCart size={18} className="md:w-[20px] md:h-[20px]" />
+            {cartCount > 0 && <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] flex items-center justify-center bg-blue-600 text-white text-[8px] font-black rounded-full border-2 border-slate-950 px-1">{cartCount}</span>}
+          </button>
+          
+          <Link href={isAdmin ? "/admin/approvals" : "/my-requests"} className="relative p-2 md:p-2.5 text-slate-400 hover:text-white bg-white/5 rounded-full border border-white/5 transition-colors">
+            <Bell size={18} className="md:w-[20px] md:h-[20px]" />
+            {notifCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] flex items-center justify-center bg-red-500 text-white text-[8px] font-black rounded-full border-2 border-slate-950 px-1">
+                {notifCount}
+              </span>
+            )}
+          </Link>
+          
+          <div className="w-[1px] h-6 bg-white/10 mx-1 hidden md:block"></div>
+          
+          <button onClick={() => setShowProfile(!showProfile)} className={`w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-full border transition-all ${showProfile ? 'bg-blue-600 text-white border-blue-400' : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'}`}>
+            <User size={18} className="md:w-[20px] md:h-[20px]" />
+          </button>
+          
+          {showProfile && (
+            <div className="absolute right-0 top-14 w-72 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[70] animate-in fade-in zoom-in duration-200">
+              <div className="p-5 bg-slate-800/50 border-b border-white/5">
+                <p className="text-white font-bold text-base truncate">{user?.full_name}</p>
+                <p className="text-blue-400 text-[10px] font-black uppercase mt-1 tracking-widest">{role}</p>
+              </div>
+              <div className="p-5 space-y-4 border-b border-white/5 bg-slate-900/30">
+                <Link href="/my-requests" className="block group" onClick={() => setShowProfile(false)}>
+                  <div className="flex justify-between text-[10px] font-black text-slate-400 mb-1.5 uppercase tracking-widest group-hover:text-blue-400 transition-colors">
+                    <span className="flex items-center gap-1"><History size={10}/> Boiler Suit</span>
+                    <span className={quotas.suit >= 2 ? "text-red-400" : "text-blue-400"}>{quotas.suit} / 2</span>
+                  </div>
+                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5">
+                    <div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.suit >= 2 ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${Math.min((quotas.suit / 2) * 100, 100)}%` }}></div>
+                  </div>
+                </Link>
+                <Link href="/my-requests" className="block group" onClick={() => setShowProfile(false)}>
+                  <div className="flex justify-between text-[10px] font-black text-slate-400 mb-1.5 uppercase tracking-widest group-hover:text-indigo-400 transition-colors">
+                    <span className="flex items-center gap-1"><History size={10}/> Safety Boots</span>
+                    <span className={quotas.boot >= 1 ? "text-red-400" : "text-indigo-400"}>{quotas.boot} / 1</span>
+                  </div>
+                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5">
+                    <div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.boot >= 1 ? 'bg-red-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min((quotas.boot / 1) * 100, 100)}%` }}></div>
+                  </div>
+                </Link>
+              </div>
+              <div className="p-2">
+                {isAdmin && (
+                  <button onClick={() => { router.push('/ppe?settings=true'); setShowProfile(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+                    <Settings size={18} /> Settings
+                  </button>
+                )}
+                <button onClick={() => { localStorage.removeItem('kmt_user'); router.push('/login'); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors font-bold uppercase tracking-widest text-[11px]">
+                  <LogOut size={18} /> Logout
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </nav>
+
+      {/* BOTTOM NAV MOBILE */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-xl border-t border-white/10 z-[60]">
+        <div className="flex items-center justify-around h-16">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.href;
+            return (
+              <Link key={item.href} href={item.href} className={`flex flex-col items-center justify-center gap-1 w-full h-full transition-colors relative ${isActive ? 'text-blue-500' : 'text-slate-500'}`}>
+                <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                <span className="text-[9px] font-bold uppercase tracking-tighter">{item.name}</span>
+                {isActive && <div className="absolute bottom-1 w-5 h-0.5 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+    </>
   );
 }
