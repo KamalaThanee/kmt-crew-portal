@@ -4,30 +4,23 @@ import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { 
-  ShoppingCart, ChevronDown, ChevronUp, Plus, Trash2, Settings,
   HardHat, Headphones, Eye, Wind, Shirt, Hand, 
-  Footprints, MoreHorizontal, X, Package, ShieldCheck, 
-  Upload, Loader2, Lock, AlertTriangle, Calendar, CheckCircle2
+  Footprints, MoreHorizontal, ChevronDown, ChevronUp, 
+  Plus, Lock, AlertTriangle
 } from 'lucide-react'
 
 function PPEContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [mounted, setMounted] = useState(false)
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState<any>(null)
   const [inventory, setInventory] = useState([])
   const [cart, setCart] = useState([])
   const [quotas, setQuotas] = useState({ suit: 0, boot: 0 })
-  const [expandedCat, setExpandedCat] = useState(null)
-  const [expandedItem, setExpandedItem] = useState(null)
-  const [showCart, setShowCart] = useState(false)
+  const [expandedCat, setExpandedCat] = useState<string | null>(null)
+  const [expandedItem, setExpandedItem] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [uploading, setUploading] = useState({ suit: false, boot: false })
-  const [sizeCharts, setSizeCharts] = useState({ suit: '', boot: '' })
 
-  const ADMIN_ROLES = ['Safety Officer', 'Chief Officer', 'Barge Master']
-  
   useEffect(() => {
     setMounted(true)
     const cachedUser = localStorage.getItem('kmt_user')
@@ -35,46 +28,44 @@ function PPEContent() {
     const u = JSON.parse(cachedUser)
     setUser(u)
 
+    // โหลดตะกร้าจาก localStorage มาไว้ใน State ตอนเริ่ม
+    const savedCart = localStorage.getItem('kmt_cart') || '[]'
+    setCart(JSON.parse(savedCart))
+
     if (searchParams.get('settings') === 'true') {
       setShowSettings(true)
+      // เคลียร์ URL สวยๆ
       window.history.replaceState({}, '', window.location.pathname)
     }
 
     async function fetchData() {
       const { data: inv } = await supabase.from('ppe_inventory').select('*')
       if (inv) setInventory(inv)
-      const { data: settings } = await supabase.from('ppe_settings').select('*').eq('id', 1).single()
-      if (settings) setSizeCharts({ suit: settings.suit_chart_url, boot: settings.boot_url })
       
       const currentYear = new Date().getFullYear()
       const startOfYear = `${currentYear}-01-01T00:00:00Z`
       const { data: reqs } = await supabase.from('ppe_requests').select('item_name').eq('crew_id', u.id).neq('status', 'rejected').gte('request_date', startOfYear)
       if (reqs) {
         setQuotas({ 
-          suit: reqs.filter(r => r.item_name.toLowerCase().includes('suit')).length, 
-          boot: reqs.filter(r => r.item_name.toLowerCase().includes('safety boot') && !r.item_name.toLowerCase().includes('rubber')).length 
+          suit: reqs.filter((r: any) => r.item_name.toLowerCase().includes('suit')).length, 
+          boot: reqs.filter((r: any) => r.item_name.toLowerCase().includes('safety boot') && !r.item_name.toLowerCase().includes('rubber')).length 
         })
       }
     }
     fetchData()
-
-    const handleOpenCart = () => setShowCart(true)
-    const handleOpenSettings = () => setShowSettings(true)
-    window.addEventListener('open-cart', handleOpenCart)
-    window.addEventListener('open-settings', handleOpenSettings)
-    return () => {
-      window.removeEventListener('open-cart', handleOpenCart)
-      window.removeEventListener('open-settings', handleOpenSettings)
-    }
   }, [router, searchParams])
 
+  // 🎯 Sync State ลง LocalStorage ทุกครั้งที่ตะกร้าเปลี่ยน
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('cart-updated', { detail: cart.length }))
-  }, [cart])
+    if (mounted) {
+      localStorage.setItem('kmt_cart', JSON.stringify(cart))
+      window.dispatchEvent(new CustomEvent('cart-updated', { detail: cart.length }))
+    }
+  }, [cart, mounted])
 
   const groupedInventory = useMemo(() => {
-    const groups = {}
-    inventory.forEach(item => {
+    const groups: any = {}
+    inventory.forEach((item: any) => {
       const name = item.item_name || "Unknown Item"
       if (!groups[name]) groups[name] = { name, variants: [] }
       groups[name].variants.push(item)
@@ -93,8 +84,7 @@ function PPEContent() {
     { name: 'Others', keywords: [], icon: <MoreHorizontal size={20}/>, color: 'border-slate-500' }
   ]
 
-  // 🎯 ฟังก์ชันเพิ่มลงตระกร้าแบบ Strict Rules
-  const addToCart = (variant) => {
+  const addToCart = (variant: any) => {
     const lowerName = variant.item_name.toLowerCase()
     const isSuit = lowerName.includes('suit')
     const isBoot = lowerName.includes('safety boot') && !lowerName.includes('rubber')
@@ -104,54 +94,52 @@ function PPEContent() {
     const vColor = String(variant.color || "").trim()
     const stock = Number(variant.quantity || 0)
 
-    // 1. ตรวจสอบสต๊อกคงเหลือ
-    const inCartOfThisVariant = cart.filter(i => i.id === variant.id).length
+    const inCartOfThisVariant = cart.filter((i: any) => i.id === variant.id).length
     if (inCartOfThisVariant >= stock) {
       toast.error("ขออภัย! สินค้าในสต็อกไม่พอ");
       return;
     }
 
-    // 2. ตรวจสอบ สี และ ไซส์ ที่ลงทะเบียนไว้ (เฉพาะ Suit และ Boot)
     if (isStrict) {
       const mySize = isSuit ? user.suit_size : user.boot_size;
       const myColor = isSuit ? user.suit_color : null;
-
       if (vSize !== mySize) {
-        alert(`ผิดไซส์! คุณลงทะเบียนไซส์ ${mySize} ไว้ ไม่สามารถเบิกไซส์ ${vSize} ได้`);
+        toast.error(`ผิดไซส์! คุณต้องเบิกไซส์ ${mySize}`);
         return;
       }
       if (isSuit && vColor !== myColor) {
-        alert(`ผิดสี! คุณลงทะเบียนสี ${myColor} ไว้ ไม่สามารถเบิกสี ${vColor} ได้`);
+        toast.error(`ผิดสี! คุณต้องเบิกสี ${myColor}`);
         return;
       }
     }
 
-    // 3. ตรวจสอบโควต้าปี (Boiler suit <= 2, Boots <= 1)
     if (isSuit) {
-      const inCartSuits = cart.filter(item => item.item_name.toLowerCase().includes('suit')).length
+      const inCartSuits = cart.filter((item: any) => item.item_name.toLowerCase().includes('suit')).length
       if (quotas.suit + inCartSuits >= 2) {
-        toast.warning("คุณเบิกเกินโควตา 2 ชุดต่อปีแล้ว");
+        toast.warning("โควตา Boiler suit คือ 2 ชุดต่อปี");
         return;
       }
     }
     if (isBoot) {
-      const inCartBoots = cart.filter(item => item.item_name.toLowerCase().includes('safety boot') && !item.item_name.toLowerCase().includes('rubber')).length
+      const inCartBoots = cart.filter((item: any) => item.item_name.toLowerCase().includes('safety boot') && !item.item_name.toLowerCase().includes('rubber')).length
       if (quotas.boot + inCartBoots >= 1) {
-        toast.warning("คุณเบิกเกินโควตา 1 คู่ต่อปีแล้ว");
+        toast.warning("โควตา Safety Boots คือ 1 คู่ต่อปี");
         return;
       }
     }
 
-    setCart([...cart, { ...variant, cartId: Date.now() }])
-  }
+    setCart([...cart as any, { ...variant, cartId: Date.now() }] as any)
+    toast.success(`เพิ่ม ${variant.item_name} ลงตะกร้าแล้ว`);
+  };
 
   if (!mounted || !user) return null
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-24 font-sans pt-12 md:pt-16">
-      <div className="max-w-md mx-auto p-4 space-y-4 pt-10">
+    <div className="min-h-screen bg-slate-950 text-white pb-24 font-sans">
+      {/* 🎯 ลด Padding Top หน้าเนื้อหาลงเพื่อให้กระชับกับ Navbar */}
+      <div className="max-w-md mx-auto p-4 space-y-4 pt-4">
         {categories.map(cat => {
-          const catItems = groupedInventory.filter(group => {
+          const catItems: any = groupedInventory.filter((group: any) => {
             const n = group.name.toLowerCase()
             return cat.name === 'Others' ? !categories.slice(0, 7).some(c => c.keywords.some(k => n.includes(k))) : cat.keywords.some(k => n.includes(k))
           })
@@ -168,7 +156,7 @@ function PPEContent() {
               </button>
               {isCatOpen && (
                 <div className="px-4 pb-6 space-y-4 animate-in slide-in-from-top duration-300">
-                  {catItems.map((group) => (
+                  {catItems.map((group: any) => (
                     <div key={group.name} className="bg-slate-800 rounded-2xl overflow-hidden border border-white/10">
                       <button onClick={() => setExpandedItem(expandedItem === group.name ? null : group.name)} className="w-full p-4 flex items-center justify-between gap-2 text-left">
                         <span className="text-[12px] font-black text-blue-300 uppercase leading-tight">{group.name}</span>
@@ -176,41 +164,28 @@ function PPEContent() {
                       </button>
                       {expandedItem === group.name && (
                         <div className="p-3 space-y-2 bg-slate-900/50">
-                          {group.variants.map((variant, vIdx) => {
+                          {group.variants.map((variant: any, vIdx: number) => {
                             const stock = Number(variant.quantity || 0)
-                            const vSize = String(variant.size || "STD").trim()
-                            const vColor = String(variant.color || "").trim()
-                            
                             const isSuit = group.name.toLowerCase().includes('suit')
                             const isBoot = group.name.toLowerCase().includes('safety boot') && !group.name.toLowerCase().includes('rubber')
                             const isStrict = isSuit || isBoot
-                            
-                            // เช็คว่าเป็นไซส์ตัวเองไหม
                             const mySize = isStrict ? (isSuit ? user.suit_size : user.boot_size) : null;
                             const myColor = isSuit ? user.suit_color : null;
-                            
-                            const isMySize = isStrict ? (isSuit ? (vColor === myColor && vSize === mySize) : (vSize === mySize)) : true
+                            const isMySize = isStrict ? (isSuit ? (variant.color === myColor && variant.size === mySize) : (variant.size === mySize)) : true
                             const isOutOfStock = stock <= 0
-
-                            // 🎯 ถ้าไม่ใช่ไซส์ตัวเอง หรือไม่มีของ ไม่ให้แสดงปุ่มบวก ให้แสดงกุญแจล็อค
                             const canRequest = isMySize && !isOutOfStock
 
                             return (
                               <div key={vIdx} className={`flex items-center justify-between p-4 rounded-xl border ${isMySize ? 'border-blue-500/30 bg-blue-500/5' : 'border-white/5 opacity-40'}`}>
                                 <div className="flex flex-col gap-1">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-black uppercase">{vColor} {vSize}</span>
+                                    <span className="text-[11px] font-black uppercase">{variant.color} {variant.size}</span>
                                     {isMySize && isStrict && <span className="bg-blue-600 text-[7px] px-2 py-0.5 rounded-md font-black text-white uppercase tracking-wider">MY SIZE</span>}
                                   </div>
                                   <div className="text-[10px] font-bold">
-                                    {isOutOfStock ? (
-                                      <span className="text-red-500 uppercase flex items-center gap-1"><AlertTriangle size={10}/> Out of Stock</span>
-                                    ) : (
-                                      <span className="text-slate-500">Stock: {stock}</span>
-                                    )}
+                                    {isOutOfStock ? <span className="text-red-500 uppercase flex items-center gap-1"><AlertTriangle size={10}/> Out of Stock</span> : <span className="text-slate-500">Stock: {stock}</span>}
                                   </div>
                                 </div>
-                                
                                 {canRequest ? (
                                   <button onClick={() => addToCart(variant)} className="p-3 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-500 transition-colors active:scale-95"><Plus size={18}/></button>
                                 ) : (
@@ -229,7 +204,17 @@ function PPEContent() {
           )
         })}
       </div>
-      {/* Cart Drawer and Settings Modals remain as before */}
+
+      {/* Settings Modal (Simplified for demo) */}
+      {showSettings && (
+        <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col p-6 animate-in fade-in">
+           <div className="flex justify-between items-center mb-8">
+              <h2 className="text-2xl font-black uppercase italic">Settings</h2>
+              <button onClick={() => setShowSettings(false)} className="p-2 bg-white/5 rounded-full"><MoreHorizontal/></button>
+           </div>
+           <p className="text-slate-400">Settings content goes here...</p>
+        </div>
+      )}
     </div>
   )
 }
