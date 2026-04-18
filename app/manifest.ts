@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: 'KMT Portal',
     description: 'KMT PPE Inventory & Request Management System',
     start_url: '/',
-    display: 'standalone', // ทำให้เหมือนแอปมือถือ 100% ไม่มีแถบ URL
+    display: 'standalone',
     background_color: '#020617',
     theme_color: '#020617',
     icons: [
@@ -19,7 +19,7 @@ export default function manifest(): MetadataRoute.Manifest {
         src: '/icon.svg',
         sizes: '192x192 512x512',
         type: 'image/svg+xml',
-        purpose: 'any maskable'
+        purpose: 'maskable'
       }
     ],
   }
