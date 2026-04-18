@@ -14,8 +14,8 @@ function PPEContent() {
   const searchParams = useSearchParams()
   const [mounted, setMounted] = useState(false)
   const [user, setUser] = useState<any>(null)
-  const [inventory, setInventory] = useState([])
-  const [cart, setCart] = useState([])
+  const [inventory, setInventory] = useState<any[]>([]); // ระบุ Type ป้องกัน Build Error
+  const [cart, setCart] = useState<any[]>([]);           // ระบุ Type ป้องกัน Build Error
   const [quotas, setQuotas] = useState({ suit: 0, boot: 0 })
   const [expandedCat, setExpandedCat] = useState<string | null>(null)
   const [expandedItem, setExpandedItem] = useState<string | null>(null)
@@ -28,13 +28,11 @@ function PPEContent() {
     const u = JSON.parse(cachedUser)
     setUser(u)
 
-    // โหลดตะกร้าจาก localStorage มาไว้ใน State ตอนเริ่ม
     const savedCart = localStorage.getItem('kmt_cart') || '[]'
     setCart(JSON.parse(savedCart))
 
     if (searchParams.get('settings') === 'true') {
       setShowSettings(true)
-      // เคลียร์ URL สวยๆ
       window.history.replaceState({}, '', window.location.pathname)
     }
 
@@ -55,7 +53,6 @@ function PPEContent() {
     fetchData()
   }, [router, searchParams])
 
-  // 🎯 Sync State ลง LocalStorage ทุกครั้งที่ตะกร้าเปลี่ยน
   useEffect(() => {
     if (mounted) {
       localStorage.setItem('kmt_cart', JSON.stringify(cart))
@@ -104,11 +101,11 @@ function PPEContent() {
       const mySize = isSuit ? user.suit_size : user.boot_size;
       const myColor = isSuit ? user.suit_color : null;
       if (vSize !== mySize) {
-        toast.error(`ผิดไซส์! คุณต้องเบิกไซส์ ${mySize}`);
+        toast.error(`ผิดไซส์! คุณลงทะเบียนไซส์ ${mySize} ไว้`);
         return;
       }
       if (isSuit && vColor !== myColor) {
-        toast.error(`ผิดสี! คุณต้องเบิกสี ${myColor}`);
+        toast.error(`ผิดสี! คุณลงทะเบียนสี ${myColor} ไว้`);
         return;
       }
     }
@@ -116,28 +113,28 @@ function PPEContent() {
     if (isSuit) {
       const inCartSuits = cart.filter((item: any) => item.item_name.toLowerCase().includes('suit')).length
       if (quotas.suit + inCartSuits >= 2) {
-        toast.warning("โควตา Boiler suit คือ 2 ชุดต่อปี");
+        toast.warning("เบิก Boiler suit ได้สูงสุด 2 ชุดต่อปี");
         return;
       }
     }
     if (isBoot) {
       const inCartBoots = cart.filter((item: any) => item.item_name.toLowerCase().includes('safety boot') && !item.item_name.toLowerCase().includes('rubber')).length
       if (quotas.boot + inCartBoots >= 1) {
-        toast.warning("โควตา Safety Boots คือ 1 คู่ต่อปี");
+        toast.warning("เบิก Safety Boots ได้สูงสุด 1 คู่ต่อปี");
         return;
       }
     }
 
-    setCart([...cart as any, { ...variant, cartId: Date.now() }] as any)
-    toast.success(`เพิ่ม ${variant.item_name} ลงตะกร้าแล้ว`);
+    setCart([...cart, { ...variant, cartId: Date.now() }])
+    toast.success(`เพิ่ม ${variant.item_name} แล้ว`);
   };
 
   if (!mounted || !user) return null
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-24 font-sans">
-      {/* 🎯 ลด Padding Top หน้าเนื้อหาลงเพื่อให้กระชับกับ Navbar */}
-      <div className="max-w-md mx-auto p-4 space-y-4 pt-4">
+    <div className="min-h-[80vh] bg-slate-950 text-white pb-24 font-sans">
+      {/* 🎯 ลด Padding Top ตรงนี้ให้เหลือน้อยที่สุด เพราะ Layout คุมไว้แล้ว */}
+      <div className="max-w-md mx-auto p-4 space-y-4 pt-2">
         {categories.map(cat => {
           const catItems: any = groupedInventory.filter((group: any) => {
             const n = group.name.toLowerCase()
@@ -205,14 +202,17 @@ function PPEContent() {
         })}
       </div>
 
-      {/* Settings Modal (Simplified for demo) */}
+      {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col p-6 animate-in fade-in">
            <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-black uppercase italic">Settings</h2>
               <button onClick={() => setShowSettings(false)} className="p-2 bg-white/5 rounded-full"><MoreHorizontal/></button>
            </div>
-           <p className="text-slate-400">Settings content goes here...</p>
+           <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
+              <ShieldCheck size={48} className="mb-4 opacity-20"/>
+              <p>Settings Content</p>
+           </div>
         </div>
       )}
     </div>
