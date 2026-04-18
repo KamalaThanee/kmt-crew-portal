@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="100" fill="#020617"/>
+  <path d="M256 80 L112 144 V256 C112 360 172 436 256 464 C340 436 400 360 400 256 V144 Z" fill="none" stroke="#3b82f6" stroke-width="32" stroke-linejoin="round"/>
+  <path d="M192 256 L240 304 L336 192" fill="none" stroke="#3b82f6" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="256" y="420" font-family="Arial, sans-serif" font-size="64" font-weight="900" fill="#3b82f6" text-anchor="middle" letter-spacing="4">KMT</text>
+</svg>
