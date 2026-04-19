@@ -1,11 +1,11 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { 
   Settings, Users, Package, SlidersHorizontal, 
-  Loader2, Upload, Edit, RefreshCw, X, Save
+  Loader2, Upload, Edit, RefreshCw, X, Save, AlertTriangle, Box
 } from 'lucide-react'
 
 export default function AdminSettingsPage() {
@@ -17,10 +17,10 @@ export default function AdminSettingsPage() {
   const [inventory, setInventory] = useState<any[]>([])
   const [crews, setCrews] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  
-  // Edit Crew State
   const [editingCrew, setEditingCrew] = useState<any>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+
+  const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -29,9 +29,7 @@ export default function AdminSettingsPage() {
       const user = JSON.parse(userStr)
       const userPos = (user.position || "").toLowerCase()
       const adminRoles = ["safety officer", "chief officer", "barge master"]
-      if (!adminRoles.includes(userPos)) {
-        toast.error('Access Denied'); router.replace('/ppe'); return;
-      }
+      if (!adminRoles.includes(userPos)) { toast.error('Access Denied'); router.replace('/ppe'); return; }
       await fetchData(); setLoading(false);
     }
     checkAuth()
@@ -39,54 +37,103 @@ export default function AdminSettingsPage() {
 
   const fetchData = async () => {
     const { data: st } = await supabase.from('ppe_settings').select('*').eq('id', 1).single()
-    if (st) setSizeCharts({ suit: st.suit_chart_url, boot: st.boot_url })
-    const { data: inv } = await supabase.from('ppe_inventory').select('*').order('category')
+    if (st) setSizeCharts({ suit: st.suit_chart_url || '', boot: st.boot_url || '' })
+    const { data: inv } = await supabase.from('ppe_inventory').select('*').order('item_name')
     if (inv) setInventory(inv)
     const { data: cr } = await supabase.from('crews').select('*').order('full_name')
     if (cr) setCrews(cr)
   }
 
+  // 🎯 สกัดข้อมูล Color/Size จากสต๊อกเพื่อทำ Dropdown
+  const suitColors = useMemo(() => [...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.color))].filter(Boolean), [inventory])
+  const suitSizes = useMemo(() => [...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.size))].filter(Boolean), [inventory])
+  const bootSizes = useMemo(() => [...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')).map(i => i.size))].filter(Boolean), [inventory])
+
+  // 🎯 จัดกลุ่ม Inventory ตาม Category
+  const groupedInventory = useMemo(() => {
+    const groups: Record<string, any[]> = {}
+    const filtered = inventory.filter(i => i.item_name.toLowerCase().includes(searchTerm.toLowerCase()))
+    filtered.forEach(item => {
+      const cat = item.category || 'Other'
+      if (!groups[cat]) groups[cat] = []
+      groups[cat].push(item)
+    })
+    return groups
+  }, [inventory, searchTerm])
+
   const handleUpdateCrew = async () => {
     if (!editingCrew) return;
     const { error } = await supabase.from('crews').update({
-      full_name: editingCrew.full_name,
-      position: editingCrew.position,
-      suit_size: editingCrew.suit_size,
-      suit_color: editingCrew.suit_color,
-      boot_size: editingCrew.boot_size
+      full_name: editingCrew.full_name, position: editingCrew.position,
+      suit_size: editingCrew.suit_size, suit_color: editingCrew.suit_color, boot_size: editingCrew.boot_size
     }).eq('id', editingCrew.id)
-
-    if (!error) {
-      toast.success('Crew data updated'); setIsEditModalOpen(false); fetchData();
-    } else toast.error('Update failed');
+    if (!error) { toast.success('Crew updated'); setIsEditModalOpen(false); fetchData(); }
   }
 
-  const handleResetPin = async (crewId: string, name: string) => {
-    if (!confirm(`Reset PIN for ${name}?`)) return;
-    await supabase.from('crews').update({ pin: null, registered: false }).eq('id', crewId)
-    toast.success('PIN Reset successfully'); fetchData();
+  const handleUpload = async (type: 'suit' | 'boot', file: File) => {
+    setUploading(prev => ({ ...prev, [type]: true }));
+    try {
+      const fileName = `${type}_chart_${Date.now()}.jpg`;
+      await supabase.storage.from('size-charts').upload(fileName, file);
+      const { data: { publicUrl } } = supabase.storage.from('size-charts').getPublicUrl(fileName);
+      await supabase.from('ppe_settings').update({ [type === 'suit' ? 'suit_chart_url' : 'boot_url']: publicUrl }).eq('id', 1);
+      setSizeCharts(prev => ({ ...prev, [type]: publicUrl }));
+      toast.success('Chart updated');
+    } catch (e) { toast.error('Upload failed'); } 
+    finally { setUploading(prev => ({ ...prev, [type]: false })); }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse">VERIFYING ACCESS...</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse tracking-widest">LOADING SETTINGS...</div>
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans pb-32 pt-20 px-4 md:px-8">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-8 flex justify-between items-center">
-          <h1 className="text-3xl font-black uppercase italic flex items-center gap-3"><Settings className="text-blue-500"/> Admin Panel</h1>
+          <h1 className="text-3xl font-black uppercase italic flex items-center gap-3"><Settings className="text-blue-500"/> Admin Center</h1>
           <button onClick={() => router.push('/ppe')} className="p-3 bg-white/5 rounded-full"><X/></button>
         </div>
 
         <div className="flex flex-col md:flex-row gap-8">
           <div className="w-full md:w-64 space-y-2 shrink-0 font-black uppercase text-[10px] tracking-widest">
             {['inventory', 'crews', 'system'].map(t => (
-              <button key={t} onClick={() => setActiveTab(t)} className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all ${activeTab === t ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-400'}`}>
+              <button key={t} onClick={() => setActiveTab(t)} className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all ${activeTab === t ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}>
                 {t === 'inventory' ? <Package size={18}/> : t === 'crews' ? <Users size={18}/> : <SlidersHorizontal size={18}/>} {t} Master
               </button>
             ))}
           </div>
 
           <div className="flex-1 bg-slate-900 border border-white/10 rounded-[32px] p-6 shadow-2xl min-h-[60vh]">
+            {/* 1. Inventory Master Data */}
+            {activeTab === 'inventory' && (
+              <div className="animate-in fade-in space-y-8">
+                <input type="text" placeholder="Search Master Data..." className="w-full bg-black/50 border border-white/10 p-4 rounded-2xl outline-none" onChange={(e) => setSearchTerm(e.target.value)} />
+                {Object.entries(groupedInventory).map(([category, items]) => (
+                  <div key={category} className="space-y-4">
+                    <div className="flex items-center gap-2 border-b border-white/5 pb-2 text-blue-500"><Box size={16}/><h2 className="font-black uppercase tracking-widest text-xs text-white">{category}</h2></div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-[11px] font-bold uppercase whitespace-nowrap">
+                        <thead className="text-slate-500 border-b border-white/5">
+                          <tr><th className="pb-3">Code</th><th className="pb-3">Name</th><th className="pb-3 text-center">Color/Size</th><th className="pb-3 text-right">Stock</th><th className="pb-3 text-center">Status</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5 text-slate-300">
+                          {items.map(item => (
+                            <tr key={item.id} className="hover:bg-white/5">
+                              <td className="py-4 text-slate-500">{item.item_id_code}</td>
+                              <td className="py-4 text-white">{item.item_name}</td>
+                              <td className="py-4 text-center text-blue-400">{item.color} {item.size}</td>
+                              <td className={`py-4 text-right font-black ${item.quantity <= item.threshold ? 'text-red-500' : 'text-emerald-500'}`}>{item.quantity}</td>
+                              <td className="py-4 text-center">{item.quantity <= item.threshold ? <AlertTriangle size={14} className="mx-auto text-red-500 animate-pulse"/> : <span className="text-emerald-500/50">OK</span>}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 2. Crew Management */}
             {activeTab === 'crews' && (
               <div className="animate-in fade-in space-y-3">
                 <input type="text" placeholder="Search Crew..." className="w-full mb-6 bg-black/50 border border-white/10 p-4 rounded-2xl outline-none" onChange={(e) => setSearchTerm(e.target.value)} />
@@ -94,33 +141,62 @@ export default function AdminSettingsPage() {
                   <div key={crew.id} className="flex justify-between items-center bg-black/40 p-4 rounded-2xl border border-white/5 group">
                     <div className="cursor-pointer flex-1" onClick={() => { setEditingCrew(crew); setIsEditModalOpen(true); }}>
                       <p className="font-bold text-sm uppercase group-hover:text-blue-400 transition-colors">{crew.full_name}</p>
-                      <p className="text-[10px] text-slate-500 uppercase">{crew.position} | {crew.suit_size || 'N/A'}</p>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-widest">{crew.position} | Suit: {crew.suit_size || 'N/A'} | Boot: {crew.boot_size || 'N/A'}</p>
                     </div>
                     <button onClick={() => handleResetPin(crew.id, crew.full_name)} className="px-4 py-2 bg-amber-500/10 text-amber-500 rounded-xl text-[10px] font-black uppercase"><RefreshCw size={14}/></button>
                   </div>
                 ))}
               </div>
             )}
-            {/* แท็บอื่นคงเดิม... */}
-            {activeTab === 'inventory' && <p className="text-slate-500 text-center py-20 uppercase font-black tracking-widest text-xs">Inventory Data loaded ({inventory.length} items)</p>}
-            {activeTab === 'system' && <p className="text-slate-500 text-center py-20 uppercase font-black tracking-widest text-xs">System Settings active</p>}
+
+            {/* 3. System Config */}
+            {activeTab === 'system' && (
+              <div className="animate-in fade-in grid grid-cols-1 md:grid-cols-2 gap-8">
+                {['suit', 'boot'].map(type => (
+                  <div key={type} className="p-6 bg-black/40 rounded-3xl border border-white/5 space-y-4 text-center">
+                    <p className="font-black uppercase text-[10px] text-slate-500 tracking-widest">{type === 'suit' ? 'Boiler Suit Size Chart' : 'Safety Boot Size Chart'}</p>
+                    <div className="w-full h-48 bg-black rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden">
+                      {sizeCharts[type as 'suit' | 'boot'] ? <img src={sizeCharts[type as 'suit' | 'boot']} className="max-w-full max-h-full object-contain" /> : <div className="text-slate-700 uppercase font-black text-xs italic">No Image</div>}
+                    </div>
+                    <label className="flex items-center justify-center w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl cursor-pointer font-bold text-[10px] uppercase transition-all shadow-lg shadow-blue-600/20">
+                      {uploading[type as 'suit' | 'boot'] ? <Loader2 className="animate-spin"/> : <Upload size={16} className="mr-2"/>} Update Chart
+                      <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && handleUpload(type as 'suit' | 'boot', e.target.files[0])} />
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* 🛠️ Edit Crew Modal */}
+      {/* 🛠️ Edit Crew Modal with Dropdowns */}
       {isEditModalOpen && editingCrew && (
         <div className="fixed inset-0 z-[100] bg-slate-950/90 flex items-center justify-center p-6 backdrop-blur-md">
-          <div className="bg-slate-900 border border-white/10 rounded-[32px] w-full max-w-lg p-8 space-y-6 shadow-2xl">
-            <div className="flex justify-between items-center"><h2 className="text-xl font-black uppercase italic">Edit Crew Member</h2><button onClick={() => setIsEditModalOpen(false)}><X/></button></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1"><label className="text-[10px] font-bold text-slate-500 uppercase">Full Name</label><input className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.full_name} onChange={e => setEditingCrew({...editingCrew, full_name: e.target.value})}/></div>
-              <div className="space-y-1"><label className="text-[10px] font-bold text-slate-500 uppercase">Position</label><input className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.position} onChange={e => setEditingCrew({...editingCrew, position: e.target.value})}/></div>
-              <div className="space-y-1"><label className="text-[10px] font-bold text-slate-500 uppercase">Suit Color</label><input className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.suit_color} onChange={e => setEditingCrew({...editingCrew, suit_color: e.target.value})}/></div>
-              <div className="space-y-1"><label className="text-[10px] font-bold text-slate-500 uppercase">Suit Size</label><input className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.suit_size} onChange={e => setEditingCrew({...editingCrew, suit_size: e.target.value})}/></div>
-              <div className="col-span-2 space-y-1"><label className="text-[10px] font-bold text-slate-500 uppercase">Boot Size</label><input className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.boot_size} onChange={e => setEditingCrew({...editingCrew, boot_size: e.target.value})}/></div>
+          <div className="bg-slate-900 border border-white/10 rounded-[40px] w-full max-w-lg p-10 space-y-8 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-white/5 pb-4"><h2 className="text-2xl font-black uppercase italic tracking-tighter">Edit Profile</h2><button onClick={() => setIsEditModalOpen(false)}><X/></button></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1.5"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Full Name</label><input className="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none focus:border-blue-500 transition-all text-sm" value={editingCrew.full_name} onChange={e => setEditingCrew({...editingCrew, full_name: e.target.value})}/></div>
+              <div className="space-y-1.5"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Position</label><input className="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none focus:border-blue-500 transition-all text-sm" value={editingCrew.position} onChange={e => setEditingCrew({...editingCrew, position: e.target.value})}/></div>
+              
+              {/* Dropdowns from Stock Data */}
+              <div className="space-y-1.5"><label className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Suit Color</label>
+                <select className="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none text-sm" value={editingCrew.suit_color} onChange={e => setEditingCrew({...editingCrew, suit_color: e.target.value})}>
+                  <option value="">-- Color --</option>{suitColors.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5"><label className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Suit Size</label>
+                <select className="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none text-sm" value={editingCrew.suit_size} onChange={e => setEditingCrew({...editingCrew, suit_size: e.target.value})}>
+                  <option value="">-- Size --</option>{suitSizes.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="col-span-2 space-y-1.5"><label className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">Boot Size (Safety Only)</label>
+                <select className="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none text-sm" value={editingCrew.boot_size} onChange={e => setEditingCrew({...editingCrew, boot_size: e.target.value})}>
+                  <option value="">-- Size --</option>{bootSizes.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
             </div>
-            <button onClick={handleUpdateCrew} className="w-full py-4 bg-blue-600 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2"><Save size={18}/> Save Changes</button>
+            <button onClick={handleUpdateCrew} className="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-3xl font-black uppercase text-xs flex items-center justify-center gap-2 shadow-xl shadow-blue-600/20 transition-all active:scale-95"><Save size={18}/> Update Member Profile</button>
           </div>
         </div>
       )}

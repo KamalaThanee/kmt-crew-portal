@@ -68,7 +68,6 @@ export default function Navbar() {
 
   const role = (user?.position || "").toLowerCase();
   const isAdmin = ["safety officer", "chief officer", "barge master"].includes(role);
-
   const menuItems = isAdmin ? [
     { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'Approvals', href: '/admin/approvals', icon: ClipboardCheck },
@@ -100,50 +99,28 @@ export default function Navbar() {
           {showProfile && (
             <div className="absolute right-0 top-14 w-72 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[70] animate-in fade-in zoom-in duration-200">
               <div className="p-5 bg-slate-800/50 border-b border-white/5"><p className="text-white font-bold text-base truncate">{user?.full_name}</p><p className="text-blue-400 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p></div>
-              
-              {/* 🎯 นำแถบโควตากลับคืนมา */}
               <div className="p-5 space-y-4 border-b border-white/5 bg-slate-900/30">
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <Link href="/my-requests" onClick={() => setShowProfile(false)} className="block space-y-1.5 group">
+                  <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-blue-400 transition-colors">
                     <span className="flex items-center gap-1"><History size={10}/> Boiler Suit</span>
                     <span className={quotas.suit >= 2 ? "text-red-400" : "text-blue-400"}>{quotas.suit} / 2</span>
                   </div>
-                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5">
-                    <div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.suit >= 2 ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${Math.min((quotas.suit / 2) * 100, 100)}%` }}></div>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5"><div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.suit >= 2 ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${Math.min((quotas.suit / 2) * 100, 100)}%` }}></div></div>
+                </Link>
+                <Link href="/my-requests" onClick={() => setShowProfile(false)} className="block space-y-1.5 group">
+                  <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-indigo-400 transition-colors">
                     <span className="flex items-center gap-1"><History size={10}/> Safety Boots</span>
                     <span className={quotas.boot >= 1 ? "text-red-400" : "text-indigo-400"}>{quotas.boot} / 1</span>
                   </div>
-                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5">
-                    <div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.boot >= 1 ? 'bg-red-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min((quotas.boot / 1) * 100, 100)}%` }}></div>
-                  </div>
-                </div>
+                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5"><div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.boot >= 1 ? 'bg-red-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min((quotas.boot / 1) * 100, 100)}%` }}></div></div>
+                </Link>
               </div>
-
               <div className="p-2">
                 {isAdmin && (<Link href="/admin/settings" onClick={() => setShowProfile(false)} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors"><Settings size={18} /> Admin Settings</Link>)}
                 <button onClick={() => { localStorage.removeItem('kmt_user'); router.push('/login'); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors font-bold uppercase tracking-widest text-[11px]"><LogOut size={18} /> Logout</button>
               </div>
             </div>
           )}
-        </div>
-      </nav>
-      {/* BOTTOM NAV */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-xl border-t border-white/10 z-[60]">
-        <div className="flex items-center justify-around h-16">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href;
-            return (
-              <Link key={item.href} href={item.href} className={`flex flex-col items-center justify-center gap-1 w-full h-full relative ${isActive ? 'text-blue-500' : 'text-slate-500'}`}>
-                <Icon size={20} /><span className="text-[9px] font-bold uppercase tracking-tighter">{item.name}</span>
-                {isActive && <div className="absolute bottom-1 w-5 h-0.5 bg-blue-500 rounded-full"></div>}
-              </Link>
-            );
-          })}
         </div>
       </nav>
     </>
