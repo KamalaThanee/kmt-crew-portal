@@ -4,8 +4,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { 
-  Settings, Users, Package, SlidersHorizontal, Filter,
-  Loader2, Upload, Edit, RefreshCw, X, Save, AlertTriangle, Box, Plus, ChevronDown, ChevronRight, Search
+  Settings, Users, Package, SlidersHorizontal, Search,
+  Loader2, Upload, Edit, RefreshCw, X, Save, AlertTriangle, Box, Plus, ChevronDown, ChevronRight
 } from 'lucide-react'
 
 export default function AdminSettingsPage() {
@@ -17,13 +17,11 @@ export default function AdminSettingsPage() {
   const [inventory, setInventory] = useState<any[]>([])
   const [crews, setCrews] = useState<any[]>([])
   
-  // Search & Filter States
   const [searchTerm, setSearchTerm] = useState('')
   const [filterCat, setFilterCat] = useState('All')
   const [filterStatus, setFilterStatus] = useState('all')
   const [expandedCats, setExpandedCats] = useState<string[]>([])
 
-  // Edit/Add States
   const [editingCrew, setEditingCrew] = useState<any>(null)
   const [editingItem, setEditingItem] = useState<any>(null)
   const [isEditCrewOpen, setIsEditCrewOpen] = useState(false)
@@ -39,7 +37,10 @@ export default function AdminSettingsPage() {
       };
       const numA = getNum(a); const numB = getNum(b);
       if (numA !== null && numB !== null) return numA - numB;
-      return sizeOrder.indexOf(String(a).toUpperCase()) - sizeOrder.indexOf(String(b).toUpperCase());
+      const idxA = sizeOrder.indexOf(String(a).toUpperCase());
+      const idxB = sizeOrder.indexOf(String(b).toUpperCase());
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      return String(a).localeCompare(String(b));
     });
   }
 
@@ -65,28 +66,31 @@ export default function AdminSettingsPage() {
     checkAuth()
   }, [router])
 
-  // --- Helpers for Modals ---
+  const categories = useMemo(() => {
+    const dbCats = inventory.map(i => i.category).filter(Boolean)
+    return [...new Set(['Other', ...dbCats])].sort() // ป้องกัน Other ซ้ำ
+  }, [inventory])
+
   const generateNextCode = (catName: string) => {
     const catItems = inventory.filter(i => i.category === catName)
     const numbers = catItems.map(i => {
       const match = String(i.item_id_code).match(/\d+$/);
       return match ? parseInt(match[0]) : 0;
     })
-    const nextNum = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
-    return `${catName}-${nextNum}`;
+    return `${catName}-${numbers.length > 0 ? Math.max(...numbers) + 1 : 1}`;
   }
 
   const suitColors = useMemo(() => [...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.color))].filter(Boolean).sort(), [inventory])
   const suitSizes = useMemo(() => smartSort([...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.size))].filter(Boolean)), [inventory])
   const bootSizes = useMemo(() => smartSort([...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')).map(i => i.size))].filter(Boolean)), [inventory])
-  const categories = useMemo(() => ['Other', ...new Set(inventory.map(i => i.category))].sort(), [inventory])
 
   const groupedInventory = useMemo(() => {
     const groups: Record<string, any[]> = {}
     const filtered = inventory.filter(i => {
       const matchesSearch = i.item_name.toLowerCase().includes(searchTerm.toLowerCase()) || i.item_id_code?.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCat = filterCat === 'All' || i.category === filterCat;
-      const matchesStatus = filterStatus === 'all' || (filterStatus === 'low' ? i.quantity <= i.threshold : i.quantity > i.threshold);
+      const isLow = i.quantity <= i.threshold;
+      const matchesStatus = filterStatus === 'all' || (filterStatus === 'low' ? isLow : !isLow);
       return matchesSearch && matchesCat && matchesStatus;
     })
     filtered.forEach(item => {
@@ -97,36 +101,29 @@ export default function AdminSettingsPage() {
     return groups
   }, [inventory, searchTerm, filterCat, filterStatus])
 
-  // --- Action Functions ---
   const handleSaveItem = async () => {
     if (!editingItem.item_name || !editingItem.category) return toast.error('Please fill required fields');
     const { error } = await supabase.from('ppe_inventory').upsert({
       id: editingItem.id || undefined,
-      item_name: editingItem.item_name,
-      item_id_code: editingItem.item_id_code,
-      category: editingItem.category,
-      color: editingItem.color,
-      size: editingItem.size,
-      quantity: Number(editingItem.quantity),
-      threshold: Number(editingItem.threshold),
-      unit: editingItem.unit || 'Piece'
+      item_name: editingItem.item_name, item_id_code: editingItem.item_id_code,
+      category: editingItem.category, color: editingItem.color, size: editingItem.size,
+      quantity: Number(editingItem.quantity), threshold: Number(editingItem.threshold), unit: editingItem.unit || 'Piece'
     })
-    if (!error) { toast.success('Inventory saved'); setIsItemModalOpen(false); fetchData(); }
+    if (!error) { toast.success('Saved'); setIsItemModalOpen(false); fetchData(); }
   }
 
   const handleUpdateCrew = async () => {
-    if (!editingCrew) return;
     const { error } = await supabase.from('crews').update({
       full_name: editingCrew.full_name, position: editingCrew.position,
       suit_size: editingCrew.suit_size, suit_color: editingCrew.suit_color, boot_size: editingCrew.boot_size
     }).eq('id', editingCrew.id)
-    if (!error) { toast.success('Profile updated'); setIsEditCrewOpen(false); fetchData(); }
+    if (!error) { toast.success('Profile Updated'); setIsEditCrewOpen(false); fetchData(); }
   }
 
   const handleResetPin = async (id: string, name: string) => {
     if (confirm(`Reset PIN for ${name}?`)) {
       await supabase.from('crews').update({ pin: null, registered: false }).eq('id', id);
-      toast.success('PIN Reset'); fetchData();
+      fetchData(); toast.success('PIN Reset');
     }
   }
 
@@ -145,7 +142,7 @@ export default function AdminSettingsPage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse">KMT SYSTEM INITIALIZING...</div>
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-sans pb-32 pt-20 px-4 md:px-8 uppercase font-bold text-[10px]">
+    <div className="min-h-screen bg-slate-950 text-white font-sans pb-32 pt-20 px-4 md:px-8 text-[10px] uppercase font-bold">
       <div className="max-w-7xl mx-auto">
         <div className="mb-8 flex justify-between items-center">
           <h1 className="text-3xl font-black italic flex items-center gap-3"><Settings className="text-blue-500"/> Admin Panel</h1>
@@ -153,42 +150,29 @@ export default function AdminSettingsPage() {
         </div>
 
         <div className="flex flex-col md:flex-row gap-8">
-          {/* Tabs Sidebar */}
           <div className="w-full md:w-64 space-y-2 shrink-0">
             {['inventory', 'crews', 'system'].map(t => (
-              <button key={t} onClick={() => setActiveTab(t)} className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all ${activeTab === t ? 'bg-blue-600 text-white shadow-lg' : 'bg-white/5 text-slate-400'}`}>
+              <button key={t} onClick={() => setActiveTab(t)} className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all ${activeTab === t ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'bg-white/5 text-slate-400'}`}>
                 {t === 'inventory' ? <Package size={18}/> : t === 'crews' ? <Users size={18}/> : <SlidersHorizontal size={18}/>} {t} Master
               </button>
             ))}
           </div>
 
-          {/* Content Area */}
           <div className="flex-1 bg-slate-900 border border-white/10 rounded-[32px] p-6 shadow-2xl min-h-[60vh]">
-            
             {activeTab === 'inventory' && (
               <div className="animate-in fade-in space-y-6">
+                <h2 className="text-2xl font-black italic text-white mb-4">Inventory</h2>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-black/30 p-4 rounded-2xl border border-white/5">
-                   <div className="relative md:col-span-2">
-                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14}/>
-                     <input type="text" placeholder="Search name or code..." className="w-full bg-slate-900 border border-white/10 p-3 pl-10 rounded-xl outline-none focus:border-blue-500" onChange={(e) => setSearchTerm(e.target.value)} />
-                   </div>
-                   <select className="bg-slate-900 border border-white/10 p-3 rounded-xl outline-none" value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
-                     <option value="All">All Categories</option>
-                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                   </select>
-                   <select className="bg-slate-900 border border-white/10 p-3 rounded-xl outline-none" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-                     <option value="all">All Status</option>
-                     <option value="low">Restock Needed</option>
-                   </select>
+                   <div className="relative md:col-span-2"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14}/><input type="text" placeholder="Search name or code..." className="w-full bg-slate-900 border border-white/10 p-3 pl-10 rounded-xl outline-none focus:border-blue-500" onChange={(e) => setSearchTerm(e.target.value)} /></div>
+                   <select className="bg-slate-900 border border-white/10 p-3 rounded-xl outline-none" value={filterCat} onChange={(e) => setFilterCat(e.target.value)}><option value="All">All Categories</option>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                   <select className="bg-slate-900 border border-white/10 p-3 rounded-xl outline-none" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}><option value="all">All Status</option><option value="low" className="text-red-400">Low Stock</option></select>
                 </div>
-
-                <button onClick={() => { setEditingItem({ item_name: '', category: 'Other', quantity: 0, threshold: 1, item_id_code: generateNextCode('Other') }); setIsItemModalOpen(true); }} className="w-full py-4 bg-blue-600 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-2"><Plus size={16}/> Add New Item</button>
-
+                <button onClick={() => { setEditingItem({ item_name: '', category: 'Other', quantity: 0, threshold: 1, item_id_code: generateNextCode('Other') }); setIsItemModalOpen(true); }} className="w-full py-4 bg-blue-600 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-2"><Plus size={16}/> Add Item</button>
                 <div className="space-y-3">
                   {Object.entries(groupedInventory).map(([category, items]) => {
                     const isExpanded = expandedCats.includes(category);
                     return (
-                      <div key={category} className="border border-white/5 rounded-2xl overflow-hidden bg-black/20 transition-all">
+                      <div key={category} className="border border-white/5 rounded-2xl overflow-hidden bg-black/20">
                         <button onClick={() => setExpandedCats(isExpanded ? expandedCats.filter(c => c !== category) : [...expandedCats, category])} className="w-full p-4 flex justify-between items-center hover:bg-white/5 transition-colors">
                           <div className="flex items-center gap-3 text-blue-500"><Box size={18}/><h3 className="tracking-widest text-white">{category} <span className="ml-2 text-slate-500">({items.length})</span></h3></div>
                           {isExpanded ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
@@ -196,9 +180,7 @@ export default function AdminSettingsPage() {
                         {isExpanded && (
                           <div className="overflow-x-auto border-t border-white/5">
                             <table className="w-full text-left text-[10px] font-bold uppercase whitespace-nowrap">
-                              <thead className="text-slate-500 bg-black/40">
-                                <tr><th className="p-4">Code</th><th className="p-4">Name</th><th className="p-4">Color/Size</th><th className="p-4 text-right">Stock</th><th className="p-4 text-center">Action</th></tr>
-                              </thead>
+                              <thead className="text-slate-500 bg-black/40"><tr><th className="p-4">Code</th><th className="p-4">Name</th><th className="p-4">Color/Size</th><th className="p-4 text-right">Stock</th><th className="p-4 text-center">Edit</th></tr></thead>
                               <tbody className="divide-y divide-white/5">
                                 {items.map(item => (
                                   <tr key={item.id} className="hover:bg-white/5">
@@ -219,7 +201,6 @@ export default function AdminSettingsPage() {
                 </div>
               </div>
             )}
-
             {activeTab === 'crews' && (
               <div className="animate-in fade-in space-y-3">
                 <input type="text" placeholder="Search crew..." className="w-full mb-6 bg-black/50 border border-white/10 p-4 rounded-2xl outline-none" onChange={(e) => setSearchTerm(e.target.value)} />
@@ -234,16 +215,15 @@ export default function AdminSettingsPage() {
                 ))}
               </div>
             )}
-
             {activeTab === 'system' && (
               <div className="animate-in fade-in grid grid-cols-1 md:grid-cols-2 gap-8">
                 {['suit', 'boot'].map(type => (
                   <div key={type} className="p-6 bg-black/40 rounded-3xl border border-white/5 text-center space-y-4">
                     <p className="text-slate-500 tracking-widest">{type === 'suit' ? 'Boiler Suit Chart' : 'Safety Boot Chart'}</p>
                     <img src={sizeCharts[type as 'suit' | 'boot']} className="w-full h-48 object-contain bg-black rounded-2xl border border-white/5" />
-                    <label className="flex items-center justify-center w-full py-4 bg-blue-600 rounded-xl cursor-pointer font-bold transition-all text-white">
-                      {uploading[type as 'suit' | 'boot'] ? <Loader2 className="animate-spin"/> : <Upload size={16} className="mr-2"/>} Update Chart
-                      <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && handleUpload(type as 'suit' | 'boot', e.target.files[0])} />
+                    <label className="flex items-center justify-center w-full py-4 bg-blue-600 rounded-xl cursor-pointer font-bold transition-all text-white hover:bg-blue-500">
+                      {uploading[type as 'suit' | 'boot'] ? <Loader2 className="animate-spin"/> : <Upload size={16} className="mr-2"/>} Update Image
+                      <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleUpload(type as 'suit' | 'boot', e.target.files[0])} />
                     </label>
                   </div>
                 ))}
@@ -253,19 +233,13 @@ export default function AdminSettingsPage() {
         </div>
       </div>
 
-      {/* 🛠️ MODAL: Add/Edit Item */}
       {isItemModalOpen && editingItem && (
         <div className="fixed inset-0 z-[100] bg-slate-950/90 flex items-center justify-center p-6 backdrop-blur-md">
           <div className="bg-slate-900 border border-white/10 rounded-[40px] w-full max-w-lg p-10 space-y-6 shadow-2xl">
             <div className="flex justify-between items-center border-b border-white/5 pb-4"><h2 className="text-xl font-black italic">Manage Item</h2><button onClick={() => setIsItemModalOpen(false)}><X/></button></div>
-            <div className="grid grid-cols-2 gap-4 text-[10px]">
-              <div className="col-span-2 space-y-1">
-                <label className="text-blue-500">Category *</label>
-                <select className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingItem.category} onChange={e => setEditingItem({...editingItem, category: e.target.value, item_id_code: generateNextCode(e.target.value)})}>
-                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2 space-y-1"><label>Item Name *</label><input className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingItem.item_name} onChange={e => setEditingItem({...editingItem, item_name: e.target.value})}/></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2 space-y-1"><label className="text-blue-500">Category *</label><select className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingItem.category} onChange={e => {const newCat = e.target.value; setEditingItem({...editingItem, category: newCat, item_id_code: editingItem.id ? editingItem.item_id_code : generateNextCode(newCat)})}}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+              <div className="col-span-2 space-y-1"><label>Item Name *</label><input className="w-full bg-black/50 p-3 rounded-xl border border-white/10" value={editingItem.item_name} onChange={e => setEditingItem({...editingItem, item_name: e.target.value})}/></div>
               <div className="space-y-1"><label className="text-blue-400">Code (Auto)</label><input className="w-full bg-black/20 p-3 rounded-xl border border-blue-500/20 text-blue-400 italic" value={editingItem.item_id_code} readOnly /></div>
               <div className="space-y-1"><label>Unit</label><input className="w-full bg-black/50 p-3 rounded-xl border border-white/10" value={editingItem.unit} onChange={e => setEditingItem({...editingItem, unit: e.target.value})}/></div>
               <div className="space-y-1"><label>Color</label><input className="w-full bg-black/50 p-3 rounded-xl border border-white/10" value={editingItem.color} onChange={e => setEditingItem({...editingItem, color: e.target.value})}/></div>
@@ -273,30 +247,23 @@ export default function AdminSettingsPage() {
               <div className="space-y-1"><label className="text-emerald-500">Stock</label><input type="number" className="w-full bg-black/50 p-3 rounded-xl border border-white/10" value={editingItem.quantity} onChange={e => setEditingItem({...editingItem, quantity: e.target.value})}/></div>
               <div className="space-y-1"><label className="text-red-500">Threshold</label><input type="number" className="w-full bg-black/50 p-3 rounded-xl border border-white/10" value={editingItem.threshold} onChange={e => setEditingItem({...editingItem, threshold: e.target.value})}/></div>
             </div>
-            <button onClick={handleSaveItem} className="w-full py-5 bg-blue-600 rounded-3xl font-black uppercase text-xs shadow-xl transition-all active:scale-95"><Save size={18} className="inline mr-2"/> Save Item</button>
+            <button onClick={handleSaveItem} className="w-full py-5 bg-blue-600 rounded-3xl font-black uppercase text-xs shadow-xl"><Save size={18} className="inline mr-2"/> Save Item</button>
           </div>
         </div>
       )}
 
-      {/* 🛠️ MODAL: Edit Crew */}
       {isEditCrewOpen && editingCrew && (
         <div className="fixed inset-0 z-[100] bg-slate-950/90 flex items-center justify-center p-6 backdrop-blur-md">
           <div className="bg-slate-900 border border-white/10 rounded-[40px] w-full max-w-lg p-10 space-y-6 shadow-2xl">
             <div className="flex justify-between items-center border-b border-white/5 pb-4"><h2 className="text-xl font-black italic">Edit Member</h2><button onClick={() => setIsEditCrewOpen(false)}><X/></button></div>
-            <div className="grid grid-cols-2 gap-4 text-[10px]">
+            <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 space-y-1"><label>Full Name</label><input className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.full_name} onChange={e => setEditingCrew({...editingCrew, full_name: e.target.value})}/></div>
               <div className="col-span-2 space-y-1"><label>Position</label><input className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.position} onChange={e => setEditingCrew({...editingCrew, position: e.target.value})}/></div>
-              <div className="space-y-1"><label className="text-blue-500">Suit Color</label>
-                <select className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.suit_color} onChange={e => setEditingCrew({...editingCrew, suit_color: e.target.value})}><option value="">-- Select --</option>{suitColors.map(c => <option key={c} value={c}>{c}</option>)}</select>
-              </div>
-              <div className="space-y-1"><label className="text-blue-500">Suit Size</label>
-                <select className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.suit_size} onChange={e => setEditingCrew({...editingCrew, suit_size: e.target.value})}><option value="">-- Select --</option>{suitSizes.map(s => <option key={s} value={s}>{s}</option>)}</select>
-              </div>
-              <div className="col-span-2 space-y-1"><label className="text-indigo-500">Boot Size</label>
-                <select className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.boot_size} onChange={e => setEditingCrew({...editingCrew, boot_size: e.target.value})}><option value="">-- Select --</option>{bootSizes.map(s => <option key={s} value={s}>{s}</option>)}</select>
-              </div>
+              <div className="space-y-1"><label className="text-blue-500">Suit Color</label><select className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.suit_color} onChange={e => setEditingCrew({...editingCrew, suit_color: e.target.value})}><option value="">-- Select --</option>{suitColors.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+              <div className="space-y-1"><label className="text-blue-500">Suit Size</label><select className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.suit_size} onChange={e => setEditingCrew({...editingCrew, suit_size: e.target.value})}><option value="">-- Select --</option>{suitSizes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+              <div className="col-span-2 space-y-1"><label className="text-indigo-500">Boot Size</label><select className="w-full bg-black/50 p-3 rounded-xl border border-white/10 outline-none" value={editingCrew.boot_size} onChange={e => setEditingCrew({...editingCrew, boot_size: e.target.value})}><option value="">-- Select --</option>{bootSizes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
             </div>
-            <button onClick={handleUpdateCrew} className="w-full py-5 bg-blue-600 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95"><Save size={18} className="inline mr-2"/> Update Profile</button>
+            <button onClick={handleUpdateCrew} className="w-full py-5 bg-blue-600 rounded-3xl font-black uppercase text-xs shadow-xl"><Save size={18} className="inline mr-2"/> Update Profile</button>
           </div>
         </div>
       )}
