@@ -20,7 +20,6 @@ function PPEContent() {
   const [quotas, setQuotas] = useState({ suit: 0, boot: 0 })
   const [expandedCat, setExpandedCat] = useState<string | null>(null)
   const [expandedItem, setExpandedItem] = useState<string | null>(null)
-  const [showSettings, setShowSettings] = useState(false)
   const [uploading, setUploading] = useState({ suit: false, boot: false })
   const [sizeCharts, setSizeCharts] = useState({ suit: '', boot: '' })
 
@@ -41,7 +40,6 @@ function PPEContent() {
     setIsAdmin(adminRoles.includes(u.position))
 
     loadCart()
-    if (searchParams.get('settings') === 'true') setShowSettings(true)
 
     async function fetchData() {
       const { data: inv } = await supabase.from('ppe_inventory').select('*')
@@ -210,11 +208,6 @@ function PPEContent() {
         })}
       </div>
       {/* Settings Modal คงเดิม... */}
-      {showSettings && (
-        <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col p-6 overflow-y-auto animate-in fade-in">
-           <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-black uppercase italic">Charts Management</h2>
-              <button onClick={() => setShowSettings(false)} className="p-3 bg-white/5 rounded-full"><X/></button>
            </div>
            <div className="space-y-8 pb-20">
               {[ {id: 'suit', label: 'Boiler Suit Chart'}, {id: 'boot', label: 'Safety Boot Chart'} ].map((item: any) => (
