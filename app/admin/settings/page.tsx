@@ -1,5 +1,5 @@
-import imageCompression from "browser-image-compression";
 'use client'
+import imageCompression from 'browser-image-compression';
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'

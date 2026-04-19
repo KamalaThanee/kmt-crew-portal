@@ -1,5 +1,5 @@
-import imageCompression from "browser-image-compression";
 'use client'
+import imageCompression from 'browser-image-compression';
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
