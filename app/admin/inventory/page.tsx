@@ -53,7 +53,7 @@ export default function InventoryPage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse uppercase text-xs">Loading...</div>
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-6 font-sans">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-2 md:pt-6 font-sans">
       <div className="mb-8">
         <h1 className="text-4xl font-black uppercase italic text-white flex items-center gap-3">
           <Package className="text-blue-500" size={32}/> Inventory

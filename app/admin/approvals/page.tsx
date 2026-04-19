@@ -32,7 +32,7 @@ export default function ApprovalsPage() {
   if (loading) return <div className="p-10 text-center text-blue-500 font-black animate-pulse">LOADING...</div>
 
   return (
-    <div className="p-6 max-w-4xl mx-auto pb-32 pt-6">
+    <div className="p-6 max-w-4xl mx-auto pb-32 pt-2 md:pt-6">
       <div className="mb-8">
         <h1 className="text-3xl font-black uppercase italic text-white flex items-center gap-3">
           <ShieldCheck className="text-blue-500" /> Pending Approvals
