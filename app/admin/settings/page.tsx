@@ -44,12 +44,20 @@ export default function AdminSettingsPage() {
     if (cr) setCrews(cr)
   }
 
-  // 🎯 สกัดข้อมูล Color/Size จากสต๊อกเพื่อทำ Dropdown
-  const suitColors = useMemo(() => [...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.color))].filter(Boolean), [inventory])
-  const suitSizes = useMemo(() => [...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.size))].filter(Boolean), [inventory])
-  const bootSizes = useMemo(() => [...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')).map(i => i.size))].filter(Boolean), [inventory])
+  // ฟังก์ชันช่วยเรียงไซส์
+  const sortSizes = (arr: any[]) => {
+    return [...arr].sort((a, b) => {
+      const isNumA = !isNaN(Number(a)); const isNumB = !isNaN(Number(b));
+      if (isNumA && isNumB) return Number(a) - Number(b);
+      return sizeOrder.indexOf(String(a).toUpperCase()) - sizeOrder.indexOf(String(b).toUpperCase());
+    });
+  }
 
-  // 🎯 จัดกลุ่ม Inventory ตาม Category
+  // ตัวเลือกสำหรับ Dropdowns ในหน้า Edit
+  const suitColors = useMemo(() => [...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.color))].filter(Boolean).sort(), [inventory])
+  const suitSizes = useMemo(() => sortSizes([...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.size))].filter(Boolean)), [inventory])
+  const bootSizes = useMemo(() => sortSizes([...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')).map(i => i.size))].filter(Boolean)), [inventory])
+
   const groupedInventory = useMemo(() => {
     const groups: Record<string, any[]> = {}
     const filtered = inventory.filter(i => i.item_name.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -68,6 +76,14 @@ export default function AdminSettingsPage() {
       suit_size: editingCrew.suit_size, suit_color: editingCrew.suit_color, boot_size: editingCrew.boot_size
     }).eq('id', editingCrew.id)
     if (!error) { toast.success('Crew updated'); setIsEditModalOpen(false); fetchData(); }
+    else toast.error('Update failed');
+  }
+
+  const handleResetPin = async (crewId: string, name: string) => {
+    if (!confirm(`ยืนยันการรีเซ็ต PIN ของ ${name}? เขาจะต้องลงทะเบียนใหม่`)) return;
+    const { error } = await supabase.from('crews').update({ pin: null, registered: false }).eq('id', crewId)
+    if (!error) { toast.success('Reset PIN สำเร็จ'); fetchData(); }
+    else toast.error('Reset failed');
   }
 
   const handleUpload = async (type: 'suit' | 'boot', file: File) => {
@@ -83,14 +99,14 @@ export default function AdminSettingsPage() {
     finally { setUploading(prev => ({ ...prev, [type]: false })); }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse tracking-widest">LOADING SETTINGS...</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse">VERIFYING ACCESS...</div>
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans pb-32 pt-20 px-4 md:px-8">
       <div className="max-w-7xl mx-auto">
         <div className="mb-8 flex justify-between items-center">
           <h1 className="text-3xl font-black uppercase italic flex items-center gap-3"><Settings className="text-blue-500"/> Admin Center</h1>
-          <button onClick={() => router.push('/ppe')} className="p-3 bg-white/5 rounded-full"><X/></button>
+          <button onClick={() => router.push('/ppe')} className="p-3 bg-white/5 rounded-full hover:bg-white/10"><X/></button>
         </div>
 
         <div className="flex flex-col md:flex-row gap-8">
@@ -103,7 +119,6 @@ export default function AdminSettingsPage() {
           </div>
 
           <div className="flex-1 bg-slate-900 border border-white/10 rounded-[32px] p-6 shadow-2xl min-h-[60vh]">
-            {/* 1. Inventory Master Data */}
             {activeTab === 'inventory' && (
               <div className="animate-in fade-in space-y-8">
                 <input type="text" placeholder="Search Master Data..." className="w-full bg-black/50 border border-white/10 p-4 rounded-2xl outline-none" onChange={(e) => setSearchTerm(e.target.value)} />
@@ -133,7 +148,6 @@ export default function AdminSettingsPage() {
               </div>
             )}
 
-            {/* 2. Crew Management */}
             {activeTab === 'crews' && (
               <div className="animate-in fade-in space-y-3">
                 <input type="text" placeholder="Search Crew..." className="w-full mb-6 bg-black/50 border border-white/10 p-4 rounded-2xl outline-none" onChange={(e) => setSearchTerm(e.target.value)} />
@@ -149,16 +163,15 @@ export default function AdminSettingsPage() {
               </div>
             )}
 
-            {/* 3. System Config */}
             {activeTab === 'system' && (
               <div className="animate-in fade-in grid grid-cols-1 md:grid-cols-2 gap-8">
                 {['suit', 'boot'].map(type => (
                   <div key={type} className="p-6 bg-black/40 rounded-3xl border border-white/5 space-y-4 text-center">
-                    <p className="font-black uppercase text-[10px] text-slate-500 tracking-widest">{type === 'suit' ? 'Boiler Suit Size Chart' : 'Safety Boot Size Chart'}</p>
+                    <p className="font-black uppercase text-[10px] text-slate-500 tracking-widest">{type === 'suit' ? 'Boiler Suit Chart' : 'Safety Boot Chart'}</p>
                     <div className="w-full h-48 bg-black rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden">
                       {sizeCharts[type as 'suit' | 'boot'] ? <img src={sizeCharts[type as 'suit' | 'boot']} className="max-w-full max-h-full object-contain" /> : <div className="text-slate-700 uppercase font-black text-xs italic">No Image</div>}
                     </div>
-                    <label className="flex items-center justify-center w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl cursor-pointer font-bold text-[10px] uppercase transition-all shadow-lg shadow-blue-600/20">
+                    <label className="flex items-center justify-center w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl cursor-pointer font-bold text-[10px] uppercase shadow-lg shadow-blue-600/20">
                       {uploading[type as 'suit' | 'boot'] ? <Loader2 className="animate-spin"/> : <Upload size={16} className="mr-2"/>} Update Chart
                       <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && handleUpload(type as 'suit' | 'boot', e.target.files[0])} />
                     </label>
@@ -170,16 +183,13 @@ export default function AdminSettingsPage() {
         </div>
       </div>
 
-      {/* 🛠️ Edit Crew Modal with Dropdowns */}
       {isEditModalOpen && editingCrew && (
         <div className="fixed inset-0 z-[100] bg-slate-950/90 flex items-center justify-center p-6 backdrop-blur-md">
           <div className="bg-slate-900 border border-white/10 rounded-[40px] w-full max-w-lg p-10 space-y-8 shadow-2xl">
             <div className="flex justify-between items-center border-b border-white/5 pb-4"><h2 className="text-2xl font-black uppercase italic tracking-tighter">Edit Profile</h2><button onClick={() => setIsEditModalOpen(false)}><X/></button></div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1.5"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Full Name</label><input className="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none focus:border-blue-500 transition-all text-sm" value={editingCrew.full_name} onChange={e => setEditingCrew({...editingCrew, full_name: e.target.value})}/></div>
-              <div className="space-y-1.5"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Position</label><input className="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none focus:border-blue-500 transition-all text-sm" value={editingCrew.position} onChange={e => setEditingCrew({...editingCrew, position: e.target.value})}/></div>
-              
-              {/* Dropdowns from Stock Data */}
+              <div className="space-y-1.5"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Full Name</label><input className="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none focus:border-blue-500 text-sm" value={editingCrew.full_name} onChange={e => setEditingCrew({...editingCrew, full_name: e.target.value})}/></div>
+              <div className="space-y-1.5"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Position</label><input className="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none focus:border-blue-500 text-sm" value={editingCrew.position} onChange={e => setEditingCrew({...editingCrew, position: e.target.value})}/></div>
               <div className="space-y-1.5"><label className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Suit Color</label>
                 <select className="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none text-sm" value={editingCrew.suit_color} onChange={e => setEditingCrew({...editingCrew, suit_color: e.target.value})}>
                   <option value="">-- Color --</option>{suitColors.map(c => <option key={c} value={c}>{c}</option>)}
@@ -196,7 +206,7 @@ export default function AdminSettingsPage() {
                 </select>
               </div>
             </div>
-            <button onClick={handleUpdateCrew} className="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-3xl font-black uppercase text-xs flex items-center justify-center gap-2 shadow-xl shadow-blue-600/20 transition-all active:scale-95"><Save size={18}/> Update Member Profile</button>
+            <button onClick={handleUpdateCrew} className="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-3xl font-black uppercase text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-blue-600/20"><Save size={18}/> Update Profile</button>
           </div>
         </div>
       )}
