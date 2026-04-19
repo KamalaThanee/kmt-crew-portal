@@ -16,7 +16,7 @@ export default function Navbar() {
   const [showProfile, setShowProfile] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
   const [cartCount, setCartCount] = useState(0);
-  const [quotas, setQuotas] = useState({ suit: 0, boot: 0 });
+  
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -26,7 +26,6 @@ export default function Navbar() {
       const u = JSON.parse(storedUser);
       setUser(u);
       fetchNotifications(u);
-      fetchQuotas(u.id);
     }
     const handleCartUpdate = (e: any) => setCartCount(e.detail);
     window.addEventListener('cart-updated', handleCartUpdate);
@@ -43,31 +42,15 @@ export default function Navbar() {
   const fetchNotifications = async (u: any) => {
     const role = (u.position || "").toLowerCase();
     const isAdmin = ["safety officer", "chief officer", "barge master"].includes(role);
-    if (isAdmin) {
-      const { count } = await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending');
-      setNotifCount(count || 0);
-    } else {
-      const { count } = await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('crew_id', u.id).in('status', ['approved', 'rejected']);
-      setNotifCount(count || 0);
-    }
+    const { count } = await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', isAdmin ? 'pending' : 'approved');
+    setNotifCount(count || 0);
   };
 
-  const fetchQuotas = async (userId: string) => {
-    const currentYear = new Date().getFullYear();
-    const startOfYear = `${currentYear}-01-01T00:00:00Z`;
-    const { data: reqs } = await supabase.from('ppe_requests').select('item_name').eq('crew_id', userId).neq('status', 'rejected').gte('request_date', startOfYear);
-    if (reqs) {
-      setQuotas({ 
-        suit: reqs.filter(r => r.item_name.toLowerCase().includes('suit')).length, 
-        boot: reqs.filter(r => r.item_name.toLowerCase().includes('safety boot') && !r.item_name.toLowerCase().includes('rubber')).length 
-      });
-    }
-  };
-
-  if (!mounted || ['/login', '/', '/register'].includes(pathname)) return null;
+  if (!mounted || ['/login', '/register'].includes(pathname)) return null;
 
   const role = (user?.position || "").toLowerCase();
   const isAdmin = ["safety officer", "chief officer", "barge master"].includes(role);
+
   const menuItems = isAdmin ? [
     { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'Approvals', href: '/admin/approvals', icon: ClipboardCheck },
@@ -75,7 +58,7 @@ export default function Navbar() {
     { name: 'Inventory', href: '/admin/inventory', icon: Package },
     { name: 'My Req', href: '/my-requests', icon: History },
   ] : [
-    { name: 'Request PPE', href: '/ppe', icon: PlusCircle },
+    { name: 'Request', href: '/ppe', icon: PlusCircle },
     { name: 'My Requests', href: '/my-requests', icon: History },
   ];
 
@@ -93,34 +76,35 @@ export default function Navbar() {
           </div>
         </div>
         <div className="flex items-center gap-2 md:gap-3 relative" ref={profileRef}>
-          <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="relative p-2 md:p-2.5 text-slate-400 hover:text-white bg-white/5 rounded-full border border-white/5"><ShoppingCart size={18} />{cartCount > 0 && <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] flex items-center justify-center bg-blue-600 text-white text-[8px] font-black rounded-full border-2 border-slate-950 px-1">{cartCount}</span>}</button>
+          <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="relative p-2 md:p-2.5 text-slate-400 hover:text-white bg-white/5 rounded-full border border-white/5 transition-colors"><ShoppingCart size={18} />{cartCount > 0 && <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] flex items-center justify-center bg-blue-600 text-white text-[8px] font-black rounded-full border-2 border-slate-950 px-1">{cartCount}</span>}</button>
           <Link href={isAdmin ? "/admin/approvals" : "/my-requests"} className="relative p-2 md:p-2.5 text-slate-400 hover:text-white bg-white/5 rounded-full border border-white/5 transition-colors"><Bell size={18} />{notifCount > 0 && <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] flex items-center justify-center bg-red-500 text-white text-[8px] font-black rounded-full border-2 border-slate-950 px-1">{notifCount}</span>}</Link>
           <button onClick={() => setShowProfile(!showProfile)} className={`w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-full border transition-all ${showProfile ? 'bg-blue-600 text-white border-blue-400' : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'}`}><User size={18} /></button>
           {showProfile && (
-            <div className="absolute right-0 top-14 w-72 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[70] animate-in fade-in zoom-in duration-200">
-              <div className="p-5 bg-slate-800/50 border-b border-white/5"><p className="text-white font-bold text-base truncate">{user?.full_name}</p><p className="text-blue-400 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p></div>
-              <div className="p-5 space-y-4 border-b border-white/5 bg-slate-900/30">
-                <Link href="/my-requests" onClick={() => setShowProfile(false)} className="block space-y-1.5 group">
-                  <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-blue-400 transition-colors">
-                    <span className="flex items-center gap-1"><History size={10}/> Boiler Suit</span>
-                    <span className={quotas.suit >= 2 ? "text-red-400" : "text-blue-400"}>{quotas.suit} / 2</span>
-                  </div>
-                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5"><div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.suit >= 2 ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${Math.min((quotas.suit / 2) * 100, 100)}%` }}></div></div>
-                </Link>
-                <Link href="/my-requests" onClick={() => setShowProfile(false)} className="block space-y-1.5 group">
-                  <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-indigo-400 transition-colors">
-                    <span className="flex items-center gap-1"><History size={10}/> Safety Boots</span>
-                    <span className={quotas.boot >= 1 ? "text-red-400" : "text-indigo-400"}>{quotas.boot} / 1</span>
-                  </div>
-                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5"><div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.boot >= 1 ? 'bg-red-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min((quotas.boot / 1) * 100, 100)}%` }}></div></div>
-                </Link>
-              </div>
+            <div className="absolute right-0 top-14 w-64 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[70] animate-in fade-in zoom-in duration-200">
+              <div className="p-5 bg-slate-800/50 border-b border-white/5"><p className="text-white font-bold text-sm truncate">{user?.full_name}</p><p className="text-blue-400 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p></div>
               <div className="p-2">
-                {isAdmin && (<Link href="/admin/settings" onClick={() => setShowProfile(false)} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors"><Settings size={18} /> Admin Settings</Link>)}
-                <button onClick={() => { localStorage.removeItem('kmt_user'); router.push('/login'); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors font-bold uppercase tracking-widest text-[11px]"><LogOut size={18} /> Logout</button>
+                {isAdmin && (<Link href="/admin/settings" onClick={() => setShowProfile(false)} className="w-full flex items-center gap-3 px-4 py-3 text-xs font-bold text-slate-300 hover:bg-white/5 rounded-xl transition-colors uppercase tracking-widest"><Settings size={16} /> Settings</Link>)}
+                <button onClick={() => { localStorage.removeItem('kmt_user'); router.push('/login'); }} className="w-full flex items-center gap-3 px-4 py-3 text-xs text-red-400 font-black uppercase tracking-widest hover:bg-red-500/10 rounded-xl transition-colors"><LogOut size={16} /> Logout</button>
               </div>
             </div>
           )}
+        </div>
+      </nav>
+
+      {/* BOTTOM NAV (Mobile Only) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-xl border-t border-white/10 z-[60] pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <div className="flex items-center justify-around h-16">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.href;
+            return (
+              <Link key={item.href} href={item.href} className={`flex flex-col items-center justify-center gap-1 w-full h-full relative transition-colors ${isActive ? 'text-blue-500' : 'text-slate-500'}`}>
+                <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                <span className="text-[8px] font-black uppercase tracking-tighter">{item.name}</span>
+                {isActive && <div className="absolute bottom-1 w-5 h-0.5 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>}
+              </Link>
+            );
+          })}
         </div>
       </nav>
     </>
