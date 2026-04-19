@@ -1,3 +1,4 @@
+import imageCompression from "browser-image-compression";
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -34,7 +35,7 @@ export default function RestockPage() {
     setLoading(true)
     try {
       const fileName = `DO_${Date.now()}_${doFile.name}`
-      await supabase.storage.from('do-files').upload(fileName, doFile)
+      const compressedFile = await imageCompression(doFile, { maxSizeMB: 0.5, maxWidthOrHeight: 1280, useWebWorker: true }); await supabase.storage.from('do-files').upload(fileName, compressedFile)
       const { data: { publicUrl } } = supabase.storage.from('do-files').getPublicUrl(fileName)
       const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
 

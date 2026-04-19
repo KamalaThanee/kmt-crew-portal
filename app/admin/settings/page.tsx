@@ -1,3 +1,4 @@
+import imageCompression from "browser-image-compression";
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
@@ -142,7 +143,7 @@ export default function AdminSettingsPage() {
     setUploading(prev => ({ ...prev, [type]: true }));
     try {
       const fileName = `${type}_chart_${Date.now()}.jpg`;
-      await supabase.storage.from('size-charts').upload(fileName, file);
+      const compressedFile = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1280, useWebWorker: true }); await supabase.storage.from('size-charts').upload(fileName, compressedFile);
       const { data: { publicUrl } } = supabase.storage.from('size-charts').getPublicUrl(fileName);
       await supabase.from('ppe_settings').update({ [type === 'suit' ? 'suit_chart_url' : 'boot_url']: publicUrl }).eq('id', 1);
       setSizeCharts(prev => ({ ...prev, [type]: publicUrl }));
