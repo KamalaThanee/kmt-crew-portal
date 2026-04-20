@@ -1,3 +1,5 @@
+import { Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 'use client'
 import imageCompression from 'browser-image-compression';
 import { useState, useEffect, useMemo } from 'react'
@@ -9,10 +11,15 @@ import {
   Loader2, Upload, Edit, RefreshCw, X, Save, AlertTriangle, Box, Plus, ChevronDown, ChevronRight
 } from 'lucide-react'
 
-export default function AdminSettingsPage() {
+function SettingsContent() { {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('inventory')
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && ['inventory', 'crews', 'system'].includes(t)) setActiveTab(t);
+  }, [searchParams])
   const [uploading, setUploading] = useState({ suit: false, boot: false })
   const [sizeCharts, setSizeCharts] = useState({ suit: '', boot: '' })
   const [inventory, setInventory] = useState<any[]>([])
@@ -280,5 +287,13 @@ export default function AdminSettingsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function AdminSettingsPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <SettingsContent />
+    </Suspense>
   )
 }
