@@ -15,6 +15,7 @@
     "browser-image-compression": "^2.0.2",
     "clsx": "latest",
     "date-fns": "^4.1.0",
+    "jspdf": "^4.2.1",
     "lucide-react": "^1.8.0",
     "next": "latest",
     "postcss": "^8.4.35",
