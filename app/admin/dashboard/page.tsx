@@ -16,7 +16,7 @@ export default function AdminDashboard() {
     lowStockCount: 0,
     totalInventory: 0,
     lastRestockDate: "No data",
-    globalPendingCount: 0,
+    globalPendingCount: 0, certCompliance: 0,
   });
   
   const [requests, setRequests] = useState<any[]>([]);
@@ -103,7 +103,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         <Link href="/admin/approvals" className="bg-slate-900 border border-amber-500/30 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-amber-500/5 hover:border-amber-500 transition-all active:scale-95">
            <div className="flex justify-between items-start"><div className="bg-amber-500/20 p-2.5 rounded-xl text-amber-500"><Clock size={20}/></div><ChevronRight size={16} className="text-slate-700"/></div>
            <div><p className="text-2xl font-black text-white">{stats.globalPendingCount}</p><p className="text-[10px] font-black uppercase text-amber-500">Pending</p></div>
@@ -121,8 +121,56 @@ export default function AdminDashboard() {
            <div className="flex justify-between items-start"><div className="bg-emerald-500/20 p-2.5 rounded-xl text-emerald-500"><History size={20}/></div><ChevronRight size={16} className="text-slate-700"/></div>
            <div><p className="text-lg font-black text-white">{stats.lastRestockDate}</p><p className="text-[10px] font-black uppercase text-emerald-500">Last Restock</p></div>
         </Link>
-      </div>
 
+        {/* Cert Compliance - Purple */}
+        <Link href="/certificates" className="bg-slate-900 border border-purple-500/30 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-purple-500/5 hover:border-purple-500 transition-all active:scale-95">
+           <div className="flex justify-between items-start">
+              <div className="bg-purple-500/20 p-2.5 rounded-xl text-purple-500"><FileBadge size={20}/></div>
+              <ChevronRight size={16} className="text-slate-700"/>
+           </div>
+           <div>
+              <p className="text-2xl font-black text-white">{stats.certCompliance}%</p>
+              <p className="text-[10px] font-black uppercase text-purple-500">Cert Compliance</p>
+           </div>
+        </Link>
+        </Link>
+
+        {/* Cert Compliance - Purple */}
+        <Link href="/certificates" className="bg-slate-900 border border-purple-500/30 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-purple-500/5 hover:border-purple-500 transition-all active:scale-95">
+           <div className="flex justify-between items-start">
+              <div className="bg-purple-500/20 p-2.5 rounded-xl text-purple-500"><FileBadge size={20}/></div>
+              <ChevronRight size={16} className="text-slate-700"/>
+           </div>
+           <div>
+              <p className="text-2xl font-black text-white">{stats.certCompliance}%</p>
+              <p className="text-[10px] font-black uppercase text-purple-500">Cert Compliance</p>
+           </div>
+      </div>
+        </Link>
+
+        {/* Cert Compliance - Purple */}
+        <Link href="/certificates" className="bg-slate-900 border border-purple-500/30 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-purple-500/5 hover:border-purple-500 transition-all active:scale-95">
+           <div className="flex justify-between items-start">
+              <div className="bg-purple-500/20 p-2.5 rounded-xl text-purple-500"><FileBadge size={20}/></div>
+              <ChevronRight size={16} className="text-slate-700"/>
+           </div>
+           <div>
+              <p className="text-2xl font-black text-white">{stats.certCompliance}%</p>
+              <p className="text-[10px] font-black uppercase text-purple-500">Cert Compliance</p>
+           </div>
+
+        </Link>
+
+        {/* Cert Compliance - Purple */}
+        <Link href="/certificates" className="bg-slate-900 border border-purple-500/30 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-purple-500/5 hover:border-purple-500 transition-all active:scale-95">
+           <div className="flex justify-between items-start">
+              <div className="bg-purple-500/20 p-2.5 rounded-xl text-purple-500"><FileBadge size={20}/></div>
+              <ChevronRight size={16} className="text-slate-700"/>
+           </div>
+           <div>
+              <p className="text-2xl font-black text-white">{stats.certCompliance}%</p>
+              <p className="text-[10px] font-black uppercase text-purple-500">Cert Compliance</p>
+           </div>
       <div className="bg-slate-900/50 border border-white/5 rounded-[40px] p-6 space-y-6">
         <div className="flex justify-between items-center border-b border-white/5 pb-4"><h2 className="text-sm font-black uppercase tracking-widest text-slate-300">Usage Stats</h2>
         <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="bg-black/40 border border-white/10 text-white text-[10px] font-black uppercase rounded-full px-4 py-2 outline-none">{availableMonths.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
