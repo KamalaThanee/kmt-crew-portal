@@ -2,119 +2,61 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { FileBadge, ShieldCheck, PlusCircle, History, Clock, CheckCircle2, AlertTriangle, ChevronRight, Package } from 'lucide-react'
+import { User, FileBadge, ChevronRight, ShieldCheck, Clock } from 'lucide-react'
 import Link from 'next/link'
 
 export default function CrewDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [personalStats, setPersonalStats] = useState({
-    certProgress: 0,
-    expiredCerts: 0,
-    suitQuota: 0,
-    bootQuota: 0,
-    lastRequestStatus: 'No Request'
-  })
+  const [stats, setStats] = useState<any>({})
 
   useEffect(() => {
-    const uStr = localStorage.getItem('kmt_user')
-    if (!uStr) { router.push('/login'); return; }
-    const u = JSON.parse(uStr)
+    const u = JSON.parse(localStorage.getItem('kmt_user') || '{}')
+    if (!u.id) { router.push('/login'); return; }
     setUser(u)
-    fetchData(u)
-  }, [])
+    fetchPersonalStats(u)
+  }, [router])
 
-  async function fetchData(u: any) {
-    // 1. คำนวณ Cert Progress
+  async function fetchPersonalStats(u: any) {
     const { data: matrix } = await supabase.from('cert_matrix').select('*')
     const { data: myCerts } = await supabase.from('crew_certs').select('*').eq('crew_id', u.id)
-    
-    let progress = 0; let expired = 0;
+    const { data: myReqs } = await supabase.from('ppe_requests').select('status').eq('crew_id', u.id).order('created_at', { ascending: false }).limit(1)
+
     if (matrix && myCerts) {
-      const required = matrix.filter(m => m[u.position] === 'P')
+      const posKey = Object.keys(matrix[0]).find(k => k.toLowerCase().trim() === u.position?.toLowerCase().trim())
+      const required = matrix.filter(m => posKey ? m[posKey] === 'P' : false)
       const okCerts = myCerts.filter(c => new Date(c.expiry_date) >= new Date() || c.expiry_date === '2099-12-31').length
-      expired = myCerts.filter(c => new Date(c.expiry_date) < new Date() && c.expiry_date !== '2099-12-31').length
-      progress = required.length > 0 ? Math.round((okCerts / required.length) * 100) : 0
+      const expired = myCerts.filter(c => new Date(c.expiry_date) < new Date() && c.expiry_date !== '2099-12-31').length
+      const progress = required.length > 0 ? Math.round((okCerts / required.length) * 100) : 0
+      setStats({ progress, expired, lastStatus: myReqs?.[0]?.status || 'None' })
     }
-
-    // 2. คำนวณ PPE Quota & Last Status
-    const currentYear = new Date().getFullYear()
-    const { data: reqs } = await supabase.from('ppe_requests').select('*').eq('crew_id', u.id).gte('created_at', `${currentYear}-01-01`)
-    
-    let suitCount = 0; let bootCount = 0; let lastStatus = 'No data';
-    if (reqs && reqs.length > 0) {
-      lastStatus = reqs[0].status
-      reqs.forEach(r => {
-        if (r.status !== 'rejected') {
-          r.items?.forEach((i: any) => {
-            if (i.item_name.toLowerCase().includes('suit')) suitCount++
-            if (i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')) bootCount++
-          })
-        }
-      })
-    }
-
-    setPersonalStats({
-      certProgress: progress,
-      expiredCerts: expired,
-      suitQuota: suitCount,
-      bootQuota: bootCount,
-      lastRequestStatus: lastStatus
-    })
     setLoading(false)
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse uppercase tracking-[0.3em] text-xs">Accessing Portal...</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse">CREW HUB LOADING...</div>
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto pb-32 pt-20 font-sans text-white">
-      <div className="mb-10">
-        <h1 className="text-3xl font-black uppercase italic leading-none">My Dashboard</h1>
-        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Welcome back, {user?.full_name}</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* --- My Certificate Status --- */}
-        <Link href="/certificates" className="bg-slate-900 border border-white/10 rounded-[40px] p-8 shadow-2xl space-y-6 hover:border-blue-500 transition-all group">
-          <div className="flex justify-between items-start">
-             <div className="w-14 h-14 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500"><FileBadge size={28}/></div>
-             <div className="text-right">
-                <p className="text-3xl font-black">{personalStats.certProgress}%</p>
-                <p className="text-[10px] font-black uppercase text-slate-500">Readiness</p>
-             </div>
+    <div className="p-6 max-w-4xl mx-auto pb-32 pt-20 font-sans text-white uppercase font-bold text-[10px]">
+      <div className="mb-10"><h1 className="text-3xl font-black italic">My Dashboard</h1><p className="text-slate-500 mt-1">Personal Compliance Hub</p></div>
+      <div className="space-y-6">
+        <Link href="/certificates" className="block bg-slate-900 border border-blue-500/20 p-8 rounded-[40px] shadow-2xl flex items-center justify-between hover:border-blue-500 transition-all">
+          <div className="flex items-center gap-8">
+            <div className="relative w-24 h-24 flex items-center justify-center">
+              <svg className="w-full h-full transform -rotate-90"><circle cx="48" cy="48" r="44" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/5"/><circle cx="48" cy="48" r="44" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray="276" strokeDashoffset={276 - (stats.progress/100)*276} className="text-blue-500 transition-all duration-1000"/></svg>
+              <span className="absolute text-xl font-black">{stats.progress}%</span>
+            </div>
+            <div><h3 className="text-lg font-black italic">My Readiness</h3><p className="text-slate-500 mt-1">View Certificates <ChevronRight size={12} className="inline"/></p></div>
           </div>
-          <div className="space-y-2">
-             <p className="text-sm font-bold uppercase italic">Certificate Compliance</p>
-             <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
-                <div className="bg-blue-600 h-full transition-all duration-1000" style={{ width: `${personalStats.certProgress}%` }}></div>
-             </div>
-             {personalStats.expiredCerts > 0 && <p className="text-[10px] font-black text-red-500 animate-pulse uppercase">⚠️ {personalStats.expiredCerts} Expired Documents</p>}
-          </div>
+          {stats.expired > 0 && <div className="bg-red-500/20 text-red-500 px-4 py-2 rounded-2xl animate-pulse">⚠️ {stats.expired} Expired</div>}
         </Link>
-
-        {/* --- My PPE Status --- */}
-        <div className="bg-slate-900 border border-white/10 rounded-[40px] p-8 shadow-2xl space-y-6">
-           <div className="flex justify-between items-center">
-              <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-500"><ShieldCheck size={28}/></div>
-              <div className="text-right">
-                 <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${
-                   personalStats.lastRequestStatus === 'pending' ? 'bg-amber-500 text-black' : 
-                   personalStats.lastRequestStatus === 'approved' ? 'bg-blue-500 text-white' : 'bg-white/5 text-slate-500'
-                 }`}>{personalStats.lastRequestStatus}</span>
-              </div>
-           </div>
-           <div className="grid grid-cols-2 gap-4">
-              <div className="bg-black/30 p-4 rounded-2xl border border-white/5">
-                 <p className="text-[9px] font-black text-slate-500 uppercase mb-1">Boiler Suit</p>
-                 <p className="text-xl font-black">{personalStats.suitQuota} <span className="text-[10px] text-slate-600">/ 2</span></p>
-              </div>
-              <div className="bg-black/30 p-4 rounded-2xl border border-white/5">
-                 <p className="text-[9px] font-black text-slate-500 uppercase mb-1">Safety Boots</p>
-                 <p className="text-xl font-black">{personalStats.bootQuota} <span className="text-[10px] text-slate-600">/ 1</span></p>
-              </div>
-           </div>
-           <Link href="/ppe" className="block w-full py-4 bg-emerald-600 hover:bg-emerald-500 rounded-2xl text-center text-[10px] font-black uppercase tracking-widest transition-all">Request New PPE</Link>
+        <div className="grid grid-cols-2 gap-6">
+          <Link href="/ppe" className="bg-slate-900 border border-white/5 p-8 rounded-[40px] flex flex-col justify-between h-44 hover:border-blue-500 transition-all">
+            <ShieldCheck className="text-emerald-500" size={32}/><p className="text-sm">Request PPE</p><p className="text-slate-600">Status: {stats.lastStatus}</p>
+          </Link>
+          <Link href="/my-requests" className="bg-slate-900 border border-white/5 p-8 rounded-[40px] flex flex-col justify-between h-44 hover:border-blue-500 transition-all">
+            <Clock className="text-blue-500" size={32}/><p className="text-sm">My History</p><p className="text-slate-600">View past requests</p>
+          </Link>
         </div>
       </div>
     </div>
