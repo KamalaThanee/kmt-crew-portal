@@ -2,60 +2,45 @@
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { FileCheck, Clock, Upload, ChevronRight, Eye, ShieldCheck, RefreshCcw, Lock } from 'lucide-react'
-import { toast } from 'sonner'
+import { FileCheck, Clock, Upload, ChevronRight, Eye, ShieldCheck, RefreshCcw } from 'lucide-react'
 
 function CertificatesContent() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [matrix, setMatrix] = useState<any[]>([])
   const [myCerts, setMyCerts] = useState<any[]>([])
-  const [rules, setRules] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const u = JSON.parse(localStorage.getItem('kmt_user') || '{}')
-    if (!u.id) { router.push('/login'); return; }
+    const uStr = localStorage.getItem('kmt_user')
+    if (!uStr) { router.push('/login'); return; }
+    const u = JSON.parse(uStr)
     setUser(u)
+
     async function fetchData() {
       const { data: m } = await supabase.from('cert_matrix').select('*')
       const { data: c } = await supabase.from('crew_certs').select('*').eq('crew_id', u.id)
-      const { data: r } = await supabase.from('cert_rules').select('*')
-      if (m) setMatrix(m); if (c) setMyCerts(c); if (r) setRules(r);
+      if (m) setMatrix(m);
+      if (c) setMyCerts(c);
       setLoading(false)
     }
     fetchData()
-  }, [])
+  }, [router])
 
   const certStatusList = useMemo(() => {
     if (!user || !matrix.length) return []
-    // 1. ดึงพื้นฐานตำแหน่ง (ค่า P)
-    let required = matrix
-      .filter(m => m[user.position] === 'P')
-      .map(m => ({ cert_name: m.cert_name, category: m.category, is_mandatory: true }))
-
-    // 2. เช็คตัวเลือก (ค่า O) - ถ้ามีใน MyCerts ให้เพิ่มเข้า Required List
-    const optionalCerts = matrix.filter(m => m[user.position] === 'O')
-    optionalCerts.forEach(oc => {
-       if (myCerts.some(c => c.cert_name === oc.cert_name)) {
-          required.push({ cert_name: oc.cert_name, category: oc.category, is_mandatory: false })
-       }
-    })
-
-    // 3. Trigger Rules (OHLO/OHA)
-    rules.forEach(rule => {
-      if (myCerts.some(c => c.cert_name === rule.trigger_cert)) {
-        if (!required.some(req => req.cert_name === rule.required_cert)) {
-          const info = matrix.find(m => m.cert_name === rule.required_cert)
-          required.push({ cert_name: rule.required_cert, category: info?.category || 'Special', is_mandatory: true })
-        }
-      }
-    })
-
+    
+    // ดึงชื่อตำแหน่งของ User และแปลงเป็นตัวเล็กเพื่อป้องกัน Case-sensitive
+    const pos = user.position || ""
+    
+    // กรองหาใบเซอร์ที่ Matrix ระบุว่าเป็น P (บังคับ) สำหรับตำแหน่งนี้
+    const required = matrix.filter(m => m[pos] === 'P')
+    
     const today = new Date()
     return required.map(req => {
       const uploaded = myCerts.find(c => c.cert_name === req.cert_name)
       let status = 'missing'
+      
       if (uploaded) {
         const expDate = new Date(uploaded.expiry_date)
         if (uploaded.expiry_date === '2099-12-31') status = 'ok'
@@ -65,22 +50,21 @@ function CertificatesContent() {
       }
       return { ...req, uploaded, status }
     })
-  }, [user, matrix, myCerts, rules])
+  }, [user, matrix, myCerts])
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse uppercase tracking-[0.3em] text-xs">Accessing Secure Vault...</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse uppercase tracking-[0.3em] text-xs">VAULT INITIALIZING...</div>
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto pb-32 pt-20 font-sans">
-      <div className="mb-10 flex justify-between items-end">
-        <div>
-           <h1 className="text-3xl font-black uppercase italic text-white flex items-center gap-3"><ShieldCheck className="text-blue-500"/> Certificates</h1>
-           <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-2">Compliance Vault for {user?.full_name}</p>
-        </div>
+    <div className="p-4 md:p-8 max-w-4xl mx-auto pb-32 pt-20 font-sans text-white">
+      <div className="mb-10">
+        <h1 className="text-3xl font-black uppercase italic flex items-center gap-3"><ShieldCheck className="text-blue-500" size={32}/> Certificates</h1>
+        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-2">Compliance Documents for {user?.full_name}</p>
       </div>
 
       <div className="space-y-3">
+        {certStatusList.length === 0 && <p className="text-center py-20 text-slate-600 font-bold uppercase text-xs">No required certificates found for this position.</p>}
         {certStatusList.map((item, idx) => (
-          <div key={idx} className={`bg-slate-900 border ${item.status === 'missing' ? 'border-white/5 opacity-50' : 'border-white/10'} rounded-[24px] p-5 flex items-center justify-between group hover:border-blue-500/30 transition-all shadow-xl`}>
+          <div key={idx} className={`bg-slate-900 border ${item.status === 'missing' ? 'border-white/5 opacity-50' : 'border-white/10'} rounded-[24px] p-5 flex items-center justify-between transition-all shadow-xl`}>
             <div className="flex items-center gap-4">
               <div className={`p-3.5 rounded-2xl ${item.status === 'ok' ? 'bg-emerald-500/10 text-emerald-500' : item.status === 'warning' ? 'bg-amber-500/10 text-amber-500' : item.status === 'expired' ? 'bg-red-500/10 text-red-500' : 'bg-slate-800 text-slate-500'}`}>
                 {item.status === 'missing' ? <Clock size={22}/> : <FileCheck size={22}/>}
@@ -88,7 +72,7 @@ function CertificatesContent() {
               <div>
                 <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-1">{item.category}</p>
                 <h3 className="text-white font-bold text-xs md:text-sm leading-tight uppercase">{item.cert_name}</h3>
-                {item.uploaded && <p className="text-[9px] font-bold uppercase mt-1 text-blue-400/60 tracking-tighter">Expires: {item.uploaded.expiry_date === '2099-12-31' ? 'Indefinite' : item.uploaded.expiry_date}</p>}
+                {item.uploaded && <p className="text-[9px] font-bold uppercase mt-1 text-blue-400/60 tracking-tighter text-blue-500">Exp: {item.uploaded.expiry_date === '2099-12-31' ? 'Indefinite' : item.uploaded.expiry_date}</p>}
               </div>
             </div>
             <div className="flex gap-2">
@@ -110,7 +94,7 @@ function CertificatesContent() {
 
 export default function CertificatesPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-blue-500 font-black animate-pulse">VAULT INITIALIZING...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-blue-500 font-black animate-pulse">VAULT LOADING...</div>}>
       <CertificatesContent />
     </Suspense>
   )
