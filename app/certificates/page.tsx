@@ -2,7 +2,10 @@
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { FileCheck, Clock, Upload, ChevronRight, Eye, ShieldCheck, RefreshCcw, AlertTriangle } from 'lucide-react'
+import { FileCheck, Clock, ChevronRight, Eye, ShieldCheck, RefreshCcw, AlertTriangle } from 'lucide-react'
+
+// 🎯 ฟังก์ชันวิเศษ: ลบทุกอย่างที่ไม่ใช่ตัวอักษร/ตัวเลขทิ้ง เพื่อจับคู่ให้ติด 100%
+const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 function CertificatesContent() {
   const router = useRouter()
@@ -31,37 +34,35 @@ function CertificatesContent() {
   const certStatusList = useMemo(() => {
     if (!user || !matrix.length) return []
     
-    // 🎯 Logic ค้นหาคอลัมน์แบบสุดยอดความยืดหยุ่น (ตัดช่องว่าง, ตัวเล็กหมด)
-    const userPos = user.position ? user.position.trim().toLowerCase() : "";
+    const userPosNorm = normalize(user.position);
     
-    // ค้นหาหัวคอลัมน์ที่ตรงกับตำแหน่ง
-    const targetColumn = Object.keys(matrix[0]).find(k => k.trim().toLowerCase() === userPos);
-    
-    let required = [];
-    if (targetColumn) {
-       // กรองเอาใบที่ Matrix บังคับ (P)
-       required = matrix.filter(row => String(row[targetColumn]).toUpperCase() === 'P').map(m => ({ ...m, is_mandatory: true }))
-       // กรองใบตัวเลือก (O) ที่อัปโหลดแล้ว
-       const optionals = matrix.filter(row => String(row[targetColumn]).toUpperCase() === 'O')
-       optionals.forEach(oc => {
-          if (myCerts.some(c => c.cert_name.trim().toLowerCase() === oc.cert_name.trim().toLowerCase())) {
-             required.push({ ...oc, is_mandatory: false })
-          }
-       })
-    }
+    let required = matrix.filter(row => {
+      const colKey = Object.keys(row).find(k => normalize(k) === userPosNorm);
+      return colKey && String(row[colKey]).toUpperCase() === 'P';
+    }).map(m => ({ ...m, is_mandatory: true }))
 
-    // Trigger Rules (OHLO/OHA -> DGR/AW139)
+    const optionals = matrix.filter(row => {
+      const colKey = Object.keys(row).find(k => normalize(k) === userPosNorm);
+      return colKey && String(row[colKey]).toUpperCase() === 'O';
+    })
+    
+    optionals.forEach(oc => {
+       if (myCerts.some(c => normalize(c.cert_name) === normalize(oc.cert_name))) {
+          required.push({ ...oc, is_mandatory: false })
+       }
+    })
+
     rules.forEach(rule => {
-      if (myCerts.some(c => c.cert_name.trim().toLowerCase() === rule.trigger_cert.trim().toLowerCase())) {
-        if (!required.some(req => req.cert_name.trim().toLowerCase() === rule.required_cert.trim().toLowerCase())) {
-          required.push({ cert_name: rule.required_cert, is_mandatory: true, category: 'Additional Requirement' })
+      if (myCerts.some(c => normalize(c.cert_name) === normalize(rule.trigger_cert))) {
+        if (!required.some(req => normalize(req.cert_name) === normalize(rule.required_cert))) {
+          required.push({ cert_name: rule.required_cert, is_mandatory: true, category: 'Additional' })
         }
       }
     })
 
     const today = new Date()
     return required.map(req => {
-      const uploaded = myCerts.find(c => c.cert_name.trim().toLowerCase() === req.cert_name.trim().toLowerCase())
+      const uploaded = myCerts.find(c => normalize(c.cert_name) === normalize(req.cert_name))
       let status = 'missing'
       if (uploaded) {
         const expDate = new Date(uploaded.expiry_date)
@@ -74,7 +75,7 @@ function CertificatesContent() {
     })
   }, [user, matrix, myCerts, rules])
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse uppercase text-xs">VAULT ACCESSING...</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse">VAULT ACCESSING...</div>
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto pb-32 pt-20 font-sans text-white uppercase font-bold text-[10px]">
@@ -92,15 +93,15 @@ function CertificatesContent() {
               </div>
               <div>
                 <p className="text-[8px] font-black text-slate-600 mb-1">{item.is_mandatory ? 'MANDATORY' : 'OPTIONAL'}</p>
-                <h3 className="text-white text-sm leading-tight">{item.cert_name}</h3>
+                <h3 className="text-white text-sm leading-tight uppercase">{item.cert_name}</h3>
                 {item.uploaded && <p className="text-[9px] mt-1 text-blue-500">Exp: {item.uploaded.expiry_date === '2099-12-31' ? 'Indefinite' : item.uploaded.expiry_date}</p>}
               </div>
             </div>
             <div className="flex gap-2">
               {item.uploaded ? (
                 <>
-                  <a href={item.uploaded.file_url} target="_blank" className="p-2.5 bg-white/5 text-slate-400 rounded-xl hover:text-white border border-white/5"><Eye size={16}/></a>
-                  <button onClick={() => router.push(`/certificates/upload?cert=${encodeURIComponent(item.cert_name)}`)} className="p-2.5 bg-blue-600/10 text-blue-500 rounded-xl border border-blue-500/20 hover:bg-blue-600 hover:text-white"><RefreshCcw size={16}/></button>
+                  <a href={item.uploaded.file_url} target="_blank" className="p-2.5 bg-white/5 text-slate-400 rounded-xl hover:text-white transition-all"><Eye size={16}/></a>
+                  <button onClick={() => router.push(`/certificates/upload?cert=${encodeURIComponent(item.cert_name)}`)} className="p-2.5 bg-blue-600/10 text-blue-500 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><RefreshCcw size={16}/></button>
                 </>
               ) : (
                 <button onClick={() => router.push(`/certificates/upload?cert=${encodeURIComponent(item.cert_name)}`)} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-[9px] shadow-lg shadow-blue-600/20 active:scale-95">Upload</button>

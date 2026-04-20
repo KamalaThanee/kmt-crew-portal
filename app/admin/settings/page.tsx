@@ -129,7 +129,7 @@ function SettingsContent() {
     
     const posKey = crew.position ? crew.position.trim().toLowerCase() : "";
     let required = certMatrix.filter(row => {
-      const colKey = Object.keys(row).find(k => k.trim().toLowerCase() === posKey);
+      const colKey = Object.keys(row).find(k => k.toLowerCase().replace(/[^a-z0-9]/g, "") === posKey.replace(/[^a-z0-9]/g, ""));
       return colKey && String(row[colKey]).toUpperCase() === 'P';
     }).map(m => ({ ...m, is_mandatory: true }));
 
