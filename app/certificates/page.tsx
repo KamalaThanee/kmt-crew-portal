@@ -16,25 +16,28 @@ function CertificatesContent() {
     if (!uStr) { router.push('/login'); return; }
     const u = JSON.parse(uStr)
     setUser(u)
+    fetchData(u)
+  }, [])
 
-    async function fetchData() {
-      const { data: m } = await supabase.from('cert_matrix').select('*')
-      const { data: c } = await supabase.from('crew_certs').select('*').eq('crew_id', u.id)
-      if (m) setMatrix(m);
-      if (c) setMyCerts(c);
-      setLoading(false)
-    }
-    fetchData()
-  }, [router])
+  async function fetchData(u: any) {
+    // ดึงข้อมูลทั้งหมดมาเช็ค
+    const { data: m } = await supabase.from('cert_matrix').select('*')
+    const { data: c } = await supabase.from('crew_certs').select('*').eq('crew_id', u.id)
+    if (m) setMatrix(m);
+    if (c) setMyCerts(c);
+    setLoading(false)
+  }
 
   const certStatusList = useMemo(() => {
     if (!user || !matrix.length) return []
     
-    // ดึงชื่อตำแหน่งของ User และแปลงเป็นตัวเล็กเพื่อป้องกัน Case-sensitive
-    const pos = user.position || ""
-    
-    // กรองหาใบเซอร์ที่ Matrix ระบุว่าเป็น P (บังคับ) สำหรับตำแหน่งนี้
-    const required = matrix.filter(m => m[pos] === 'P')
+    // 🎯 แก้จุดนี้: พยายามจับคู่ชื่อตำแหน่งให้ตรงกับชื่อคอลัมน์ในตาราง
+    // กรองเอาแถวที่มีค่า 'P' ในคอลัมน์ที่ตรงกับตำแหน่งของ User
+    const required = matrix.filter(row => {
+      // ตรวจสอบว่ามีคอลัมน์ชื่อเดียวกับตำแหน่งหรือไม่ (Case-sensitive check)
+      const requirement = row[user.position] || row[user.position.trim()];
+      return requirement === 'P';
+    });
     
     const today = new Date()
     return required.map(req => {
@@ -52,7 +55,7 @@ function CertificatesContent() {
     })
   }, [user, matrix, myCerts])
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse uppercase tracking-[0.3em] text-xs">VAULT INITIALIZING...</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse uppercase tracking-[0.3em] text-xs">VAULT ACCESSING...</div>
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto pb-32 pt-20 font-sans text-white">
@@ -62,7 +65,12 @@ function CertificatesContent() {
       </div>
 
       <div className="space-y-3">
-        {certStatusList.length === 0 && <p className="text-center py-20 text-slate-600 font-bold uppercase text-xs">No required certificates found for this position.</p>}
+        {certStatusList.length === 0 && (
+          <div className="py-20 text-center bg-slate-900 border border-dashed border-white/10 rounded-[32px]">
+            <AlertTriangle className="mx-auto text-slate-700 mb-4" size={48}/>
+            <p className="text-slate-500 font-black uppercase text-xs tracking-widest">No required certificates found for position: {user?.position}</p>
+          </div>
+        )}
         {certStatusList.map((item, idx) => (
           <div key={idx} className={`bg-slate-900 border ${item.status === 'missing' ? 'border-white/5 opacity-50' : 'border-white/10'} rounded-[24px] p-5 flex items-center justify-between transition-all shadow-xl`}>
             <div className="flex items-center gap-4">
@@ -72,7 +80,7 @@ function CertificatesContent() {
               <div>
                 <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-1">{item.category}</p>
                 <h3 className="text-white font-bold text-xs md:text-sm leading-tight uppercase">{item.cert_name}</h3>
-                {item.uploaded && <p className="text-[9px] font-bold uppercase mt-1 text-blue-400/60 tracking-tighter text-blue-500">Exp: {item.uploaded.expiry_date === '2099-12-31' ? 'Indefinite' : item.uploaded.expiry_date}</p>}
+                {item.uploaded && <p className="text-[9px] font-bold uppercase mt-1 text-blue-500">Exp: {item.uploaded.expiry_date === '2099-12-31' ? 'Indefinite' : item.uploaded.expiry_date}</p>}
               </div>
             </div>
             <div className="flex gap-2">
