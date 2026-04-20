@@ -33,8 +33,8 @@ export default function AdminDashboard() {
     let progress = 0; let expired = 0; let warning = 0; let suit = 0; let boot = 0;
     
     if (matrix && matrix.length > 0 && myCerts) {
-      const posKey = Object.keys(matrix[0]).find(k => k.toLowerCase().trim() === u.position?.toLowerCase().trim())
-      const required = matrix.filter(m => posKey ? m[posKey] === 'P' : false)
+      const required = matrix.filter(m => m.position.toLowerCase() === u.position.toLowerCase() && m.requirement_type === 'P')
+      
       const okCerts = myCerts.filter(c => new Date(c.expiry_date) >= new Date() || c.expiry_date === '2099-12-31').length
       expired = myCerts.filter(c => new Date(c.expiry_date) < new Date() && c.expiry_date !== '2099-12-31').length
       warning = myCerts.filter(c => {

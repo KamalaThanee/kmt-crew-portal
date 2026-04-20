@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { User, FileBadge, ChevronRight, ShieldCheck, Clock } from 'lucide-react'
+import { User, FileBadge, ChevronRight, ShieldCheck, Clock, PlusCircle, History } from 'lucide-react'
 import Link from 'next/link'
 
 export default function CrewDashboard() {
@@ -18,18 +18,18 @@ export default function CrewDashboard() {
       setUser(u)
       fetchPersonalStats(u)
     }
-  }, [])
+  }, [router])
 
   async function fetchPersonalStats(u: any) {
-    const { data: matrix } = await supabase.from('cert_matrix').select('*')
+    // 🎯 ดึงเฉพาะ Matrix ของตัวเอง
+    const { data: matrix } = await supabase.from('cert_matrix').select('*').ilike('position', u.position)
     const { data: myCerts } = await supabase.from('crew_certs').select('*').eq('crew_id', u.id)
     const { data: myReqs } = await supabase.from('ppe_requests').select('*').eq('crew_id', u.id).order('created_at', { ascending: false })
 
     let progress = 0; let expired = 0; let suit = 0; let boot = 0;
     
-    if (matrix && matrix.length > 0 && myCerts) {
-      const posKey = Object.keys(matrix[0]).find(k => k.toLowerCase().trim() === u.position?.toLowerCase().trim())
-      const required = matrix.filter(m => posKey ? m[posKey] === 'P' : false)
+    if (matrix && myCerts) {
+      const required = matrix.filter(m => m.requirement_type === 'P')
       const okCerts = myCerts.filter(c => new Date(c.expiry_date) >= new Date() || c.expiry_date === '2099-12-31').length
       expired = myCerts.filter(c => new Date(c.expiry_date) < new Date() && c.expiry_date !== '2099-12-31').length
       progress = required.length > 0 ? Math.round((okCerts / required.length) * 100) : 0
@@ -58,19 +58,20 @@ export default function CrewDashboard() {
               <svg className="w-full h-full transform -rotate-90"><circle cx="48" cy="48" r="44" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/5"/><circle cx="48" cy="48" r="44" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray="276" strokeDashoffset={276 - (stats.progress/100)*276} className="text-blue-500 transition-all duration-1000"/></svg>
               <span className="absolute text-xl font-black">{stats.progress}%</span>
             </div>
-            <div><h3 className="text-lg font-black italic">My Readiness</h3><p className="text-slate-500 mt-1">Status: <span className={stats.expired > 0 ? 'text-red-500' : 'text-emerald-500'}>{stats.expired > 0 ? 'Expired Certs' : 'Ready'}</span></p></div>
+            <div><h3 className="text-lg font-black italic">My Readiness</h3><p className="text-slate-500 mt-1">Status: <span className={stats.expired > 0 ? 'text-red-500' : 'text-emerald-500'}>{stats.expired > 0 ? 'Action Required' : 'Ready'}</span></p></div>
           </div>
-          <ChevronRight className="text-slate-700"/>
+          {stats.expired > 0 && <div className="hidden md:block bg-red-500/20 text-red-500 px-4 py-2 rounded-2xl animate-pulse">⚠️ {stats.expired} Expired</div>}
+          <ChevronRight className="text-slate-700 md:hidden"/>
         </Link>
 
         <div className="grid grid-cols-2 gap-6">
-          <div className="bg-slate-900 border border-white/5 p-8 rounded-[40px] flex flex-col justify-between h-44 shadow-xl">
+          <div className="bg-slate-900 border border-white/5 p-8 rounded-[40px] flex flex-col justify-between shadow-xl">
              <div className="flex justify-between items-center"><p className="text-slate-500">PPE Usage</p><ShieldCheck className="text-emerald-500" size={20}/></div>
-             <div className="grid grid-cols-2 gap-2">
-                <div className="text-center"><p className="text-[7px] text-slate-600">SUIT</p><p className="text-sm font-black">{stats.suit}/2</p></div>
-                <div className="text-center"><p className="text-[7px] text-slate-600">BOOTS</p><p className="text-sm font-black">{stats.boot}/1</p></div>
+             <div className="grid grid-cols-2 gap-2 my-4">
+                <div className="text-center bg-black/30 p-2 rounded-xl border border-white/5"><p className="text-[7px] text-slate-600">SUIT</p><p className="text-sm font-black">{stats.suit}/2</p></div>
+                <div className="text-center bg-black/30 p-2 rounded-xl border border-white/5"><p className="text-[7px] text-slate-600">BOOTS</p><p className="text-sm font-black">{stats.boot}/1</p></div>
              </div>
-             <Link href="/ppe" className="text-blue-400 flex items-center gap-1">Request New <ChevronRight size={12}/></Link>
+             <Link href="/ppe" className="text-emerald-400 flex items-center gap-1 hover:underline">Request New <ChevronRight size={12}/></Link>
           </div>
           <Link href="/my-requests" className="bg-slate-900 border border-white/5 p-8 rounded-[40px] flex flex-col justify-between h-44 shadow-xl hover:border-blue-500 transition-all">
             <Clock className="text-blue-500" size={32}/>
