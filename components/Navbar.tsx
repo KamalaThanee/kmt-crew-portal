@@ -13,7 +13,6 @@ export default function Navbar() {
   const [showProfile, setShowProfile] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
   const [cartCount, setCartCount] = useState(0);
-  const [quotas, setQuotas] = useState({ suit: 0, boot: 0 });
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -23,7 +22,6 @@ export default function Navbar() {
       const u = JSON.parse(storedUser);
       setUser(u);
       fetchNotifications(u);
-      fetchQuotas(u.id);
     }
     const handleCartUpdate = (e: any) => setCartCount(e.detail);
     window.addEventListener('cart-updated', handleCartUpdate);
@@ -37,18 +35,6 @@ export default function Navbar() {
     const isAdmin = ["safety officer", "chief officer", "barge master"].includes(role);
     const { count } = await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', isAdmin ? 'pending' : 'approved');
     setNotifCount(count || 0);
-  };
-
-  const fetchQuotas = async (userId: string) => {
-    const currentYear = new Date().getFullYear();
-    const startOfYear = `${currentYear}-01-01T00:00:00Z`;
-    const { data: reqs } = await supabase.from('ppe_requests').select('item_name').eq('crew_id', userId).neq('status', 'rejected').gte('request_date', startOfYear);
-    if (reqs) {
-      setQuotas({ 
-        suit: reqs.filter(r => r.item_name.toLowerCase().includes('suit')).length, 
-        boot: reqs.filter(r => r.item_name.toLowerCase().includes('safety boot') && !r.item_name.toLowerCase().includes('rubber')).length 
-      });
-    }
   };
 
   if (!mounted || ['/login', '/register'].includes(pathname)) return null;
@@ -85,21 +71,8 @@ export default function Navbar() {
           <button onClick={() => setShowProfile(!showProfile)} className={`w-10 h-10 flex items-center justify-center rounded-full border transition-all ${showProfile ? 'bg-blue-600 text-white border-blue-400' : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'}`}><User size={18} /></button>
           
           {showProfile && (
-            <div className="absolute right-0 top-14 w-72 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[70] animate-in fade-in zoom-in duration-200">
+            <div className="absolute right-0 top-14 w-64 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[70] animate-in fade-in zoom-in duration-200">
               <div className="p-5 bg-slate-800/50 border-b border-white/5"><p className="text-white font-bold text-sm truncate">{user?.full_name}</p><p className="text-blue-400 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p></div>
-              
-              {/* 🎯 แถบโควตากลับมาแล้ว */}
-              <div className="p-5 space-y-4 border-b border-white/5 bg-slate-900/30 font-black uppercase text-[10px]">
-                <Link href="/my-requests" onClick={() => setShowProfile(false)} className="block group space-y-1.5">
-                  <div className="flex justify-between text-slate-400 group-hover:text-blue-400 transition-colors"><span className="flex items-center gap-1"><History size={10}/> Boiler Suit</span><span className={quotas.suit >= 2 ? "text-red-400" : "text-blue-400"}>{quotas.suit} / 2</span></div>
-                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5"><div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.suit >= 2 ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${Math.min((quotas.suit / 2) * 100, 100)}%` }}></div></div>
-                </Link>
-                <Link href="/my-requests" onClick={() => setShowProfile(false)} className="block group space-y-1.5">
-                  <div className="flex justify-between text-slate-400 group-hover:text-indigo-400 transition-colors"><span className="flex items-center gap-1"><History size={10}/> Safety Boots</span><span className={quotas.boot >= 1 ? "text-red-400" : "text-indigo-400"}>{quotas.boot} / 1</span></div>
-                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5"><div className={`h-1.5 rounded-full transition-all duration-700 ${quotas.boot >= 1 ? 'bg-red-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min((quotas.boot / 1) * 100, 100)}%` }}></div></div>
-                </Link>
-              </div>
-
               <div className="p-2 space-y-1">
                 {isAdmin && (<Link href="/admin/settings" onClick={() => setShowProfile(false)} className="w-full flex items-center gap-3 px-4 py-3 text-xs font-bold text-slate-300 hover:bg-white/5 rounded-xl transition-colors uppercase tracking-widest"><Settings size={16} /> Admin Panel</Link>)}
                 <button onClick={() => { localStorage.removeItem('kmt_user'); router.push('/login'); }} className="w-full flex items-center gap-3 px-4 py-3 text-xs text-red-400 font-black uppercase tracking-widest hover:bg-red-500/10 rounded-xl transition-colors"><LogOut size={16} /> Logout</button>
