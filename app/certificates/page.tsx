@@ -125,7 +125,7 @@ function CertificatesContent() {
             <div className="flex gap-2">
               {item.uploaded ? (
                 <>
-                  <a href={item.uploaded.file_url} target="_blank" className="p-2.5 bg-white/5 text-slate-400 rounded-xl hover:text-white border border-white/5"><Eye size={16}/></a>
+                  <a href={item.uploaded.file_url} target="_blank" rel="noopener noreferrer" className="p-2.5 bg-white/5 text-slate-400 rounded-xl hover:text-white border border-white/5"><Eye size={16}/></a>
                   <button onClick={() => router.push(`/certificates/upload?cert=${encodeURIComponent(item.cert_name)}`)} className="p-2.5 bg-blue-600/10 text-blue-500 rounded-xl border border-blue-500/20 hover:bg-blue-600"><RefreshCcw size={16}/></button>
                 </>
               ) : (
