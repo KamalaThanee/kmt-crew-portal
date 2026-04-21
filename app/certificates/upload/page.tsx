@@ -195,3 +195,11 @@ function UploadContent() {
     </div>
   )
 }
+
+export default function UploadCertPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-blue-500 font-black animate-pulse uppercase tracking-[0.3em] text-xs">Initializing Secure Upload...</div>}>
+      <UploadContent />
+    </Suspense>
+  )
+}
