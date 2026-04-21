@@ -4,9 +4,9 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { jsPDF } from 'jspdf'
-import { Upload, Loader2, CheckCircle, AlertTriangle, X } from 'lucide-react'
+import { Upload, Loader2, CheckCircle, AlertTriangle, X, FileText } from 'lucide-react'
 
-// 🎯 รายชื่อ AI สลับใช้งานตามลำดับ
+// 🎯 รายชื่อ AI
 const AI_MODELS = [
   { id: "nvidia/nemotron-nano-12b-v2-vl:free", provider: "openrouter", label: "Nvidia Nemotron (Free)" },
   { id: "gemini-2.5-flash", provider: "google", label: "Gemini 2.5 Flash (AI Studio)" },
@@ -15,7 +15,7 @@ const AI_MODELS = [
   { id: "google/gemini-2.5-flash-lite", provider: "openrouter", label: "Gemini 2.5 Flash Lite (Paid Fallback)" }
 ];
 
-// 🎯 ฟังก์ชันบีบอัดภาพแบบ Native (เสถียร 100% ไม่ต้องพึ่ง Library เสริม)
+// 🎯 ฟังก์ชันบีบอัดรูปภาพ
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -25,13 +25,12 @@ const compressImage = (file: File): Promise<string> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200; // ขนาดกำลังดีที่ AI อ่านออก
+        const MAX_WIDTH = 1200; 
         const scaleSize = MAX_WIDTH / img.width;
         canvas.width = MAX_WIDTH;
         canvas.height = img.height * scaleSize;
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        // บีบอัด JPEG คุณภาพ 70%
         resolve(canvas.toDataURL('image/jpeg', 0.7)); 
       };
       img.onerror = (err) => reject(err);
@@ -58,18 +57,17 @@ function UploadContent() {
     const selected = e.target.files?.[0]
     if (!selected) return
 
-    // ถ้าไม่ใช่รูปภาพ (เช่น PDF) ให้คนกรอกเองเลย (เพราะเราเขียน AI ให้อ่านจากรูปเท่านั้น)
-    if (!selected.type.startsWith('image/')) {
-      setFile(selected);
-      setPreview(null);
-      toast.info("PDF selected. Manual entry required.");
-      return;
-    }
-
-    const reader = new FileReader()
-    reader.onloadend = () => setPreview(reader.result as string)
-    reader.readAsDataURL(selected)
     setFile(selected)
+    const isPDF = selected.type === 'application/pdf';
+
+    // Preview
+    if (!isPDF) {
+      const reader = new FileReader()
+      reader.onloadend = () => setPreview(reader.result as string)
+      reader.readAsDataURL(selected)
+    } else {
+      setPreview(null) // ซ่อนพรีวิวถ้ารูปเป็น PDF
+    }
 
     setIsScanning(true)
     setScanResult(null)
@@ -78,12 +76,26 @@ function UploadContent() {
     try {
       const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
       
-      // 🎯 บีบอัดรูปก่อนส่ง
-      const base64 = await compressImage(selected);
+      // 🎯 เตรียม Base64 และกำหนดประเภทไฟล์ (Mime Type) ให้ถูกต้องก่อนส่ง AI
+      let base64 = "";
+      let mimeType = "image/jpeg";
+
+      if (isPDF) {
+         // อ่าน PDF เป็น Base64 ตรงๆ ไม่ต้องบีบอัด (เพราะไม่ใช่รูป)
+         mimeType = "application/pdf";
+         base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(selected);
+            reader.onloadend = () => resolve(reader.result as string);
+         });
+      } else {
+         // บีบอัดถ้ารูปภาพ
+         base64 = await compressImage(selected);
+      }
+
       let ocrSuccess = false;
       let tempLogs: string[] = [];
 
-      // 🔄 วนลูปยิง AI 5 ตัว
       for (let i = 0; i < AI_MODELS.length; i++) {
         const model = AI_MODELS[i];
         setActiveModelLabel(`Trying ${i + 1}/${AI_MODELS.length}: ${model.label}`);
@@ -93,6 +105,7 @@ function UploadContent() {
             method: 'POST',
             body: JSON.stringify({ 
               imageBase64: base64, 
+              mimeType: mimeType, // 🎯 ส่งประเภทไฟล์ไปด้วย AI จะได้รู้ว่าคืออะไร
               certName, 
               crewName: user.full_name,
               modelId: model.id,
@@ -103,18 +116,16 @@ function UploadContent() {
           const result = await res.json();
           if (!res.ok || result.error) throw new Error(result.error || `HTTP ${res.status}`);
 
-          // ✅ ถ้าสำเร็จ
           setScanResult(result);
           setFinalData({ issueDate: result.issueDate || '', expiryDate: result.expiryDate || '' });
           setActiveModelLabel(`Analyzed by: ${model.label}`);
           if (!result.personNameMatch) toast.warning("Name mismatch detected! Please check carefully.");
           
           ocrSuccess = true;
-          break; // ทะลุลูปออกไปเลย
+          break; 
 
         } catch (err: any) {
           tempLogs.push(`[${model.label}] ${err.message}`);
-          console.warn(`${model.label} failed:`, err.message);
         }
       }
 
@@ -126,7 +137,6 @@ function UploadContent() {
     } catch (err: any) {
       toast.error("AI Analysis Failed");
       setActiveModelLabel("AI Unavailable - Manual Entry Required");
-      // แม้จะพัง ก็ยอมให้คนกรอกข้อมูลต่อได้
     } finally {
       setIsScanning(false)
     }
@@ -140,7 +150,8 @@ function UploadContent() {
       const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
       
       let fileToUpload: Blob = file;
-      if (file.type.includes('image') && preview) {
+      // สร้าง PDF ทับเฉพาะกรณีที่อัปโหลดมาเป็น "รูปภาพ"
+      if (!file.type.includes('pdf') && preview) {
         const pdf = new jsPDF();
         const imgProps = pdf.getImageProperties(preview);
         const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -184,9 +195,9 @@ function UploadContent() {
           {preview ? (
             <img src={preview} className="absolute inset-0 w-full h-full object-contain p-6" alt="Preview" />
           ) : file ? (
-             <div className="flex flex-col items-center justify-center"><p className="text-emerald-500 font-bold uppercase">{file.name}</p><p className="text-slate-500 text-[10px] mt-2">PDF Selected</p></div>
+             <div className="flex flex-col items-center justify-center"><FileText size={48} className="text-emerald-500 mb-4"/><p className="text-emerald-500 font-bold uppercase text-xs">{file.name}</p><p className="text-slate-500 text-[10px] mt-2 tracking-widest uppercase">Document Selected</p></div>
           ) : (
-            <div className="flex flex-col items-center justify-center"><div className="p-5 bg-blue-600/10 rounded-full mb-4 group-hover:scale-110 transition-transform"><Upload className="text-blue-500" size={32} /></div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Tap to Scan Certificate</p></div>
+            <div className="flex flex-col items-center justify-center"><div className="p-5 bg-blue-600/10 rounded-full mb-4 group-hover:scale-110 transition-transform"><Upload className="text-blue-500" size={32} /></div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Tap to Upload Image or PDF</p></div>
           )}
           <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleFileChange} />
         </label>
@@ -198,7 +209,6 @@ function UploadContent() {
           </div>
         )}
 
-        {/* 🎯 แสดง Error Log สีแดง ถ้า AI พังทุกตัว */}
         {errorLog.length > 0 && !isScanning && (
           <div className="p-5 bg-red-950/50 border border-red-500/30 rounded-[24px] space-y-3">
             <p className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2"><AlertTriangle size={14}/> Error Diagnostic Log</p>
@@ -236,8 +246,4 @@ function UploadContent() {
       </div>
     </div>
   )
-}
-
-export default function UploadCertPage() {
-  return ( <Suspense fallback={<div>Loading...</div>}><UploadContent /></Suspense> )
 }
