@@ -26,7 +26,8 @@ function SettingsContent() {
   const [rules, setRules] = useState<any[]>([])
   
   const [searchTerm, setSearchTerm] = useState('')
-  const [filterMode, setFilterMode] = useState('all') // 🎯 all, ok, warning, action, 90days, expired
+  const [filterMode, setFilterMode] = useState('all') 
+  const [filterCert, setFilterCert] = useState('all') // 🎯 กรองตามชื่อใบเซอร์
 
   const [editingCrew, setEditingCrew] = useState<any>(null)
   const [isEditCrewOpen, setIsEditCrewOpen] = useState(false)
@@ -90,6 +91,13 @@ function SettingsContent() {
     .filter(crew => {
       const matchesSearch = crew.full_name.toLowerCase().includes(searchTerm.toLowerCase());
       if (!matchesSearch) return false;
+      
+      // 🎯 กรองตามชื่อใบเซอร์ (ถ้าเลือก)
+      if (filterCert !== 'all') {
+        const hasSpecificCert = crew.certData.list.some((c:any) => normalize(c.cert_name) === normalize(filterCert) && c.status !== 'missing');
+        if (!hasSpecificCert) return false;
+      }
+
       if (filterMode === 'all') return true;
       if (filterMode === 'ok') return crew.certData.progress === 100 && crew.certData.expired === 0;
       if (filterMode === 'warning') return crew.certData.warning > 0 && crew.certData.expired === 0;
@@ -98,7 +106,7 @@ function SettingsContent() {
       if (filterMode === 'expired') return crew.certData.expired > 0;
       return true;
     })
-  }, [crews, searchTerm, filterMode, certMatrix, allCrewCerts])
+  }, [crews, searchTerm, filterMode, filterCert, certMatrix, allCrewCerts])
 
   const crewSummary = useMemo(() => {
     const all = crews.map(c => getCrewCertDetails(c));
@@ -108,11 +116,29 @@ function SettingsContent() {
       warning: all.filter(c => c.warning > 0 && c.expired === 0).length,
       action: all.filter(c => c.progress < 100 || c.expired > 0).length,
       days90: all.filter(c => c.warning > 0).length,
-      expired: all.filter(c => c.expired > 0).length
+      expired: all.filter(c => c.expired > 0).length,
+      missing: all.filter(c => c.progress < 100 && c.expired === 0 && c.warning === 0).length // ขาดใบ
     }
   }, [crews, certMatrix, allCrewCerts])
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse uppercase">Loading...</div>
+  const allUniqueCerts = useMemo(() => [...new Set(certMatrix.map(m => m.cert_name))].sort(), [certMatrix])
+
+  const handleUpdateCrew = async () => {
+    const { error } = await supabase.from('crews').update({
+      full_name: editingCrew.full_name, position: editingCrew.position,
+      suit_size: editingCrew.suit_size, suit_color: editingCrew.suit_color, boot_size: editingCrew.boot_size
+    }).eq('id', editingCrew.id)
+    if (!error) { toast.success('Profile Updated'); setIsEditCrewOpen(false); fetchData(); }
+  }
+
+  const handleResetPin = async (id: string, name: string) => {
+    if (confirm(`Reset PIN for ${name}?`)) {
+      await supabase.from('crews').update({ pin: null, registered: false }).eq('id', id);
+      fetchData(); toast.success('PIN Reset');
+    }
+  }
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse uppercase">Loading Admin Panel...</div>
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans pb-32 pt-20 px-4 md:px-8 text-[10px] uppercase font-bold">
@@ -136,26 +162,33 @@ function SettingsContent() {
               <div className="animate-in fade-in space-y-8">
                 <h2 className="text-2xl font-black italic text-white leading-none">Crew Master</h2>
                 
-                {/* 🎯 สถิติ 6 ช่องแบบในรูปที่คุณส่งมา */}
+                {/* 🎯 สถิติ 6 ช่องแบบธีมมืด (Glassmorphism) เข้ากับเว็บ */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                    {[
-                     { id: 'all', label: 'ทั้งหมด', val: crewSummary.total, color: 'border-blue-600', icon: '👥' },
-                     { id: 'ok', label: 'ครบถ้วน', val: crewSummary.ok, color: 'border-emerald-500', icon: '✅' },
-                     { id: 'warning', label: 'ใกล้หมด', val: crewSummary.warning, color: 'border-orange-500', icon: '⚠️' },
-                     { id: 'action', label: 'ต้องดำเนินการ', val: crewSummary.action, color: 'border-red-600', icon: '🚨' },
-                     { id: '90days', label: '90 วัน', val: crewSummary.days90, color: 'border-amber-400', icon: '📋' },
-                     { id: 'expired', label: 'หมดแล้ว', val: crewSummary.expired, color: 'border-red-500', icon: '❌' }
+                     { id: 'all', label: 'ทั้งหมด', val: crewSummary.total, color: 'border-blue-500', text: 'text-blue-500', icon: '👥' },
+                     { id: 'ok', label: 'ครบถ้วน', val: crewSummary.ok, color: 'border-emerald-500', text: 'text-emerald-500', icon: '✅' },
+                     { id: 'warning', label: 'ใกล้หมด', val: crewSummary.warning, color: 'border-orange-500', text: 'text-orange-500', icon: '⚠️' },
+                     { id: 'action', label: 'ต้องดำเนินการ', val: crewSummary.action, color: 'border-red-600', text: 'text-red-500', icon: '🚨' },
+                     { id: '90days', label: '90 วัน', val: crewSummary.days90, color: 'border-amber-400', text: 'text-amber-500', icon: '📋' },
+                     { id: 'expired', label: 'หมดแล้ว', val: crewSummary.expired, color: 'border-red-500', text: 'text-red-500', icon: '❌' }
                    ].map(tile => (
-                     <button key={tile.id} onClick={() => setFilterMode(tile.id)} className={`bg-white p-4 rounded-2xl border-t-4 ${tile.color} shadow-lg flex flex-col items-center justify-center transition-all active:scale-95 ${filterMode === tile.id ? 'ring-4 ring-blue-500/20' : 'opacity-80'}`}>
-                        <p className="text-2xl font-black text-slate-900">{tile.val}</p>
-                        <p className="text-[9px] font-bold text-slate-500 mt-1 whitespace-nowrap">{tile.icon} {tile.label}</p>
+                     <button key={tile.id} onClick={() => setFilterMode(tile.id)} className={`bg-black/30 p-4 rounded-2xl border-t-4 ${tile.color} shadow-lg flex flex-col items-center justify-center transition-all active:scale-95 ${filterMode === tile.id ? 'bg-white/10 ring-2 ring-white/20' : 'hover:bg-white/5'}`}>
+                        <p className={`text-2xl font-black ${tile.text}`}>{tile.val}</p>
+                        <p className="text-[9px] font-bold text-slate-400 mt-1 whitespace-nowrap">{tile.icon} {tile.label}</p>
                      </button>
                    ))}
                 </div>
 
-                <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
-                  <input type="text" placeholder="Search crew name..." className="w-full bg-black/50 border border-white/10 p-5 pl-12 rounded-[24px] outline-none focus:border-blue-500 transition-all text-sm font-bold" onChange={(e) => setSearchTerm(e.target.value)} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+                    <input type="text" placeholder="Search crew name..." className="w-full bg-black/50 border border-white/10 p-4 pl-12 rounded-[24px] outline-none focus:border-blue-500 transition-all text-sm font-bold" onChange={(e) => setSearchTerm(e.target.value)} />
+                  </div>
+                  {/* 🎯 Dropdown Filter ใบเซอร์ */}
+                  <select className="w-full bg-black/50 border border-white/10 p-4 rounded-[24px] outline-none text-blue-400 font-bold" value={filterCert} onChange={(e) => setFilterCert(e.target.value)}>
+                     <option value="all">🔍 Filter by Certificate...</option>
+                     {allUniqueCerts.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
 
                 <div className="space-y-3">
@@ -174,43 +207,43 @@ function SettingsContent() {
                       <ChevronRight className="text-slate-700 group-hover:text-blue-500"/>
                     </div>
                   ))}
+                  {enhancedCrews.length === 0 && <div className="text-center py-10 text-slate-500">No records found.</div>}
                 </div>
               </div>
             )}
-            {activeTab === 'inventory' && <div className="py-20 text-center text-slate-500">Inventory Section Loaded...</div>}
-            {activeTab === 'system' && <div className="py-20 text-center text-slate-500">System Section Loaded...</div>}
+            {activeTab === 'inventory' && <div className="py-20 text-center text-slate-500">Inventory Module Active</div>}
+            {activeTab === 'system' && <div className="py-20 text-center text-slate-500">System Config Active</div>}
           </div>
         </div>
       </div>
 
-      {/* 🛠️ MODAL: Edit Crew + CERT DEEP DIVE (คงเดิม) */}
+      {/* MODAL (คงเดิม ไม่เปลี่ยนแปลง) */}
       {isEditCrewOpen && editingCrew && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/95 flex items-center justify-center p-4 backdrop-blur-md">
+        <div className="fixed inset-0 z-[100] bg-slate-950/95 flex items-center justify-center p-4 md:p-6 backdrop-blur-md">
           <div className="bg-slate-900 border border-white/10 rounded-[40px] w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-            <div className="flex justify-between items-center border-b border-white/5 p-8 shrink-0">
+            <div className="flex justify-between items-center border-b border-white/5 p-6 md:p-8 shrink-0">
                <h2 className="text-xl font-black italic">{editingCrew.full_name}</h2>
-               <button onClick={() => setIsEditCrewOpen(false)}><X size={24}/></button>
+               <button onClick={() => setIsEditCrewOpen(false)} className="p-2 bg-white/5 rounded-full"><X size={20}/></button>
             </div>
-            <div className="overflow-y-auto p-8 space-y-8 flex-1">
+            
+            <div className="overflow-y-auto p-6 md:p-8 space-y-8 flex-1">
                <div className="space-y-4">
-                  <h3 className="text-blue-500 tracking-widest border-b border-white/5 pb-2">Profile Details</h3>
-                  <p className="text-white text-xs">Position: {editingCrew.position}</p>
-                  <p className="text-white text-xs">Suit Size: {editingCrew.suit_size || '-'}</p>
-                  <p className="text-white text-xs">Boot Size: {editingCrew.boot_size || '-'}</p>
-               </div>
-               <div className="space-y-4">
-                  <h3 className="text-purple-500 tracking-widest border-b border-white/5 pb-2 flex justify-between items-center">Certificate Status <span>{editingCrew.certData.progress}%</span></h3>
+                  <h3 className="text-purple-500 tracking-widest border-b border-white/5 pb-2 flex justify-between items-center">
+                     Certificate Status
+                     <span className={`px-2 py-1 rounded-md text-[8px] ${editingCrew.certData.progress === 100 ? 'bg-emerald-500/20 text-emerald-500' : 'bg-amber-500/20 text-amber-500'}`}>COMPLIANCE {editingCrew.certData.progress}%</span>
+                  </h3>
                   <div className="space-y-2">
+                     {editingCrew.certData.list.length === 0 && <p className="text-center text-slate-600 py-4">No certificates required.</p>}
                      {editingCrew.certData.list.map((cert: any, idx: number) => (
                         <div key={idx} className="flex justify-between items-center bg-black/30 p-4 rounded-xl border border-white/5">
                            <div className="flex items-center gap-3">
-                              {cert.status === 'ok' ? <CheckCircle2 size={16} className="text-emerald-500"/> : cert.status === 'warning' ? <Clock size={16} className="text-amber-500"/> : cert.status === 'expired' ? <AlertTriangle size={16} className="text-red-500"/> : <X size={16} className="text-slate-600"/>}
+                              {cert.status === 'ok' ? <CheckCircle2 size={16} className="text-emerald-500"/> : cert.status === 'warning' ? <Clock size={16} className="text-amber-500"/> : cert.status === 'expired' ? <AlertTriangle size={16} className="text-red-500"/> : <XCircle size={16} className="text-slate-600"/>}
                               <div>
-                                 <p className="text-white text-[10px]">{cert.cert_name}</p>
+                                 <p className="text-white text-[10px] leading-tight">{cert.cert_name}</p>
                                  <p className={`text-[8px] mt-0.5 ${cert.status === 'ok' ? 'text-emerald-500' : cert.status === 'expired' ? 'text-red-500' : 'text-slate-500'}`}>{cert.uploaded ? `Exp: ${cert.uploaded.expiry_date === '2099-12-31' ? 'N/A' : cert.uploaded.expiry_date}` : 'Missing'}</p>
                               </div>
                            </div>
-                           {cert.uploaded && <a href={cert.uploaded.file_url} target="_blank" className="p-2 bg-white/5 rounded-lg text-blue-400 hover:bg-blue-600"><Eye size={14}/></a>}
+                           {cert.uploaded && <a href={cert.uploaded.file_url} target="_blank" className="p-2 bg-white/5 rounded-lg text-blue-400 hover:bg-blue-600 hover:text-white"><Eye size={14}/></a>}
                         </div>
                      ))}
                   </div>
