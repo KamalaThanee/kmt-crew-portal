@@ -14,7 +14,8 @@ const AI_MODELS = [
   { id: "google/gemini-2.5-flash-lite", provider: "openrouter", label: "Gemini 2.5 Flash Lite (Paid Fallback)" }
 ];
 
-const compressImage = (file: File): Promise<string> => {
+// 🎯 Ultra Compress: ลดความกว้างเหลือ 800px และคุณภาพ 0.6 (ขนาดไฟล์จะเล็กกว่า 150KB แน่นอน)
+const ultraCompressImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -23,13 +24,20 @@ const compressImage = (file: File): Promise<string> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200; 
-        const scaleSize = MAX_WIDTH / img.width;
-        canvas.width = MAX_WIDTH;
-        canvas.height = img.height * scaleSize;
+        const MAX_WIDTH = 800; // 🎯 ลดลงมาให้แน่ใจว่า AI อ่านผ่าน และ Payload ไม่เกิน
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7)); 
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.6)); 
       };
       img.onerror = (err) => reject(err);
     };
@@ -84,7 +92,8 @@ function UploadContent() {
             reader.onloadend = () => resolve(reader.result as string);
          });
       } else {
-         base64 = await compressImage(selected);
+         // 🎯 ใช้ Ultra Compress
+         base64 = await ultraCompressImage(selected);
       }
 
       let ocrSuccess = false;
@@ -108,10 +117,10 @@ function UploadContent() {
             })
           });
 
-          // 🎯 ถ้า Server ส่ง HTML (Error ฝั่ง Vercel) กลับมา แทนที่จะเป็น JSON ให้ดักจับและข้ามเลย
+          // ดักจับ Error ที่เป็น HTML (Payload Too Large)
           const contentType = res.headers.get("content-type");
           if (!contentType || !contentType.includes("application/json")) {
-             throw new Error("Route Error: API did not return JSON");
+             throw new Error("Payload too large or API route missing");
           }
 
           const result = await res.json();
@@ -120,7 +129,7 @@ function UploadContent() {
           setScanResult(result);
           setFinalData({ issueDate: result.issueDate || '', expiryDate: result.expiryDate || '' });
           setActiveModelLabel(`Analyzed by: ${model.label}`);
-          if (!result.personNameMatch) toast.warning("Name mismatch detected! Please check carefully.");
+          if (!result.personNameMatch) toast.warning("Name mismatch detected!");
           
           ocrSuccess = true;
           break; 
@@ -146,10 +155,8 @@ function UploadContent() {
   const handleSave = async () => {
     if (!file || !finalData.issueDate || !finalData.expiryDate) return toast.error('Please complete all dates');
     setIsSaving(true);
-
     try {
       const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
-      
       let fileToUpload: Blob = file;
       if (!file.type.includes('pdf') && preview) {
         const pdf = new jsPDF();
@@ -167,7 +174,6 @@ function UploadContent() {
 
       const { error: uploadError } = await supabase.storage.from('crew-certificates').upload(filePath, fileToUpload, { upsert: true });
       if (uploadError) throw uploadError;
-
       const { data: { publicUrl } } = supabase.storage.from('crew-certificates').getPublicUrl(filePath);
 
       await supabase.from('crew_certs').upsert({
@@ -176,11 +182,8 @@ function UploadContent() {
 
       toast.success("Certificate saved successfully!");
       router.push('/certificates');
-    } catch (err) {
-      toast.error("Save failed. Please try again.");
-    } finally {
-      setIsSaving(false);
-    }
+    } catch (err) { toast.error("Save failed. Please try again."); } 
+    finally { setIsSaving(false); }
   }
 
   return (
@@ -192,36 +195,21 @@ function UploadContent() {
 
       <div className="space-y-6">
         <label className="flex flex-col items-center justify-center w-full h-72 border-2 border-dashed border-white/10 rounded-[40px] cursor-pointer hover:bg-white/5 transition-all relative overflow-hidden bg-slate-900 group">
-          {preview ? (
-            <img src={preview} className="absolute inset-0 w-full h-full object-contain p-6" alt="Preview" />
-          ) : file ? (
-             <div className="flex flex-col items-center justify-center"><FileText size={48} className="text-emerald-500 mb-4"/><p className="text-emerald-500 font-bold uppercase text-xs text-center max-w-[80%] truncate">{file.name}</p><p className="text-slate-500 text-[10px] mt-2 tracking-widest uppercase">Document Selected</p></div>
-          ) : (
-            <div className="flex flex-col items-center justify-center"><div className="p-5 bg-blue-600/10 rounded-full mb-4 group-hover:scale-110 transition-transform"><Upload className="text-blue-500" size={32} /></div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Tap to Upload Image or PDF</p></div>
-          )}
+          {preview ? <img src={preview} className="absolute inset-0 w-full h-full object-contain p-6" alt="Preview" /> : file ? <div className="flex flex-col items-center justify-center"><FileText size={48} className="text-emerald-500 mb-4"/><p className="text-emerald-500 font-bold uppercase text-xs text-center max-w-[80%] truncate">{file.name}</p></div> : <div className="flex flex-col items-center justify-center"><div className="p-5 bg-blue-600/10 rounded-full mb-4 group-hover:scale-110 transition-transform"><Upload className="text-blue-500" size={32} /></div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Tap to Upload</p></div>}
           <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleFileChange} />
         </label>
 
-        {isScanning && (
-          <div className="flex flex-col items-center justify-center gap-3 p-8 bg-blue-600/5 border border-blue-500/10 rounded-[32px] animate-pulse">
-            <Loader2 className="animate-spin text-blue-500" size={32} />
-            <p className="text-xs font-black text-blue-400 uppercase tracking-widest text-center">{activeModelLabel}</p>
-          </div>
-        )}
+        {isScanning && <div className="flex flex-col items-center justify-center gap-3 p-8 bg-blue-600/5 border border-blue-500/10 rounded-[32px] animate-pulse"><Loader2 className="animate-spin text-blue-500" size={32} /><p className="text-xs font-black text-blue-400 uppercase tracking-widest text-center">{activeModelLabel}</p></div>}
 
         {errorLog.length > 0 && !isScanning && (
           <div className="p-5 bg-red-950/50 border border-red-500/30 rounded-[24px] space-y-3">
-            <p className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2"><AlertTriangle size={14}/> Error Diagnostic Log</p>
-            <ul className="text-[8px] text-red-300 font-mono space-y-1 bg-black/50 p-3 rounded-xl border border-red-500/20">
-              {errorLog.map((log, i) => <li key={i}>{log}</li>)}
-            </ul>
+            <p className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2"><AlertTriangle size={14}/> Diagnostic Log</p>
+            <ul className="text-[8px] text-red-300 font-mono space-y-1 bg-black/50 p-3 rounded-xl border border-red-500/20">{errorLog.map((log, i) => <li key={i}>{log}</li>)}</ul>
           </div>
         )}
 
         {file && !isScanning && activeModelLabel && !errorLog.length && (
-          <div className="text-center">
-             <span className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[9px] text-emerald-400 font-black uppercase tracking-widest inline-flex items-center gap-2"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />{activeModelLabel}</span>
-          </div>
+          <div className="text-center"><span className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[9px] text-emerald-400 font-black uppercase tracking-widest inline-flex items-center gap-2"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />{activeModelLabel}</span></div>
         )}
 
         {file && !isScanning && (
@@ -238,8 +226,8 @@ function UploadContent() {
                </div>
             )}
 
-            <button onClick={handleSave} disabled={isSaving} className="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-3xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-blue-600/20 active:scale-95 transition-all">
-              {isSaving ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />} Confirm & Save Certificate
+            <button onClick={handleSave} disabled={isSaving} className="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-3xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all">
+              {isSaving ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />} Confirm & Save
             </button>
           </div>
         )}
@@ -249,9 +237,5 @@ function UploadContent() {
 }
 
 export default function UploadCertPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-blue-500 font-black animate-pulse">LOADING...</div>}>
-      <UploadContent />
-    </Suspense>
-  )
+  return ( <Suspense fallback={<div>Loading...</div>}><UploadContent /></Suspense> )
 }
