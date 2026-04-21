@@ -60,13 +60,12 @@ function UploadContent() {
     setFile(selected)
     const isPDF = selected.type === 'application/pdf';
 
-    // Preview
     if (!isPDF) {
       const reader = new FileReader()
       reader.onloadend = () => setPreview(reader.result as string)
       reader.readAsDataURL(selected)
     } else {
-      setPreview(null) // ซ่อนพรีวิวถ้ารูปเป็น PDF
+      setPreview(null)
     }
 
     setIsScanning(true)
@@ -76,12 +75,10 @@ function UploadContent() {
     try {
       const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
       
-      // 🎯 เตรียม Base64 และกำหนดประเภทไฟล์ (Mime Type) ให้ถูกต้องก่อนส่ง AI
       let base64 = "";
       let mimeType = "image/jpeg";
 
       if (isPDF) {
-         // อ่าน PDF เป็น Base64 ตรงๆ ไม่ต้องบีบอัด (เพราะไม่ใช่รูป)
          mimeType = "application/pdf";
          base64 = await new Promise((resolve) => {
             const reader = new FileReader();
@@ -89,7 +86,6 @@ function UploadContent() {
             reader.onloadend = () => resolve(reader.result as string);
          });
       } else {
-         // บีบอัดถ้ารูปภาพ
          base64 = await compressImage(selected);
       }
 
@@ -105,7 +101,7 @@ function UploadContent() {
             method: 'POST',
             body: JSON.stringify({ 
               imageBase64: base64, 
-              mimeType: mimeType, // 🎯 ส่งประเภทไฟล์ไปด้วย AI จะได้รู้ว่าคืออะไร
+              mimeType: mimeType, 
               certName, 
               crewName: user.full_name,
               modelId: model.id,
@@ -150,7 +146,6 @@ function UploadContent() {
       const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
       
       let fileToUpload: Blob = file;
-      // สร้าง PDF ทับเฉพาะกรณีที่อัปโหลดมาเป็น "รูปภาพ"
       if (!file.type.includes('pdf') && preview) {
         const pdf = new jsPDF();
         const imgProps = pdf.getImageProperties(preview);
@@ -245,5 +240,14 @@ function UploadContent() {
         )}
       </div>
     </div>
+  )
+}
+
+// 🎯 ส่วนนี้ที่ลืมใส่ไปในครั้งก่อน ทำให้มัน Error! ตอนนี้กลับมาแล้วครับ
+export default function UploadCertPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-blue-500 font-black animate-pulse text-xs uppercase tracking-widest">Loading Upload System...</div>}>
+      <UploadContent />
+    </Suspense>
   )
 }
