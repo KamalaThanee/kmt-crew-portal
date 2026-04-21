@@ -66,7 +66,9 @@ export default function AdminDashboard() {
         <div className="lg:col-span-1 space-y-6">
            <h2 className="text-blue-500 tracking-widest flex items-center gap-2"><User size={14}/> My Personal Status</h2>
            <Link href="/certificates" className="block bg-slate-900 border border-blue-500/20 p-6 rounded-[32px] shadow-2xl hover:border-blue-500 transition-all">
-              <div className="flex justify-between items-center mb-4"><FileBadge className="text-blue-500" size={32}/><span className="text-2xl font-black">{personal.progress}%</span></div>
+              <div className="flex justify-between items-center mb-4"><FileBadge className="text-blue-500" size={32}/><span className="text-2xl font-black">{personal.progress}%</span>
+</div>
+<p className="text-blue-400 font-bold mb-4">{personal.okCount} / {personal.reqCount} Certs Valid</p></div>
               <p className="text-xs uppercase font-black">My Certificates</p>
               <div className="w-full bg-white/5 h-1.5 rounded-full mt-2 overflow-hidden"><div className="bg-blue-500 h-full" style={{ width: `${personal.progress}%` }}></div></div>
               {personal.expired > 0 && <p className="mt-3 text-red-500 animate-pulse">⚠️ {personal.expired} Expired</p>}
