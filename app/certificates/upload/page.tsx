@@ -104,7 +104,7 @@ function UploadContent() {
         setActiveModelLabel(`Trying ${i + 1}/${AI_MODELS.length}: ${model.label}`);
         
         try {
-          const res = await fetch('/api/ocr', {
+          const res = await fetch(window.location.origin + '/api/ocr', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
