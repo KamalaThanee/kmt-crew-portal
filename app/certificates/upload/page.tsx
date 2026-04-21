@@ -4,9 +4,9 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { jsPDF } from 'jspdf'
-import imageCompression from 'browser-image-compression'
 import { Upload, Loader2, CheckCircle, AlertTriangle, X } from 'lucide-react'
 
+// 🎯 รายชื่อ AI สลับใช้งานตามลำดับ
 const AI_MODELS = [
   { id: "nvidia/nemotron-nano-12b-v2-vl:free", provider: "openrouter", label: "Nvidia Nemotron (Free)" },
   { id: "gemini-2.5-flash", provider: "google", label: "Gemini 2.5 Flash (AI Studio)" },
@@ -14,6 +14,31 @@ const AI_MODELS = [
   { id: "gemini-2.5-flash-lite", provider: "google", label: "Gemini 2.5 Flash Lite (AI Studio)" },
   { id: "google/gemini-2.5-flash-lite", provider: "openrouter", label: "Gemini 2.5 Flash Lite (Paid Fallback)" }
 ];
+
+// 🎯 ฟังก์ชันบีบอัดภาพแบบ Native (เสถียร 100% ไม่ต้องพึ่ง Library เสริม)
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200; // ขนาดกำลังดีที่ AI อ่านออก
+        const scaleSize = MAX_WIDTH / img.width;
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scaleSize;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        // บีบอัด JPEG คุณภาพ 70%
+        resolve(canvas.toDataURL('image/jpeg', 0.7)); 
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
 
 function UploadContent() {
   const router = useRouter()
@@ -27,11 +52,19 @@ function UploadContent() {
   const [scanResult, setScanResult] = useState<any>(null)
   const [activeModelLabel, setActiveModelLabel] = useState<string>("") 
   const [finalData, setFinalData] = useState({ issueDate: '', expiryDate: '' })
-  const [errorLog, setErrorLog] = useState<string[]>([]) // 🎯 เก็บ Log ไว้โชว์หน้าเว็บถ้าพังหมด
+  const [errorLog, setErrorLog] = useState<string[]>([]) 
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0]
     if (!selected) return
+
+    // ถ้าไม่ใช่รูปภาพ (เช่น PDF) ให้คนกรอกเองเลย (เพราะเราเขียน AI ให้อ่านจากรูปเท่านั้น)
+    if (!selected.type.startsWith('image/')) {
+      setFile(selected);
+      setPreview(null);
+      toast.info("PDF selected. Manual entry required.");
+      return;
+    }
 
     const reader = new FileReader()
     reader.onloadend = () => setPreview(reader.result as string)
@@ -44,13 +77,13 @@ function UploadContent() {
 
     try {
       const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
-      // บีบอัดให้เล็กมากๆ เพื่อให้ส่งผ่านชัวร์ๆ
-      const compressedFile = await imageCompression(selected, { maxSizeMB: 0.2, maxWidthOrHeight: 1024, useWebWorker: true });
-      const base64 = await imageCompression.getDataUrlFromFile(compressedFile);
       
+      // 🎯 บีบอัดรูปก่อนส่ง
+      const base64 = await compressImage(selected);
       let ocrSuccess = false;
       let tempLogs: string[] = [];
 
+      // 🔄 วนลูปยิง AI 5 ตัว
       for (let i = 0; i < AI_MODELS.length; i++) {
         const model = AI_MODELS[i];
         setActiveModelLabel(`Trying ${i + 1}/${AI_MODELS.length}: ${model.label}`);
@@ -70,17 +103,18 @@ function UploadContent() {
           const result = await res.json();
           if (!res.ok || result.error) throw new Error(result.error || `HTTP ${res.status}`);
 
+          // ✅ ถ้าสำเร็จ
           setScanResult(result);
           setFinalData({ issueDate: result.issueDate || '', expiryDate: result.expiryDate || '' });
           setActiveModelLabel(`Analyzed by: ${model.label}`);
           if (!result.personNameMatch) toast.warning("Name mismatch detected! Please check carefully.");
           
           ocrSuccess = true;
-          break;
+          break; // ทะลุลูปออกไปเลย
 
         } catch (err: any) {
-          tempLogs.push(`${model.label} failed: ${err.message}`);
-          console.warn(`[${model.label}] failed:`, err.message);
+          tempLogs.push(`[${model.label}] ${err.message}`);
+          console.warn(`${model.label} failed:`, err.message);
         }
       }
 
@@ -92,6 +126,7 @@ function UploadContent() {
     } catch (err: any) {
       toast.error("AI Analysis Failed");
       setActiveModelLabel("AI Unavailable - Manual Entry Required");
+      // แม้จะพัง ก็ยอมให้คนกรอกข้อมูลต่อได้
     } finally {
       setIsScanning(false)
     }
@@ -100,15 +135,17 @@ function UploadContent() {
   const handleSave = async () => {
     if (!file || !finalData.issueDate || !finalData.expiryDate) return toast.error('Please complete all dates');
     setIsSaving(true);
+
     try {
       const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
+      
       let fileToUpload: Blob = file;
-      if (file.type.includes('image')) {
+      if (file.type.includes('image') && preview) {
         const pdf = new jsPDF();
-        const imgProps = pdf.getImageProperties(preview!);
+        const imgProps = pdf.getImageProperties(preview);
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-        pdf.addImage(preview!, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        pdf.addImage(preview, 'JPEG', 0, 0, pdfWidth, pdfHeight);
         fileToUpload = pdf.output('blob');
       }
 
@@ -144,7 +181,13 @@ function UploadContent() {
 
       <div className="space-y-6">
         <label className="flex flex-col items-center justify-center w-full h-72 border-2 border-dashed border-white/10 rounded-[40px] cursor-pointer hover:bg-white/5 transition-all relative overflow-hidden bg-slate-900 group">
-          {preview ? <img src={preview} className="absolute inset-0 w-full h-full object-contain p-6" alt="Preview" /> : <div className="flex flex-col items-center justify-center"><div className="p-5 bg-blue-600/10 rounded-full mb-4 group-hover:scale-110 transition-transform"><Upload className="text-blue-500" size={32} /></div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Tap to Scan Certificate</p></div>}
+          {preview ? (
+            <img src={preview} className="absolute inset-0 w-full h-full object-contain p-6" alt="Preview" />
+          ) : file ? (
+             <div className="flex flex-col items-center justify-center"><p className="text-emerald-500 font-bold uppercase">{file.name}</p><p className="text-slate-500 text-[10px] mt-2">PDF Selected</p></div>
+          ) : (
+            <div className="flex flex-col items-center justify-center"><div className="p-5 bg-blue-600/10 rounded-full mb-4 group-hover:scale-110 transition-transform"><Upload className="text-blue-500" size={32} /></div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Tap to Scan Certificate</p></div>
+          )}
           <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleFileChange} />
         </label>
 
@@ -152,15 +195,14 @@ function UploadContent() {
           <div className="flex flex-col items-center justify-center gap-3 p-8 bg-blue-600/5 border border-blue-500/10 rounded-[32px] animate-pulse">
             <Loader2 className="animate-spin text-blue-500" size={32} />
             <p className="text-xs font-black text-blue-400 uppercase tracking-widest text-center">{activeModelLabel}</p>
-            <p className="text-[9px] text-slate-600 font-bold uppercase tracking-tighter">Bypassing quotas...</p>
           </div>
         )}
 
-        {/* 🎯 ถ้า AI พังหมดทุกตัว จะโชว์ Log ให้แอดมินดูว่าพังเพราะอะไร */}
+        {/* 🎯 แสดง Error Log สีแดง ถ้า AI พังทุกตัว */}
         {errorLog.length > 0 && !isScanning && (
-          <div className="p-4 bg-red-950/50 border border-red-500/30 rounded-2xl space-y-2">
-            <p className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2"><AlertTriangle size={14}/> AI Diagnostics Log</p>
-            <ul className="text-[8px] text-red-300 font-mono space-y-1">
+          <div className="p-5 bg-red-950/50 border border-red-500/30 rounded-[24px] space-y-3">
+            <p className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2"><AlertTriangle size={14}/> Error Diagnostic Log</p>
+            <ul className="text-[8px] text-red-300 font-mono space-y-1 bg-black/50 p-3 rounded-xl border border-red-500/20">
               {errorLog.map((log, i) => <li key={i}>{log}</li>)}
             </ul>
           </div>
@@ -197,9 +239,5 @@ function UploadContent() {
 }
 
 export default function UploadCertPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-blue-500 font-black animate-pulse uppercase tracking-[0.3em] text-xs">Initializing Secure Upload...</div>}>
-      <UploadContent />
-    </Suspense>
-  )
+  return ( <Suspense fallback={<div>Loading...</div>}><UploadContent /></Suspense> )
 }
