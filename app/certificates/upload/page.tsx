@@ -14,8 +14,7 @@ const AI_MODELS = [
   { id: "google/gemini-2.5-flash-lite", provider: "openrouter", label: "Gemini 2.5 Flash Lite (Paid Fallback)" }
 ];
 
-// 🎯 Ultra Compress: ลดความกว้างเหลือ 800px และคุณภาพ 0.6 (ขนาดไฟล์จะเล็กกว่า 150KB แน่นอน)
-const ultraCompressImage = (file: File): Promise<string> => {
+const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -24,24 +23,15 @@ const ultraCompressImage = (file: File): Promise<string> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800; // 🎯 ลดลงมาให้แน่ใจว่า AI อ่านผ่าน และ Payload ไม่เกิน
-        let width = img.width;
-        let height = img.height;
-        
-        if (width > MAX_WIDTH) {
-          height = Math.round((height * MAX_WIDTH) / width);
-          width = MAX_WIDTH;
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
+        const MAX_WIDTH = 1000; 
+        const scaleSize = MAX_WIDTH / img.width;
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scaleSize;
         const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL('image/jpeg', 0.6)); 
       };
-      img.onerror = (err) => reject(err);
     };
-    reader.onerror = (err) => reject(err);
   });
 };
 
@@ -57,106 +47,56 @@ function UploadContent() {
   const [scanResult, setScanResult] = useState<any>(null)
   const [activeModelLabel, setActiveModelLabel] = useState<string>("") 
   const [finalData, setFinalData] = useState({ issueDate: '', expiryDate: '' })
-  const [errorLog, setErrorLog] = useState<string[]>([]) 
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0]
     if (!selected) return
-
     setFile(selected)
     const isPDF = selected.type === 'application/pdf';
-
     if (!isPDF) {
-      const reader = new FileReader()
-      reader.onloadend = () => setPreview(reader.result as string)
-      reader.readAsDataURL(selected)
-    } else {
-      setPreview(null)
-    }
+      const reader = new FileReader(); reader.onloadend = () => setPreview(reader.result as string); reader.readAsDataURL(selected);
+    } else { setPreview(null); }
 
-    setIsScanning(true)
-    setScanResult(null)
-    setErrorLog([])
-
+    setIsScanning(true); setScanResult(null);
     try {
       const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
-      
-      let base64 = "";
-      let mimeType = "image/jpeg";
-
+      let base64 = ""; let mimeType = isPDF ? "application/pdf" : "image/jpeg";
       if (isPDF) {
-         mimeType = "application/pdf";
-         base64 = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(selected);
-            reader.onloadend = () => resolve(reader.result as string);
-         });
-      } else {
-         // 🎯 ใช้ Ultra Compress
-         base64 = await ultraCompressImage(selected);
-      }
+        base64 = await new Promise((resolve) => {
+          const reader = new FileReader(); reader.readAsDataURL(selected); reader.onloadend = () => resolve(reader.result as string);
+        });
+      } else { base64 = await compressImage(selected); }
 
-      let ocrSuccess = false;
-      let tempLogs: string[] = [];
-
-      for (let i = 0; i < AI_MODELS.length; i++) {
-        const model = AI_MODELS[i];
-        setActiveModelLabel(`Trying ${i + 1}/${AI_MODELS.length}: ${model.label}`);
-        
+      let success = false;
+      for (const model of AI_MODELS) {
+        setActiveModelLabel(`Trying: ${model.label}`);
         try {
-          const res = await fetch(window.location.origin + '/api/ocr', {
+          const res = await fetch('/api/ocr', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              imageBase64: base64, 
-              mimeType: mimeType, 
-              certName, 
-              crewName: user.full_name,
-              modelId: model.id,
-              provider: model.provider
-            })
+            body: JSON.stringify({ imageBase64: base64, mimeType, certName, crewName: user.full_name, modelId: model.id, provider: model.provider })
           });
-
-          // ดักจับ Error ที่เป็น HTML (Payload Too Large)
-          const contentType = res.headers.get("content-type");
-          if (!contentType || !contentType.includes("application/json")) {
-             throw new Error("Payload too large or API route missing");
-          }
-
           const result = await res.json();
-          if (!res.ok || result.error) throw new Error(result.error || `HTTP ${res.status}`);
-
+          if (!res.ok || result.error) throw new Error(result.error);
           setScanResult(result);
           setFinalData({ issueDate: result.issueDate || '', expiryDate: result.expiryDate || '' });
           setActiveModelLabel(`Analyzed by: ${model.label}`);
-          if (!result.personNameMatch) toast.warning("Name mismatch detected!");
-          
-          ocrSuccess = true;
-          break; 
-
-        } catch (err: any) {
-          tempLogs.push(`[${model.label}] ${err.message}`);
-        }
+          success = true; break;
+        } catch (err) { console.warn(err); }
       }
-
-      if (!ocrSuccess) {
-        setErrorLog(tempLogs);
-        throw new Error("All AI models failed to respond.");
-      }
-
+      if (!success) throw new Error("AI models failed to respond");
     } catch (err: any) {
-      toast.error("AI Analysis Failed");
-      setActiveModelLabel("AI Unavailable - Manual Entry Required");
-    } finally {
-      setIsScanning(false)
-    }
+      toast.error(err.message);
+      setActiveModelLabel("Manual Entry Required");
+    } finally { setIsScanning(false); }
   }
 
   const handleSave = async () => {
-    if (!file || !finalData.issueDate || !finalData.expiryDate) return toast.error('Please complete all dates');
+    if (!file || !finalData.issueDate || !finalData.expiryDate) return toast.error('Please complete dates');
     setIsSaving(true);
     try {
-      const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
+      const user = JSON.parse(localStorage.getItem('kmt_user') || '{}');
+      if (!user.id) throw new Error("User session expired");
+
       let fileToUpload: Blob = file;
       if (!file.type.includes('pdf') && preview) {
         const pdf = new jsPDF();
@@ -167,68 +107,52 @@ function UploadContent() {
         fileToUpload = pdf.output('blob');
       }
 
-      const cleanCert = certName.replace(/[^a-zA-Z0-9]/g, '_');
-      const cleanName = user.full_name.replace(/[^a-zA-Z0-9]/g, '_');
-      const fileName = `${cleanCert}_${cleanName}_Exp${finalData.expiryDate}.pdf`;
-      const filePath = `${user.full_name}/${fileName}`;
+      // 🎯 ล้างชื่อไฟล์และโฟลเดอร์ให้ปลอดภัย (ลบเว้นวรรคและจุด)
+      const safeUserName = user.full_name.replace(/[^a-zA-Z0-9]/g, '_');
+      const safeCertName = certName.replace(/[^a-zA-Z0-9]/g, '_');
+      const fileName = `${safeCertName}_${Date.now()}.pdf`;
+      const filePath = `${safeUserName}/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage.from('crew-certificates').upload(filePath, fileToUpload, { upsert: true });
-      if (uploadError) throw uploadError;
+      // 1. Upload to Storage
+      const { error: storageError } = await supabase.storage.from('crew-certificates').upload(filePath, fileToUpload);
+      if (storageError) throw new Error(`Storage: ${storageError.message}`);
+
       const { data: { publicUrl } } = supabase.storage.from('crew-certificates').getPublicUrl(filePath);
 
-      await supabase.from('crew_certs').upsert({
+      // 2. Save to DB
+      const { error: dbError } = await supabase.from('crew_certs').upsert({
         crew_id: user.id, cert_name: certName, issue_date: finalData.issueDate, expiry_date: finalData.expiryDate, file_url: publicUrl
       });
+      if (dbError) throw new Error(`Database: ${dbError.message}`);
 
-      toast.success("Certificate saved successfully!");
+      toast.success("Saved successfully!");
       router.push('/certificates');
-    } catch (err) { toast.error("Save failed. Please try again."); } 
-    finally { setIsSaving(false); }
+    } catch (err: any) {
+      toast.error(err.message); // 🎯 จะโชว์เลยว่าพังที่จุดไหน
+    } finally { setIsSaving(false); }
   }
 
   return (
     <div className="p-6 max-w-xl mx-auto pb-32 pt-20 font-sans">
       <div className="flex justify-between items-center mb-8">
-        <div><h1 className="text-2xl font-black uppercase italic tracking-tighter">Upload Cert</h1><p className="text-blue-500 font-black text-[10px] uppercase mt-1 tracking-widest">{certName}</p></div>
-        <button onClick={() => router.push('/certificates')} className="p-3 bg-white/5 rounded-2xl hover:bg-white/10"><X/></button>
+        <div><h1 className="text-2xl font-black uppercase italic tracking-tighter">Upload Cert</h1><p className="text-blue-500 font-bold text-[10px] uppercase mt-1">{certName}</p></div>
+        <button onClick={() => router.push('/certificates')} className="p-2 bg-white/5 rounded-full"><X size={20}/></button>
       </div>
-
       <div className="space-y-6">
         <label className="flex flex-col items-center justify-center w-full h-72 border-2 border-dashed border-white/10 rounded-[40px] cursor-pointer hover:bg-white/5 transition-all relative overflow-hidden bg-slate-900 group">
-          {preview ? <img src={preview} className="absolute inset-0 w-full h-full object-contain p-6" alt="Preview" /> : file ? <div className="flex flex-col items-center justify-center"><FileText size={48} className="text-emerald-500 mb-4"/><p className="text-emerald-500 font-bold uppercase text-xs text-center max-w-[80%] truncate">{file.name}</p></div> : <div className="flex flex-col items-center justify-center"><div className="p-5 bg-blue-600/10 rounded-full mb-4 group-hover:scale-110 transition-transform"><Upload className="text-blue-500" size={32} /></div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Tap to Upload</p></div>}
+          {preview ? <img src={preview} className="absolute inset-0 w-full h-full object-contain p-6" /> : file ? <div className="text-center p-6"><FileText size={48} className="mx-auto text-emerald-500 mb-2"/><p className="text-emerald-500 font-bold text-xs truncate max-w-xs">{file.name}</p></div> : <div className="text-center"><Upload className="mx-auto text-blue-500 mb-4" size={32}/><p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tap to Scan Certificate</p></div>}
           <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleFileChange} />
         </label>
-
-        {isScanning && <div className="flex flex-col items-center justify-center gap-3 p-8 bg-blue-600/5 border border-blue-500/10 rounded-[32px] animate-pulse"><Loader2 className="animate-spin text-blue-500" size={32} /><p className="text-xs font-black text-blue-400 uppercase tracking-widest text-center">{activeModelLabel}</p></div>}
-
-        {errorLog.length > 0 && !isScanning && (
-          <div className="p-5 bg-red-950/50 border border-red-500/30 rounded-[24px] space-y-3">
-            <p className="text-[10px] font-black text-red-500 uppercase flex items-center gap-2"><AlertTriangle size={14}/> Diagnostic Log</p>
-            <ul className="text-[8px] text-red-300 font-mono space-y-1 bg-black/50 p-3 rounded-xl border border-red-500/20">{errorLog.map((log, i) => <li key={i}>{log}</li>)}</ul>
-          </div>
-        )}
-
-        {file && !isScanning && activeModelLabel && !errorLog.length && (
-          <div className="text-center"><span className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[9px] text-emerald-400 font-black uppercase tracking-widest inline-flex items-center gap-2"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />{activeModelLabel}</span></div>
-        )}
-
+        {isScanning && <div className="flex flex-col items-center justify-center gap-3 p-8 bg-blue-600/5 border border-blue-500/10 rounded-[32px] animate-pulse"><Loader2 className="animate-spin text-blue-500"/><p className="text-xs font-black text-blue-400 uppercase tracking-widest text-center">{activeModelLabel}</p></div>}
+        {file && !isScanning && activeModelLabel && <div className="text-center"><span className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[9px] text-emerald-400 font-black uppercase tracking-widest inline-flex items-center gap-2"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />{activeModelLabel}</span></div>}
         {file && !isScanning && (
           <div className="bg-slate-900 border border-white/10 rounded-[40px] p-8 space-y-6 animate-in slide-in-from-bottom-4 shadow-2xl">
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Issue Date</label><input type="date" className="w-full bg-black border border-white/10 p-4 rounded-2xl outline-none focus:border-blue-500 text-white font-bold" value={finalData.issueDate} onChange={e => setFinalData({...finalData, issueDate: e.target.value})} /></div>
               <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Expiry Date</label><input type="date" className="w-full bg-black border border-white/10 p-4 rounded-2xl outline-none focus:border-blue-500 text-white font-bold" value={finalData.expiryDate} onChange={e => setFinalData({...finalData, expiryDate: e.target.value})} /></div>
             </div>
-            
-            {scanResult && (
-               <div className={`p-5 rounded-3xl flex items-start gap-4 border ${scanResult.personNameMatch ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
-                  {scanResult.personNameMatch ? <CheckCircle className="text-emerald-500 shrink-0"/> : <AlertTriangle className="text-red-500 shrink-0"/>}
-                  <div className="space-y-1"><p className="text-[10px] font-black uppercase text-white">{scanResult.personNameMatch ? "Identity Confirmed" : "Name Mismatch Alert"}</p><p className="text-[10px] text-slate-400 font-bold leading-relaxed">{scanResult.note}</p></div>
-               </div>
-            )}
-
-            <button onClick={handleSave} disabled={isSaving} className="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-3xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all">
-              {isSaving ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />} Confirm & Save
-            </button>
+            {scanResult && <div className={`p-5 rounded-3xl flex items-start gap-4 border ${scanResult.personNameMatch ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>{scanResult.personNameMatch ? <CheckCircle className="text-emerald-500 shrink-0"/> : <AlertTriangle className="text-red-500 shrink-0"/>}<div className="space-y-1"><p className="text-[10px] font-black uppercase text-white">{scanResult.personNameMatch ? "Identity Confirmed" : "Name Mismatch Alert"}</p><p className="text-[10px] text-slate-400 font-bold leading-relaxed">{scanResult.note}</p></div></div>}
+            <button onClick={handleSave} disabled={isSaving} className="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-3xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all">{isSaving ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />} Confirm & Save</button>
           </div>
         )}
       </div>
