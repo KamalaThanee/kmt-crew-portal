@@ -6,7 +6,6 @@ import { toast } from 'sonner'
 import { jsPDF } from 'jspdf'
 import { Upload, Loader2, CheckCircle, AlertTriangle, X, FileText } from 'lucide-react'
 
-// 🎯 รายชื่อ AI
 const AI_MODELS = [
   { id: "nvidia/nemotron-nano-12b-v2-vl:free", provider: "openrouter", label: "Nvidia Nemotron (Free)" },
   { id: "gemini-2.5-flash", provider: "google", label: "Gemini 2.5 Flash (AI Studio)" },
@@ -15,7 +14,6 @@ const AI_MODELS = [
   { id: "google/gemini-2.5-flash-lite", provider: "openrouter", label: "Gemini 2.5 Flash Lite (Paid Fallback)" }
 ];
 
-// 🎯 ฟังก์ชันบีบอัดรูปภาพ
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -92,13 +90,17 @@ function UploadContent() {
       let ocrSuccess = false;
       let tempLogs: string[] = [];
 
+      // 🎯 สร้าง Base URL ให้ถูกต้อง ไม่ให้เป็น HTML
+      const apiUrl = window.location.origin + '/api/ocr';
+
       for (let i = 0; i < AI_MODELS.length; i++) {
         const model = AI_MODELS[i];
         setActiveModelLabel(`Trying ${i + 1}/${AI_MODELS.length}: ${model.label}`);
         
         try {
-          const res = await fetch('/api/ocr', {
+          const res = await fetch(apiUrl, {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
               imageBase64: base64, 
               mimeType: mimeType, 
@@ -108,6 +110,12 @@ function UploadContent() {
               provider: model.provider
             })
           });
+
+          // 🎯 ถ้า Response ไม่ใช่ JSON ให้พังเลย จะได้ไม่เกิดบั๊ก "Unexpected token <"
+          const contentType = res.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+             throw new Error("Server did not return JSON. Route might be broken.");
+          }
 
           const result = await res.json();
           if (!res.ok || result.error) throw new Error(result.error || `HTTP ${res.status}`);
@@ -190,7 +198,7 @@ function UploadContent() {
           {preview ? (
             <img src={preview} className="absolute inset-0 w-full h-full object-contain p-6" alt="Preview" />
           ) : file ? (
-             <div className="flex flex-col items-center justify-center"><FileText size={48} className="text-emerald-500 mb-4"/><p className="text-emerald-500 font-bold uppercase text-xs">{file.name}</p><p className="text-slate-500 text-[10px] mt-2 tracking-widest uppercase">Document Selected</p></div>
+             <div className="flex flex-col items-center justify-center"><FileText size={48} className="text-emerald-500 mb-4"/><p className="text-emerald-500 font-bold uppercase text-xs text-center max-w-[80%] truncate">{file.name}</p><p className="text-slate-500 text-[10px] mt-2 tracking-widest uppercase">Document Selected</p></div>
           ) : (
             <div className="flex flex-col items-center justify-center"><div className="p-5 bg-blue-600/10 rounded-full mb-4 group-hover:scale-110 transition-transform"><Upload className="text-blue-500" size={32} /></div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Tap to Upload Image or PDF</p></div>
           )}
@@ -243,10 +251,9 @@ function UploadContent() {
   )
 }
 
-// 🎯 ส่วนนี้ที่ลืมใส่ไปในครั้งก่อน ทำให้มัน Error! ตอนนี้กลับมาแล้วครับ
 export default function UploadCertPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-blue-500 font-black animate-pulse text-xs uppercase tracking-widest">Loading Upload System...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-blue-500 font-black animate-pulse">LOADING...</div>}>
       <UploadContent />
     </Suspense>
   )
