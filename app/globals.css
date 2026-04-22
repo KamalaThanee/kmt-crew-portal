@@ -3,25 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --background: #020617;
-  --foreground: #f1f5f9;
+  --background: #000000;
+  --foreground: #ffffff;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: 'Inter', system-ui, sans-serif;
-  letter-spacing: -0.01em;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* การ์ดสไตล์ Industrial เน้นความเรียบแต่ดูแข็งแรง */
-.industrial-card {
-  background-color: #0f172a;
-  border: 1px solid #1e293b;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-}
-
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: #020617; }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+/* ทำให้ Scrollbar เล็กและเท่ */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
