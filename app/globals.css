@@ -4,25 +4,24 @@
 
 :root {
   --background: #020617;
-  --foreground: #f8fafc;
+  --foreground: #f1f5f9;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
-  /* 🎯 ลายจุด Dot Grid สไตล์ High-tech */
-  background-image: radial-gradient(circle at 2px 2px, rgba(59, 130, 246, 0.15) 1px, transparent 0);
-  background-size: 32px 32px;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
+  letter-spacing: -0.01em;
 }
 
-/* เอฟเฟกต์เรืองแสงจางๆ สำหรับการ์ด */
-.glass-card {
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+/* การ์ดสไตล์ Industrial เน้นความเรียบแต่ดูแข็งแรง */
+.industrial-card {
+  background-color: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-thumb { background: #1e3a8a; border-radius: 10px; }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #020617; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
