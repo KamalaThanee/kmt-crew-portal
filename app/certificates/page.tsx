@@ -33,29 +33,40 @@ function CertificatesContent() {
     if (!user || !matrix.length) return []
     const uPosNorm = normalize(user.position);
     
-    let required = matrix.filter(row => normalize(row.position) === uPosNorm && row.requirement_type === 'P')
-      .map(m => ({ ...m, is_mandatory: true }))
+    // 🎯 1. ดึงรายการทั้งหมดที่เป็นของตำแหน่งนี้ (ทั้ง P และ O)
+    let myMatrixRows = matrix.filter(row => normalize(row.position) === uPosNorm && (row.requirement_type === 'P' || row.requirement_type === 'O'))
+      .map(row => ({
+        cert_name: row.cert_name,
+        category: row.category,
+        is_mandatory: row.requirement_type === 'P'
+      }));
 
-    const optionals = matrix.filter(row => normalize(row.position) === uPosNorm && row.requirement_type === 'O')
-      .map(m => ({ ...m, is_mandatory: false }))
-
+    // 🎯 2. Trigger Rules Logic
     rules.forEach(rule => {
-      if (myCerts.some(c => normalize(c.cert_name) === normalize(rule.trigger_cert))) {
-        if (!required.some(req => normalize(req.cert_name) === normalize(rule.required_cert))) {
-           const certInfo = matrix.find(m => normalize(m.cert_name) === normalize(rule.required_cert))
-           required.push({ 
-             cert_name: rule.required_cert, 
-             category: certInfo?.category || 'Safety', 
-             is_mandatory: true 
-           })
+      // เช็คว่าพนักงานมีใบ Trigger (เช่น OHLO/OHA) หรือยัง
+      const hasTrigger = myCerts.some(c => normalize(c.cert_name) === normalize(rule.trigger_cert))
+      
+      if (hasTrigger) {
+        // ถ้ามีใบ Trigger แล้ว ให้เช็คว่าใบที่ต้องการ (เช่น DG/AW139) อยู่ในลิสต์หรือยัง
+        const alreadyInListIdx = myMatrixRows.findIndex(m => normalize(m.cert_name) === normalize(rule.required_cert));
+        
+        if (alreadyInListIdx === -1) {
+           // ถ้ายังไม่มีในลิสต์เลย ให้ไปดึงข้อมูลหมวดหมู่จาก Matrix รวมมาใส่
+           const certInfo = matrix.find(m => normalize(m.cert_name) === normalize(rule.required_cert));
+           myMatrixRows.push({
+             cert_name: rule.required_cert,
+             category: certInfo?.category || 'Additional',
+             is_mandatory: true // บังคับทันทีเพราะเข้ากฎ Trigger
+           });
+        } else {
+           // ถ้ามีอยู่ในลิสต์แล้ว (อาจจะเป็น O) ให้เปลี่ยนสถานะเป็นบังคับ (P)
+           myMatrixRows[alreadyInListIdx].is_mandatory = true;
         }
       }
     })
 
-    const allExpected = [...required, ...optionals];
     const today = new Date()
-
-    return allExpected.map(req => {
+    return myMatrixRows.map(req => {
       const uploaded = myCerts.find(c => normalize(c.cert_name) === normalize(req.cert_name))
       let status = 'missing'; let daysLeft = -1;
       
@@ -68,8 +79,9 @@ function CertificatesContent() {
           else if (daysLeft <= 90) status = 'warning'
           else status = 'ok'
         }
-      } else if (!req.is_mandatory) {
-        status = 'optional'; 
+      } else {
+        // ถ้ายังไม่อัปโหลด ให้เช็คว่าเป็นใบที่บังคับมั้ย
+        status = req.is_mandatory ? 'missing' : 'optional';
       }
       
       return { ...req, uploaded, status, daysLeft }
@@ -89,7 +101,7 @@ function CertificatesContent() {
 
   const filteredList = certList.filter(c => filter === 'all' ? true : c.status === filter)
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse text-xs">LOADING VAULT...</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse">VAULT ACCESSING...</div>
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto pb-32 pt-20 font-sans text-white uppercase font-bold text-[10px]">
@@ -117,9 +129,10 @@ function CertificatesContent() {
                 item.status === 'ok' ? 'bg-emerald-500/10 text-emerald-500' : 
                 item.status === 'warning' ? 'bg-amber-500/10 text-amber-500' : 
                 item.status === 'expired' ? 'bg-red-500/10 text-red-500' : 
-                'bg-slate-800 text-slate-500'
+                item.status === 'optional' ? 'bg-slate-800 text-slate-500' :
+                'bg-slate-800 text-slate-600'
               }`}>
-                {item.status === 'missing' ? <AlertTriangle size={22}/> : item.status === 'expired' ? <XCircle size={22}/> : <CheckCircle2 size={22}/>}
+                {item.status === 'missing' ? <AlertTriangle size={22}/> : item.status === 'expired' ? <XCircle size={22}/> : item.status === 'optional' ? <Clock size={22}/> : <CheckCircle2 size={22}/>}
               </div>
               <div>
                 <p className={`text-[8px] font-black uppercase tracking-widest mb-1 ${item.is_mandatory ? 'text-blue-500' : 'text-slate-500'}`}>
