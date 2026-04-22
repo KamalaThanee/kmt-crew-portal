@@ -72,33 +72,31 @@ function SettingsContent() {
     if (!certMatrix.length) return { progress: 0, expired: 0, warning: 0, list: [] };
     const crewPosNorm = normalize(crew.position);
     
-    // 1. Mandatory
-    let required = certMatrix.filter(row => normalize(row.position) === crewPosNorm && row.requirement_type === 'P').map(m => ({ ...m, is_mandatory: true }));
+    // 🎯 1. ดึงทั้ง P และ O มาทำรายการ
+    let required = certMatrix.filter(row => normalize(row.position) === crewPosNorm && (row.requirement_type === 'P' || row.requirement_type === 'O'))
+      .map(m => ({ ...m, is_mandatory: m.requirement_type === 'P' }));
+
     const crewCerts = allCrewCerts.filter(c => String(c.crew_id) === String(crew.id));
     
-    // 2. Optionals
-    const optionals = certMatrix.filter(row => normalize(row.position) === crewPosNorm && row.requirement_type === 'O');
-    optionals.forEach(oc => {
-       if (crewCerts.some(c => normalize(c.cert_name) === normalize(oc.cert_name))) {
-          required.push({ ...oc, is_mandatory: false });
-       }
-    });
-
-    // 3. Triggers
+    // 🎯 2. Trigger Rules Logic
     (rules || []).forEach(rule => {
       if (crewCerts.some(c => normalize(c.cert_name) === normalize(rule.trigger_cert))) {
-        if (!required.some(req => normalize(req.cert_name) === normalize(rule.required_cert))) {
+        const idx = required.findIndex(req => normalize(req.cert_name) === normalize(rule.required_cert));
+        if (idx === -1) {
           required.push({ cert_name: rule.required_cert, is_mandatory: true, category: 'Triggered' });
+        } else {
+          required[idx].is_mandatory = true;
         }
       }
     });
 
     const today = new Date();
-    let okCount = 0; let expiredCount = 0; let warningCount = 0;
+    let okCount = 0; let expiredCount = 0; let warningCount = 0; let mandatoryCount = 0;
     
     const detailedList = required.map(req => {
+      if (req.is_mandatory) mandatoryCount++;
       const uploaded = crewCerts.find(c => normalize(c.cert_name) === normalize(req.cert_name));
-      let status = 'missing';
+      let status = req.is_mandatory ? 'missing' : 'optional';
       if (uploaded) {
         if (uploaded.expiry_date === '2099-12-31') { status = 'ok'; okCount++; }
         else {
@@ -112,8 +110,9 @@ function SettingsContent() {
       return { ...req, uploaded, status };
     });
 
-    const progress = required.length > 0 ? Math.round((okCount / required.length) * 100) : 0;
-    return { progress, expired: expiredCount, warning: warningCount, list: detailedList };
+    // Progress คิดจากใบ Mandatory เท่านั้น
+    const progress = mandatoryCount > 0 ? Math.round((okCount / mandatoryCount) * 100) : 0;
+    return { progress: Math.min(progress, 100), expired: expiredCount, warning: warningCount, list: detailedList };
   };
 
   const enhancedCrews = useMemo(() => {
@@ -122,7 +121,7 @@ function SettingsContent() {
       const matchesSearch = crew.full_name.toLowerCase().includes(searchTerm.toLowerCase());
       if (!matchesSearch) return false;
       if (filterCert !== 'all') {
-        if (!crew.certData.list.some((c:any) => normalize(c.cert_name) === normalize(filterCert) && c.status !== 'missing')) return false;
+        if (!crew.certData.list.some((c:any) => normalize(c.cert_name) === normalize(filterCert) && c.status !== 'missing' && c.status !== 'optional')) return false;
       }
       if (filterMode === 'all') return true;
       if (filterMode === 'ok') return crew.certData.progress === 100 && crew.certData.expired === 0;
@@ -163,7 +162,7 @@ function SettingsContent() {
     }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse uppercase">Loading Hub...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse uppercase">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans pb-32 pt-20 px-4 md:px-8 text-[10px] uppercase font-bold">
@@ -186,14 +185,15 @@ function SettingsContent() {
             {activeTab === 'crews' && (
               <div className="animate-in fade-in space-y-8">
                 <h2 className="text-xl font-black italic text-white mb-4">Crew Master</h2>
+                
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                    {[
-                     { id: 'all', label: 'ทั้งหมด', val: crewSummary.total, color: 'border-blue-500', text: 'text-blue-500', icon: '👥' },
-                     { id: 'ok', label: 'ครบถ้วน', val: crewSummary.ok, color: 'border-emerald-500', text: 'text-emerald-500', icon: '✅' },
-                     { id: 'warning', label: 'ใกล้หมด', val: crewSummary.warning, color: 'border-orange-500', text: 'text-orange-500', icon: '⚠️' },
-                     { id: 'action', label: 'ต้องดำเนินการ', val: crewSummary.action, color: 'border-red-600', text: 'text-red-500', icon: '🚨' },
-                     { id: '90days', label: '90 วัน', val: crewSummary.days90, color: 'border-amber-400', text: 'text-amber-500', icon: '📋' },
-                     { id: 'expired', label: 'หมดแล้ว', val: crewSummary.expired, color: 'border-red-500', text: 'text-red-500', icon: '❌' }
+                     { id: 'all', label: 'ทั้งหมด', val: crewSummary.total, color: 'border-blue-500', text: 'text-blue-500' },
+                     { id: 'ok', label: 'ครบถ้วน', val: crewSummary.ok, color: 'border-emerald-500', text: 'text-emerald-500' },
+                     { id: 'warning', label: 'ใกล้หมด', val: crewSummary.warning, color: 'border-orange-500', text: 'text-orange-500' },
+                     { id: 'action', label: 'ต้องดำเนินการ', val: crewSummary.action, color: 'border-red-600', text: 'text-red-500' },
+                     { id: '90days', label: '90 วัน', val: crewSummary.days90, color: 'border-amber-400', text: 'text-amber-500' },
+                     { id: 'expired', label: 'หมดแล้ว', val: crewSummary.expired, color: 'border-red-500', text: 'text-red-500' }
                    ].map(tile => (
                      <button key={tile.id} onClick={() => setFilterMode(tile.id)} className={`bg-black/30 p-4 rounded-2xl border-t-4 ${tile.color} shadow-lg flex flex-col items-center justify-center transition-all active:scale-95 ${filterMode === tile.id ? 'bg-white/10 ring-2 ring-white/20' : 'hover:bg-white/5'}`}>
                         <p className={`text-2xl font-black ${tile.text}`}>{tile.val}</p>
@@ -262,11 +262,11 @@ function SettingsContent() {
                   <h3 className="text-purple-500 tracking-widest border-b border-white/5 pb-2 flex justify-between items-center uppercase">Certificates <span>{editingCrew.certData.progress}%</span></h3>
                   <div className="space-y-2 pb-10">
                      {editingCrew.certData.list.map((cert: any, idx: number) => (
-                        <div key={idx} className="flex justify-between items-center bg-black/30 p-4 rounded-xl border border-white/5">
+                        <div key={idx} className={`flex justify-between items-center bg-black/30 p-4 rounded-xl border border-white/5 ${cert.status === 'optional' ? 'opacity-40' : ''}`}>
                            <div className="flex items-center gap-3">
-                              {cert.status === 'ok' ? <CheckCircle2 size={16} className="text-emerald-500"/> : cert.status === 'warning' ? <Clock size={16} className="text-amber-500"/> : cert.status === 'expired' ? <AlertTriangle size={16} className="text-red-500"/> : <XCircle size={16} className="text-slate-600"/>}
+                              {cert.status === 'ok' ? <CheckCircle2 size={16} className="text-emerald-500"/> : cert.status === 'warning' ? <Clock size={16} className="text-amber-500"/> : cert.status === 'expired' ? <AlertTriangle size={16} className="text-red-500"/> : cert.status === 'optional' ? <Clock size={16} className="text-slate-600"/> : <XCircle size={16} className="text-slate-600"/>}
                               <div>
-                                 <p className="text-white text-[10px] leading-tight">{cert.cert_name}</p>
+                                 <p className="text-white text-[10px] leading-tight flex items-center gap-2">{cert.cert_name} <span className="text-[7px] opacity-50">{cert.is_mandatory ? '(M)' : '(O)'}</span></p>
                                  <p className={`text-[8px] mt-0.5 ${cert.status === 'ok' ? 'text-emerald-500' : cert.status === 'expired' ? 'text-red-500' : 'text-slate-500'}`}>{cert.uploaded ? `Exp: ${cert.uploaded.expiry_date === '2099-12-31' ? 'N/A' : cert.uploaded.expiry_date}` : 'Missing'}</p>
                               </div>
                            </div>
