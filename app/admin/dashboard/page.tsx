@@ -49,11 +49,11 @@ export default function AdminDashboard() {
     let okCount = 0; let expired = 0; let warning = 0; let suit = 0; let boot = 0;
     const userPosNorm = normalize(u.position);
     const myReqRows = matrix.filter(row => normalize(row.position) === userPosNorm && row.requirement_type === 'P')
-    const myCerts = allCerts.filter(cc => cc.crew_id === u.id)
+    const myCertsPersonal = allCerts.filter(cc => cc.crew_id === u.id)
     const today = new Date()
 
     myReqRows.forEach(req => {
-      const c = myCerts.find(mc => normalize(mc.cert_name) === normalize(req.cert_name))
+      const c = myCertsPersonal.find(mc => normalize(mc.cert_name) === normalize(req.cert_name))
       if (c) {
         if (c.expiry_date === '2099-12-31') okCount++;
         else {
@@ -98,8 +98,9 @@ export default function AdminDashboard() {
       const months = Array.from(new Set(reqsAll.map(r => {
         const d = new Date(r.created_at); return `${d.toLocaleString('en-US', { month: 'short' })} ${d.getFullYear()}`;
       })));
-      setAvailableMonths(months.sort((a,b) => new Date(b).getTime() - new Date(a).getTime()));
-      if (!selectedMonth) setSelectedMonth(months[0]);
+      const sortedMonths = months.sort((a,b) => new Date(b).getTime() - new Date(a).getTime());
+      setAvailableMonths(sortedMonths);
+      if (!selectedMonth) setSelectedMonth(sortedMonths[0]);
     }
 
     setStats({ 
@@ -110,10 +111,11 @@ export default function AdminDashboard() {
       lastRestock: 'RESTOCK', fleetCompliance: totalFleetReq > 0 ? Math.round((totalFleetOk/totalFleetReq)*100) : 0, fleetExpired: vExpired, vesselWarning: vWarning,
       topAlerts: crewAlerts.sort((a,b) => b.expired - a.expired).slice(0, 3), recentReqs: pendingReqs
     })
-    setLoading(false); setIsRefreshing(false)
+    setLoading(false); setIsRefreshing(false);
   }
 
-  const topItems = useMemo(() => {
+  // 🎯 แก้ไขส่วนนี้ให้ TypeScript สบายใจ (ใช้ any และเช็คความยาว)
+  const topItems: any[] = useMemo(() => {
     if (!selectedMonth) return [];
     const filtered = requests.filter(r => `${new Date(r.created_at).toLocaleString('en-US', { month: 'short' })} ${new Date(r.created_at).getFullYear()}` === selectedMonth && r.status !== 'rejected');
     const itemMap: any = {};
@@ -126,7 +128,7 @@ export default function AdminDashboard() {
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-24 font-sans text-white uppercase font-bold text-[10px]">
       <div className="mb-10 flex justify-between items-center">
-        <div><h1 className="text-3xl font-black italic text-white">Dashboard</h1><p className="text-orange-500 tracking-[0.2em] mt-1">Industrial Control Panel</p></div>
+        <div><h1 className="text-3xl font-black italic text-white leading-none">Dashboard</h1><p className="text-orange-500 tracking-[0.2em] mt-1">Industrial Control Panel</p></div>
         <div className="flex gap-2">
           <button onClick={() => setShowReport(true)} className="p-3 bg-orange-600/10 border border-orange-500/20 text-orange-500 rounded-2xl active:scale-90 transition-all"><PieChart size={20}/></button>
           <button onClick={() => fetchAdminStats(user)} className="p-3 bg-orange-600/10 border border-orange-500/20 text-orange-500 rounded-2xl active:scale-90 transition-all"><RefreshCw className={isRefreshing ? 'animate-spin' : ''} size={20}/></button>
@@ -136,15 +138,15 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-1 space-y-6">
            <h2 className="text-zinc-500 tracking-widest flex items-center gap-2 mb-2 uppercase text-[9px]"><User size={14}/> My Profile</h2>
-           <Link href="/certificates" className="block bg-zinc-900/30 border border-orange-500/20 p-6 rounded-[32px] hover:border-orange-500 transition-all group">
+           <Link href="/certificates" className="block bg-zinc-900/30 border border-orange-500/20 p-6 rounded-[32px] hover:border-orange-500 transition-all group shadow-2xl">
               <div className="flex justify-between items-center mb-6">
                  <div className="relative w-16 h-16 flex items-center justify-center"><svg className="w-full h-full transform -rotate-90"><circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-white/5"/><circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray="176" strokeDashoffset={176 - (stats.myCertProgress/100)*176} className="text-orange-500"/></svg><span className="absolute text-[10px] font-black">{stats.myCertProgress}%</span></div>
-                 <div className="text-right"><p className="text-white text-lg">Certs</p><p className="text-orange-500">{stats.myExpired} Expired</p></div>
+                 <div className="text-right"><p className="text-white text-lg font-black uppercase">Certs</p><p className="text-orange-500">{stats.myExpired} Expired</p></div>
               </div>
            </Link>
-           <div className="bg-zinc-900/30 border border-orange-500/10 p-6 rounded-[32px] space-y-4">
+           <div className="bg-zinc-900/30 border border-orange-500/10 p-6 rounded-[32px] space-y-4 shadow-xl">
               <p className="text-zinc-500">My PPE Usage</p>
-              <div className="flex gap-4"><div className="flex-1 text-center"><p className="text-[7px] text-zinc-600">SUIT</p><p className="text-sm font-black">{stats.suitQuota}/2</p></div><div className="flex-1 text-center"><p className="text-[7px] text-zinc-600">BOOTS</p><p className="text-sm font-black">{stats.bootQuota}/1</p></div></div>
+              <div className="flex gap-4"><div className="flex-1 text-center"><p className="text-[7px] text-zinc-600 uppercase">Suit</p><p className="text-sm font-black">{stats.suitQuota}/2</p></div><div className="flex-1 text-center"><p className="text-[7px] text-zinc-600 uppercase">Boots</p><p className="text-sm font-black">{stats.bootQuota}/1</p></div></div>
            </div>
         </div>
 
@@ -154,27 +156,31 @@ export default function AdminDashboard() {
               <Link href="/admin/approvals" className="bg-zinc-900/30 border border-orange-500/10 p-5 rounded-[32px] flex flex-col justify-between h-40 hover:border-orange-500 transition-all"><Clock className="text-orange-500" size={20}/><p className="text-2xl font-black">{stats.pendingPPE}</p><p className="text-zinc-500 text-[8px]">Pending</p></Link>
               <Link href="/admin/inventory" className="bg-zinc-900/30 border border-orange-500/10 p-5 rounded-[32px] flex flex-col justify-between h-40 hover:border-orange-500 transition-all"><AlertTriangle className="text-red-500" size={20}/><p className="text-2xl font-black">{stats.lowStock}</p><p className="text-zinc-500 text-[8px]">Low Stock</p></Link>
               <Link href="/admin/inventory" className="bg-zinc-900/30 border border-orange-500/10 p-5 rounded-[32px] flex flex-col justify-between h-40 hover:border-orange-500 transition-all"><Package className="text-blue-500" size={20}/><p className="text-2xl font-black">{stats.totalInventory}</p><p className="text-zinc-500 text-[8px]">Inventory</p></Link>
-              <Link href="/admin/restock" className="bg-zinc-900/30 border border-orange-500/10 p-5 rounded-[32px] flex flex-col justify-between h-40 hover:border-orange-500 transition-all"><Archive className="text-emerald-500" size={20}/><p className="text-lg font-black">{stats.lastRestock}</p><p className="text-zinc-500 text-[8px]">Management</p></Link>
+              <Link href="/admin/restock" className="bg-zinc-900/30 border border-orange-500/10 p-5 rounded-[32px] flex flex-col justify-between h-40 hover:border-orange-500 transition-all"><Archive className="text-emerald-500" size={20}/><p className="text-lg font-black truncate">{stats.lastRestock}</p><p className="text-zinc-500 text-[8px]">Inventory</p></Link>
               
               <Link href="/admin/settings?tab=crews" className="col-span-2 md:col-span-4 bg-zinc-900/30 border border-orange-500/20 p-8 rounded-[40px] flex flex-col md:flex-row items-center justify-between hover:border-orange-500 transition-all gap-6 shadow-2xl">
-                 <div className="flex items-center gap-6"><div className="w-20 h-20 bg-orange-600/10 rounded-[32px] flex items-center justify-center text-orange-500 font-black text-2xl border border-orange-500/20">{stats.fleetCompliance}%</div><div><p className="text-xl font-black text-white italic">Fleet Readiness</p><p className="text-zinc-500 mt-1 uppercase text-[8px]">Overall Compliance</p></div></div>
-                 <div className="flex gap-4"><div className="text-center border-r border-white/5 pr-4"><p className="text-red-500 text-xl font-black">{stats.fleetExpired}</p><p className="text-[7px] text-zinc-500">EXPIRED</p></div><div className="text-center pl-4"><p className="text-orange-500 text-xl font-black">{stats.vesselWarning}</p><p className="text-[7px] text-zinc-500">90 DAYS</p></div></div>
+                 <div className="flex items-center gap-6"><div className="w-20 h-20 bg-orange-600/10 rounded-[32px] flex items-center justify-center text-orange-500 font-black text-2xl border border-orange-500/20 shadow-inner">{stats.fleetCompliance}%</div><div><p className="text-xl font-black text-white italic uppercase">Fleet Readiness</p><p className="text-zinc-500 mt-1 uppercase text-[8px]">Overall Vessel Compliance</p></div></div>
+                 <div className="flex gap-4"><div className="text-center border-r border-white/5 pr-4"><p className="text-red-500 text-xl font-black">{stats.fleetExpired}</p><p className="text-[7px] text-zinc-500 uppercase">Expired</p></div><div className="text-center pl-4"><p className="text-orange-500 text-xl font-black">{stats.vesselWarning}</p><p className="text-[7px] text-zinc-500 uppercase">90 Days</p></div></div>
               </Link>
            </div>
         </div>
       </div>
 
       {showReport && (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col p-6 animate-in slide-in-from-bottom">
-           <div className="flex justify-between items-center mb-10"><h2 className="text-2xl font-black uppercase italic italic text-orange-500">Analysis</h2><button onClick={() => setShowReport(false)} className="p-3 bg-white/5 rounded-full"><X/></button></div>
-           <div className="space-y-6 max-w-sm mx-auto w-full">
-              {topItems.map(([name, count]: any, idx) => (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col p-6 animate-in slide-in-from-bottom duration-500">
+           <div className="flex justify-between items-center mb-10"><h2 className="text-2xl font-black uppercase italic italic text-orange-500 flex items-center gap-3"><BarChart3/> Consumption Analysis</h2><button onClick={() => setShowReport(false)} className="p-3 bg-white/5 rounded-full"><X/></button></div>
+           <div className="space-y-8 max-w-sm mx-auto w-full flex-1 overflow-y-auto pb-10">
+              <p className="text-center text-zinc-500 uppercase tracking-widest text-[9px] mb-4">Most Requested Items - {selectedMonth}</p>
+              {topItems.length > 0 ? topItems.map(([name, count]: any, idx: number) => (
                 <div key={idx} className="space-y-2">
-                  <div className="flex justify-between text-[11px] font-black uppercase text-white"><span>{name}</span><span className="text-orange-500">{count} Units</span></div>
-                  <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden"><div className="bg-orange-600 h-full rounded-full transition-all" style={{ width: `${(count / topItems[0][1]) * 100}%` }}></div></div>
+                  <div className="flex justify-between text-[10px] font-black uppercase text-white"><span>{name}</span><span className="text-orange-500">{count} Units</span></div>
+                  <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                    <div className="bg-orange-600 h-full rounded-full transition-all duration-1000" style={{ width: `${(count / topItems[0][1]) * 100}%` }}></div>
+                  </div>
                 </div>
-              ))}
+              )) : <p className="text-center text-zinc-700 py-20 font-black uppercase">No data available for this month</p>}
            </div>
+           <div className="p-6 border-t border-white/5 text-center"><p className="text-[9px] text-zinc-600 uppercase font-black tracking-widest italic">KMT Maritime Analytics Engine</p></div>
         </div>
       )}
     </div>
