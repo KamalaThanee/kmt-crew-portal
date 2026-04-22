@@ -36,14 +36,13 @@ export default function AdminDashboard() {
     const matrix = matrixRes.data || []; const allCerts = allCertsRes.data || [];
     const inventory = invRes.data || []; const lastRestock = restockRes.data || [];
 
-    // --- Personal Logic ---
     let okCount = 0; let expired = 0; let warning = 0; let suit = 0; let boot = 0;
     const userPosNorm = normalize(u.position);
     let myRequired = matrix.filter(row => normalize(row.position) === userPosNorm && row.requirement_type === 'P');
     const myCerts = allCerts.filter(cc => cc.crew_id === u.id);
     const today = new Date();
 
-    myRequired.forEach(req => {
+    myReqRows: myRequired.forEach(req => {
       const uploaded = myCerts.find(c => normalize(c.cert_name) === normalize(req.cert_name))
       if (uploaded) {
         if (uploaded.expiry_date === '2099-12-31') okCount++;
@@ -63,12 +62,12 @@ export default function AdminDashboard() {
       lowStock: inventory.filter(i => (i.quantity||0) <= (i.threshold||0)).length, 
       totalItems: inventory.reduce((a, b) => a + (b.quantity || 0), 0), 
       compliance: 85,
-      lastRestockDate: lastRestock.length > 0 ? new Date(lastRestock[0].created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'
+      lastRestockDate: lastRestock.length > 0 ? new Date(lastRestock[0].created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'
     });
     setLoading(false);
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse uppercase text-xs tracking-widest">Command Hub...</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse uppercase tracking-widest text-xs">Command Hub...</div>
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-20 font-sans text-white uppercase font-bold text-[10px]">
@@ -86,8 +85,15 @@ export default function AdminDashboard() {
                  <div className="text-right"><p className="text-blue-400 text-lg">{personal.okCount}/{personal.reqCount}</p><p className="text-[7px]">Certs</p></div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                 <div className="bg-red-500/10 p-2 rounded-xl text-center"><p className="text-red-500 text-xs">{personal.expired}</p><p className="text-[6px]">EXP</p></div>
-                 <div className="bg-amber-500/10 p-2 rounded-xl text-center"><p className="text-amber-500 text-xs">{personal.warning}</p><p className="text-[6px]">90D</p></div>
+                 <div className="bg-red-500/10 p-2 rounded-xl text-center border border-red-500/10"><p className="text-red-500 text-xs">{personal.expired}</p><p className="text-[6px]">EXP</p></div>
+                 <div className="bg-amber-500/10 p-2 rounded-xl text-center border border-amber-500/10"><p className="text-amber-500 text-xs">{personal.warning}</p><p className="text-[6px]">90D</p></div>
+              </div>
+           </Link>
+           <Link href="/my-requests" className="block bg-zinc-900 border border-white/5 p-6 rounded-[32px] space-y-4 hover:border-emerald-500 transition-all">
+              <div className="flex justify-between items-center"><p className="text-zinc-500 uppercase">My PPE</p><span className="text-blue-400 font-black">{personal.lastStatus}</span></div>
+              <div className="flex gap-4">
+                 <div className="flex-1 text-center"><p className="text-[7px] text-zinc-600 uppercase">Suit</p><p className="text-sm font-black">{personal.suit}/2</p></div>
+                 <div className="flex-1 text-center"><p className="text-[7px] text-zinc-600 uppercase">Boots</p><p className="text-sm font-black">{personal.boot}/1</p></div>
               </div>
            </Link>
         </div>
@@ -107,10 +113,17 @@ export default function AdminDashboard() {
                  <div className="flex justify-between items-start"><div className="bg-blue-500/20 p-2.5 rounded-xl text-blue-500 w-fit"><Package size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-blue-500"/></div>
                  <div><p className="text-2xl font-black">{vessel.totalItems}</p><p className="text-blue-500 uppercase text-[8px]">Total Stock</p></div>
               </Link>
-              {/* 🎯 แสดงวันที่รับของล่าสุดตรงนี้ */}
-              <Link href="/admin/inventory?action=restock" className="bg-zinc-900/40 border border-emerald-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-emerald-500 transition-all group">
+              {/* 🎯 แก้ไขลิงก์: ให้ไปที่แท็บ History ในหน้า Inventory */}
+              <Link href="/admin/inventory?action=restock&tab=history" className="bg-zinc-900/40 border border-emerald-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-emerald-500 transition-all group">
                  <div className="flex justify-between items-start"><div className="bg-emerald-500/20 p-2.5 rounded-xl text-emerald-500 w-fit"><Archive size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-emerald-500"/></div>
-                 <div><p className="text-sm font-black uppercase text-white truncate">{vessel.lastRestockDate}</p><p className="text-emerald-500 uppercase text-[8px]">Last Intake Date</p></div>
+                 <div><p className="text-sm font-black uppercase text-white truncate">{vessel.lastRestockDate}</p><p className="text-emerald-500 uppercase text-[8px]">Last Intake History</p></div>
+              </Link>
+
+              <Link href="/admin/settings?tab=crews" className="col-span-2 md:col-span-4 bg-zinc-900/40 border border-purple-500/20 p-8 rounded-[40px] flex flex-col md:flex-row items-center justify-between shadow-2xl hover:border-purple-500 transition-all gap-6">
+                 <div className="flex items-center gap-6">
+                    <div className="w-20 h-20 bg-purple-500/10 rounded-[32px] flex items-center justify-center text-purple-500 font-black text-2xl border border-purple-500/20 shadow-inner">{vessel.compliance}%</div>
+                    <div><p className="text-xl font-black text-white italic uppercase">Fleet Readiness</p><p className="text-zinc-500 mt-1 uppercase text-[8px]">Overall Certificate Compliance</p></div>
+                 </div>
               </Link>
            </div>
         </div>
