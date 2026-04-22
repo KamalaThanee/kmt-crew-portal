@@ -5,17 +5,25 @@
 :root {
   --background: #000000;
   --foreground: #ffffff;
+  --primary-orange: #f97316; /* Orange-500 */
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
-/* Scrollbar แบบบางเรียบหรู */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: #333; }
+/* เอฟเฟกต์เส้นขอบเรืองแสงสีส้ม */
+.orange-border-glow {
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  box-shadow: 0 0 15px rgba(249, 115, 22, 0.05);
+}
+
+.orange-border-glow:hover {
+  border: 1px solid rgba(249, 115, 22, 0.6);
+  box-shadow: 0 0 20px rgba(249, 115, 22, 0.1);
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: #f97316; border-radius: 10px; }
