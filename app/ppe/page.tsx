@@ -3,13 +3,18 @@ import { toast } from 'sonner';
 import { useState, useEffect, useMemo, Suspense, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
-import { HardHat, Headphones, Eye, Wind, Hand, Footprints, MoreHorizontal, ChevronDown, ChevronUp, Plus, AlertTriangle, Lock, Shirt } from 'lucide-react'
+import { HardHat, Headphones, Eye, Wind, Hand, Footprints, MoreHorizontal, ChevronDown, ChevronUp, Plus, AlertTriangle, Lock, Shirt, Users } from 'lucide-react'
 
 function PPEContent() {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [crews, setCrews] = useState<any[]>([])
+  
+  // 🎯 State สำหรับเก็บชื่อคนที่เราจะเบิกให้ (ค่าเริ่มต้นคือตัวเอง)
+  const [targetCrewId, setTargetCrewId] = useState<string>('')
+  
   const [inventory, setInventory] = useState<any[]>([])
   const [cart, setCart] = useState<any[]>([])
   const [quotas, setQuotas] = useState({ suit: 0, boot: 0 })
@@ -24,10 +29,11 @@ function PPEContent() {
     if (!uStr) { router.push('/login'); return; }
     const u = JSON.parse(uStr)
     setUser(u)
+    setTargetCrewId(u.id)
     
-    // 🎯 แก้ไข Check Admin (ต้องให้รองรับ Safety Officer ได้ชัวร์ๆ)
     const pos = (u.position || "").toLowerCase().trim()
-    setIsAdmin(["safety officer", "chief officer", "barge master"].includes(pos))
+    const isAdminCheck = ["safety officer", "chief officer", "barge master"].includes(pos)
+    setIsAdmin(isAdminCheck)
     
     loadCart()
 
@@ -35,8 +41,23 @@ function PPEContent() {
       const { data: inv } = await supabase.from('ppe_inventory').select('*').order('item_name')
       if (inv) setInventory(inv)
       
+      if (isAdminCheck) {
+        const { data: cr } = await supabase.from('crews').select('*').order('full_name')
+        if (cr) setCrews(cr)
+      }
+    }
+    fetchData()
+
+    window.addEventListener('cart-updated', loadCart)
+    return () => window.removeEventListener('cart-updated', loadCart)
+  }, [router, loadCart])
+
+  // 🎯 ดึงโควตาใหม่ทุกครั้งที่สลับชื่อพนักงาน
+  useEffect(() => {
+    async function fetchQuotas() {
+      if (!targetCrewId) return;
       const currentYear = new Date().getFullYear()
-      const { data: reqs } = await supabase.from('ppe_requests').select('items').eq('crew_id', u.id).neq('status', 'rejected').gte('created_at', `${currentYear}-01-01`)
+      const { data: reqs } = await supabase.from('ppe_requests').select('items').eq('crew_id', targetCrewId).neq('status', 'rejected').gte('created_at', `${currentYear}-01-01`)
       let sc = 0; let bc = 0;
       reqs?.forEach(r => {
         r.items?.forEach((i:any) => {
@@ -45,12 +66,24 @@ function PPEContent() {
         })
       })
       setQuotas({ suit: sc, boot: bc })
+      
+      // บันทึกเป้าหมายลง LocalStorage ให้ CartDrawer รู้
+      if (crews.length > 0 && targetCrewId !== user?.id) {
+         const tc = crews.find(c => c.id === targetCrewId)
+         localStorage.setItem('kmt_target_crew', JSON.stringify(tc))
+      } else {
+         localStorage.removeItem('kmt_target_crew')
+      }
     }
-    fetchData()
+    fetchQuotas()
+  }, [targetCrewId, crews])
 
-    window.addEventListener('cart-updated', loadCart)
-    return () => window.removeEventListener('cart-updated', loadCart)
-  }, [router, loadCart])
+  useEffect(() => {
+    if (mounted) {
+      localStorage.setItem('kmt_cart', JSON.stringify(cart))
+      window.dispatchEvent(new CustomEvent('cart-updated', { detail: cart.length }))
+    }
+  }, [cart, mounted])
 
   const categories = [
     { name: 'Head Protection', icon: <HardHat size={20}/>, keywords: ['helmet', 'hat'] },
@@ -73,6 +106,9 @@ function PPEContent() {
     return Object.values(groups)
   }, [inventory])
 
+  // ดึงข้อมูล Profile ของคนที่เรากำลังเบิกให้ (เผื่อเป็นแอดมิน)
+  const activeProfile = targetCrewId === user?.id ? user : crews.find(c => c.id === targetCrewId) || user
+
   const addToCart = (variant: any) => {
     const stock = Number(variant.quantity || 0)
     const inCartCount = cart.filter((i: any) => i.id === variant.id).length
@@ -88,21 +124,45 @@ function PPEContent() {
         const n = i.item_name.toLowerCase()
         return isSuit ? n.includes('suit') : (n.includes('safety boot') && !n.includes('rubber'))
       }).length
-      if (currentQuota + inCartItems >= limit) return toast.warning(`Quota limit reached (${limit}/year)`);
+      
+      // 🎯 ถ้าเป็นแอดมิน ยอมให้ทะลุโควตาได้ แต่มีเตือน
+      if (currentQuota + inCartItems >= limit) {
+         if (isAdmin) {
+            toast.warning(`Over quota (${limit}/year) - Bypassed by Admin`);
+         } else {
+            return toast.error(`Quota limit reached (${limit}/year)`);
+         }
+      }
     }
 
-    const newCart = [...cart, { ...variant, cartId: Date.now() }]
-    localStorage.setItem('kmt_cart', JSON.stringify(newCart))
-    window.dispatchEvent(new CustomEvent('cart-updated', { detail: newCart.length }))
+    setCart([...cart, { ...variant, cartId: Date.now() }])
     toast.success('Added to Cart')
   };
 
   if (!mounted || !user) return null
 
-  // 🎯 ตัด z-index ให้ต่ำลง ไม่ให้ไปทับ Navbar
   return (
     <div className="min-h-screen bg-black text-white pb-32 pt-28 px-4 font-sans relative z-0">
       <div className="max-w-md mx-auto space-y-4">
+        
+        {/* 🎯 แถบเลือกคนเบิก (แสดงเฉพาะแอดมิน) */}
+        {isAdmin && (
+          <div className="bg-zinc-900 border border-orange-500/30 p-5 rounded-[24px] mb-8 shadow-2xl">
+             <label className="text-[10px] font-black uppercase text-orange-500 tracking-widest flex items-center gap-2 mb-3"><Users size={14}/> Request On Behalf Of</label>
+             <select 
+               value={targetCrewId} 
+               onChange={(e) => { setTargetCrewId(e.target.value); setCart([]); localStorage.setItem('kmt_cart', '[]'); window.dispatchEvent(new CustomEvent('cart-updated', { detail: 0 })); }} 
+               className="w-full bg-black/50 border border-white/10 p-4 rounded-xl text-white outline-none focus:border-orange-500 font-bold uppercase text-xs"
+             >
+                <option value={user.id}>Myself ({user.full_name})</option>
+                <optgroup label="Crew Members">
+                   {crews.filter(c => c.id !== user.id).map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                </optgroup>
+             </select>
+             {targetCrewId !== user.id && <p className="text-[9px] text-zinc-500 mt-3 font-bold">⚠️ Quota and sizes will be based on the selected crew member.</p>}
+          </div>
+        )}
+
         {categories.map(cat => {
           const catItems: any = groupedInventory.filter((group: any) => {
             const n = group.name.toLowerCase()
@@ -111,11 +171,11 @@ function PPEContent() {
           if (catItems.length === 0) return null
           const isCatOpen = expandedCat === cat.name
           return (
-            <div key={cat.name} className={`rounded-[32px] border transition-all ${isCatOpen ? 'border-orange-500 bg-zinc-900 shadow-xl' : 'border-white/5 bg-zinc-900/50'}`}>
+            <div key={cat.name} className={`rounded-[32px] border transition-all ${isCatOpen ? 'border-orange-500 bg-zinc-900 shadow-[0_0_30px_rgba(249,115,22,0.1)]' : 'border-white/5 bg-zinc-900/50 hover:bg-zinc-900'}`}>
               <button onClick={() => setExpandedCat(isCatOpen ? null : cat.name)} className="w-full p-6 flex items-center justify-between outline-none">
                 <div className="flex items-center gap-4">
                   <div className={`p-3 rounded-2xl ${isCatOpen ? 'bg-orange-500 text-white' : 'bg-black text-zinc-500 border border-white/5'}`}>{cat.icon}</div>
-                  <span className={`text-sm font-black uppercase tracking-tighter ${isCatOpen ? 'text-white' : 'text-zinc-400'}`}>{cat.name}</span>
+                  <span className={`text-xs font-black uppercase tracking-tighter ${isCatOpen ? 'text-white' : 'text-zinc-400'}`}>{cat.name}</span>
                 </div>
                 {isCatOpen ? <ChevronUp size={20} className="text-orange-500"/> : <ChevronDown size={20} className="text-zinc-600" />}
               </button>
@@ -125,15 +185,15 @@ function PPEContent() {
                     const name = group.name.toLowerCase()
                     const isSuit = name.includes('suit'); const isBoot = name.includes('safety boot') && !name.includes('rubber');
                     const visibleVariants = group.variants.filter((v: any) => {
-                      if (isSuit) return String(v.size) === String(user.suit_size) && String(v.color) === String(user.suit_color);
-                      if (isBoot) return String(v.size) === String(user.boot_size);
+                      if (isSuit) return String(v.size) === String(activeProfile?.suit_size) && String(v.color) === String(activeProfile?.suit_color);
+                      if (isBoot) return String(v.size) === String(activeProfile?.boot_size);
                       return true;
                     })
                     if (visibleVariants.length === 0) return null;
                     return (
                       <div key={group.name} className="bg-black/40 rounded-2xl overflow-hidden border border-white/5">
                         <button onClick={() => setExpandedItem(expandedItem === group.name ? null : group.name)} className="w-full p-4 flex items-center justify-between text-left outline-none">
-                          <span className="text-[11px] font-black text-orange-400 uppercase tracking-widest">{group.name}</span>
+                          <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">{group.name}</span>
                           <ChevronDown size={14} className={`text-zinc-600 transition-transform ${expandedItem === group.name ? 'rotate-180' : ''}`} />
                         </button>
                         {expandedItem === group.name && (
@@ -141,6 +201,7 @@ function PPEContent() {
                             {visibleVariants.map((variant: any, vIdx: number) => {
                               const stock = Number(variant.quantity || 0)
                               const currentStock = stock - cart.filter((i: any) => i.id === variant.id).length
+                              const canAdd = currentStock > 0
                               return (
                                 <div key={vIdx} className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-zinc-900/30">
                                   <div className="flex flex-col">
@@ -155,7 +216,11 @@ function PPEContent() {
                                       )}
                                     </div>
                                   </div>
-                                  {currentStock > 0 ? <button onClick={() => addToCart(variant)} className="p-3 bg-orange-600 text-white rounded-xl shadow-lg active:scale-90 transition-all"><Plus size={16}/></button> : <div className="p-3 text-zinc-800"><Lock size={16}/></div>}
+                                  {canAdd ? (
+                                    <button onClick={() => addToCart(variant)} className="p-3 bg-orange-600 text-white rounded-xl shadow-lg active:scale-90 transition-all"><Plus size={16}/></button>
+                                  ) : (
+                                    <div className="p-3 text-zinc-800"><Lock size={16}/></div>
+                                  )}
                                 </div>
                               )
                             })}
@@ -175,5 +240,5 @@ function PPEContent() {
 }
 
 export default function PPEPage() {
-  return ( <Suspense fallback={<div className="min-h-screen bg-black text-orange-500 flex items-center justify-center">Loading...</div>}><PPEContent /></Suspense> )
+  return ( <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center text-orange-500 font-black animate-pulse">LOADING...</div>}><PPEContent /></Suspense> )
 }
