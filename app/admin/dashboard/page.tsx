@@ -1,50 +1,182 @@
 'use client'
-import { ShieldCheck, Package, Clock, AlertTriangle, RefreshCw, ChevronRight, ArrowUpRight } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { 
+  FileBadge, Users, User, AlertTriangle, ChevronRight, 
+  CheckCircle2, ShieldCheck, Package, RefreshCw, Clock, Activity, Archive, ArrowUpRight, BarChart3, X, PieChart 
+} from 'lucide-react'
 import Link from 'next/link'
+import { toast } from 'sonner'
+
+const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 export default function AdminDashboard() {
+  const router = useRouter()
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [showReport, setShowReport] = useState(false)
+  const [stats, setStats] = useState<any>({
+    myCertProgress: 0, myExpired: 0, suitQuota: 0, bootQuota: 0,
+    pendingPPE: 0, lowStock: 0, totalInventory: 0, lastRestock: 'No data', fleetCompliance: 0, fleetExpired: 0,
+    topAlerts: [], recentReqs: [], vesselWarning: 0
+  })
+  const [requests, setRequests] = useState<any[]>([])
+  const [availableMonths, setAvailableMonths] = useState<string[]>([])
+  const [selectedMonth, setSelectedMonth] = useState("")
+
+  useEffect(() => {
+    const uStr = localStorage.getItem('kmt_user')
+    if (uStr) { const u = JSON.parse(uStr); setUser(u); fetchAdminStats(u); }
+  }, [])
+
+  async function fetchAdminStats(u: any) {
+    setIsRefreshing(true)
+    const [matrixRes, crewsRes, allCertsRes, invRes, pendingRes, myReqsRes] = await Promise.all([
+      supabase.from('cert_matrix').select('*'),
+      supabase.from('crews').select('*'),
+      supabase.from('crew_certs').select('*'),
+      supabase.from('ppe_inventory').select('quantity, threshold'),
+      supabase.from('ppe_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false }).limit(3),
+      supabase.from('ppe_requests').select('*').eq('crew_id', u.id).neq('status', 'rejected').order('created_at', { ascending: false })
+    ]);
+
+    const matrix = matrixRes.data || []; const crews = crewsRes.data || []; const allCerts = allCertsRes.data || [];
+    const inventory = invRes.data || []; const pendingReqs = pendingRes.data || []; const myReqs = myReqsRes.data || [];
+
+    // My Personal
+    let okCount = 0; let expired = 0; let warning = 0; let suit = 0; let boot = 0;
+    const userPosNorm = normalize(u.position);
+    const myReqRows = matrix.filter(row => normalize(row.position) === userPosNorm && row.requirement_type === 'P')
+    const myCerts = allCerts.filter(cc => cc.crew_id === u.id)
+    const today = new Date()
+
+    myReqRows.forEach(req => {
+      const c = myCerts.find(mc => normalize(mc.cert_name) === normalize(req.cert_name))
+      if (c) {
+        if (c.expiry_date === '2099-12-31') okCount++;
+        else {
+          const expDate = new Date(c.expiry_date); const diff = (expDate.getTime() - today.getTime()) / 86400000;
+          if (diff < 0) expired++; else if (diff <= 90) warning++; else okCount++;
+        }
+      }
+    })
+
+    myReqs.forEach(r => {
+      r.items?.forEach((i: any) => {
+        if (i.item_name.toLowerCase().includes('suit')) suit++
+        if (i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')) boot++
+      })
+    })
+
+    // Fleet Oversight
+    let totalFleetReq = 0; let totalFleetOk = 0; let vExpired = 0; let vWarning = 0;
+    let crewAlerts: any[] = [];
+    crews.forEach(c => {
+      const cPosNorm = normalize(c.position);
+      const cReq = matrix.filter(m => normalize(m.position) === cPosNorm && m.requirement_type === 'P');
+      const cCerts = allCerts.filter(cc => cc.crew_id === c.id);
+      totalFleetReq += cReq.length;
+      let cExp = 0;
+      cReq.forEach(req => {
+        const uC = cCerts.find(cc => normalize(cc.cert_name) === normalize(req.cert_name))
+        if (uC) {
+          if (uC.expiry_date === '2099-12-31') totalFleetOk++;
+          else {
+            const expD = new Date(uC.expiry_date); const dDiff = (expD.getTime() - today.getTime())/86400000;
+            if (dDiff < 0) { vExpired++; cExp++; } else if (dDiff <= 90) { vWarning++; totalFleetOk++; } else totalFleetOk++;
+          }
+        }
+      });
+      if (cExp > 0) crewAlerts.push({ name: c.full_name, expired: cExp, pos: c.position });
+    })
+
+    const { data: reqsAll } = await supabase.from('ppe_requests').select('created_at, items, status');
+    if (reqsAll) {
+      setRequests(reqsAll);
+      const months = Array.from(new Set(reqsAll.map(r => {
+        const d = new Date(r.created_at); return `${d.toLocaleString('en-US', { month: 'short' })} ${d.getFullYear()}`;
+      })));
+      setAvailableMonths(months.sort((a,b) => new Date(b).getTime() - new Date(a).getTime()));
+      if (!selectedMonth) setSelectedMonth(months[0]);
+    }
+
+    setStats({ 
+      myCertProgress: myReqRows.length > 0 ? Math.round((okCount/myReqRows.length)*100) : 0, myExpired: expired, suitQuota: suit, bootQuota: boot, 
+      pendingPPE: (await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')).count || 0,
+      lowStock: inventory.filter(i => (i.quantity||0) <= (i.threshold||0)).length, 
+      totalInventory: inventory.reduce((a, b) => a + (b.quantity || 0), 0), 
+      lastRestock: 'RESTOCK', fleetCompliance: totalFleetReq > 0 ? Math.round((totalFleetOk/totalFleetReq)*100) : 0, fleetExpired: vExpired, vesselWarning: vWarning,
+      topAlerts: crewAlerts.sort((a,b) => b.expired - a.expired).slice(0, 3), recentReqs: pendingReqs
+    })
+    setLoading(false); setIsRefreshing(false)
+  }
+
+  const topItems = useMemo(() => {
+    if (!selectedMonth) return [];
+    const filtered = requests.filter(r => `${new Date(r.created_at).toLocaleString('en-US', { month: 'short' })} ${new Date(r.created_at).getFullYear()}` === selectedMonth && r.status !== 'rejected');
+    const itemMap: any = {};
+    filtered.forEach(r => r.items?.forEach((i: any) => itemMap[i.item_name] = (itemMap[i.item_name] || 0) + 1));
+    return Object.entries(itemMap).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5);
+  }, [requests, selectedMonth]);
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse">LOADING...</div>
+
   return (
-    <div className="p-4 md:p-12 max-w-7xl mx-auto pb-32 pt-24 font-sans">
-      <div className="flex justify-between items-center mb-10">
-        <div>
-          <h1 className="text-4xl font-black tracking-tighter uppercase italic text-white">Command Center</h1>
-          <p className="text-orange-500/60 text-[10px] font-black uppercase tracking-[0.3em] mt-1">Vessel Security & Safety</p>
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-24 font-sans text-white uppercase font-bold text-[10px]">
+      <div className="mb-10 flex justify-between items-center">
+        <div><h1 className="text-3xl font-black italic text-white">Dashboard</h1><p className="text-orange-500 tracking-[0.2em] mt-1">Industrial Control Panel</p></div>
+        <div className="flex gap-2">
+          <button onClick={() => setShowReport(true)} className="p-3 bg-orange-600/10 border border-orange-500/20 text-orange-500 rounded-2xl active:scale-90 transition-all"><PieChart size={20}/></button>
+          <button onClick={() => fetchAdminStats(user)} className="p-3 bg-orange-600/10 border border-orange-500/20 text-orange-500 rounded-2xl active:scale-90 transition-all"><RefreshCw className={isRefreshing ? 'animate-spin' : ''} size={20}/></button>
         </div>
-        <button className="p-3 bg-orange-600/10 border border-orange-500/20 rounded-full text-orange-500 hover:bg-orange-600 hover:text-white transition-all"><RefreshCw size={20}/></button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Pending Req', val: '0', icon: <Clock size={20}/>, href: '/admin/approvals' },
-          { label: 'Low Stock', val: '23', icon: <AlertTriangle size={20}/>, href: '/admin/inventory?filter=low' },
-          { label: 'Total Items', val: '709', icon: <Package size={20}/>, href: '/admin/inventory' },
-          { label: 'Fleet Ready', val: '55%', icon: <ShieldCheck size={20}/>, href: '/admin/settings?tab=crews' },
-        ].map((stat, i) => (
-          <Link key={i} href={stat.href} className="bg-zinc-900/30 border border-orange-500/10 p-6 rounded-[32px] hover:border-orange-500/50 transition-all group relative overflow-hidden">
-            <div className="text-orange-500 mb-4 group-hover:scale-110 transition-transform">{stat.icon}</div>
-            <p className="text-3xl font-black text-white mb-1">{stat.val}</p>
-            <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">{stat.label}</p>
-            <ArrowUpRight className="absolute top-6 right-6 text-zinc-800 group-hover:text-orange-500 transition-colors" size={20}/>
-          </Link>
-        ))}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-1 space-y-6">
+           <h2 className="text-zinc-500 tracking-widest flex items-center gap-2 mb-2 uppercase text-[9px]"><User size={14}/> My Profile</h2>
+           <Link href="/certificates" className="block bg-zinc-900/30 border border-orange-500/20 p-6 rounded-[32px] hover:border-orange-500 transition-all group">
+              <div className="flex justify-between items-center mb-6">
+                 <div className="relative w-16 h-16 flex items-center justify-center"><svg className="w-full h-full transform -rotate-90"><circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-white/5"/><circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray="176" strokeDashoffset={176 - (stats.myCertProgress/100)*176} className="text-orange-500"/></svg><span className="absolute text-[10px] font-black">{stats.myCertProgress}%</span></div>
+                 <div className="text-right"><p className="text-white text-lg">Certs</p><p className="text-orange-500">{stats.myExpired} Expired</p></div>
+              </div>
+           </Link>
+           <div className="bg-zinc-900/30 border border-orange-500/10 p-6 rounded-[32px] space-y-4">
+              <p className="text-zinc-500">My PPE Usage</p>
+              <div className="flex gap-4"><div className="flex-1 text-center"><p className="text-[7px] text-zinc-600">SUIT</p><p className="text-sm font-black">{stats.suitQuota}/2</p></div><div className="flex-1 text-center"><p className="text-[7px] text-zinc-600">BOOTS</p><p className="text-sm font-black">{stats.bootQuota}/1</p></div></div>
+           </div>
+        </div>
+
+        <div className="lg:col-span-3 space-y-6">
+           <h2 className="text-zinc-500 tracking-widest flex items-center gap-2 mb-2 uppercase text-[9px]"><ShieldCheck size={14}/> Vessel Oversight</h2>
+           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Link href="/admin/approvals" className="bg-zinc-900/30 border border-orange-500/10 p-5 rounded-[32px] flex flex-col justify-between h-40 hover:border-orange-500 transition-all"><Clock className="text-orange-500" size={20}/><p className="text-2xl font-black">{stats.pendingPPE}</p><p className="text-zinc-500 text-[8px]">Pending</p></Link>
+              <Link href="/admin/inventory" className="bg-zinc-900/30 border border-orange-500/10 p-5 rounded-[32px] flex flex-col justify-between h-40 hover:border-orange-500 transition-all"><AlertTriangle className="text-red-500" size={20}/><p className="text-2xl font-black">{stats.lowStock}</p><p className="text-zinc-500 text-[8px]">Low Stock</p></Link>
+              <Link href="/admin/inventory" className="bg-zinc-900/30 border border-orange-500/10 p-5 rounded-[32px] flex flex-col justify-between h-40 hover:border-orange-500 transition-all"><Package className="text-blue-500" size={20}/><p className="text-2xl font-black">{stats.totalInventory}</p><p className="text-zinc-500 text-[8px]">Inventory</p></Link>
+              <Link href="/admin/restock" className="bg-zinc-900/30 border border-orange-500/10 p-5 rounded-[32px] flex flex-col justify-between h-40 hover:border-orange-500 transition-all"><Archive className="text-emerald-500" size={20}/><p className="text-lg font-black">{stats.lastRestock}</p><p className="text-zinc-500 text-[8px]">Management</p></Link>
+              
+              <Link href="/admin/settings?tab=crews" className="col-span-2 md:col-span-4 bg-zinc-900/30 border border-orange-500/20 p-8 rounded-[40px] flex flex-col md:flex-row items-center justify-between hover:border-orange-500 transition-all gap-6 shadow-2xl">
+                 <div className="flex items-center gap-6"><div className="w-20 h-20 bg-orange-600/10 rounded-[32px] flex items-center justify-center text-orange-500 font-black text-2xl border border-orange-500/20">{stats.fleetCompliance}%</div><div><p className="text-xl font-black text-white italic">Fleet Readiness</p><p className="text-zinc-500 mt-1 uppercase text-[8px]">Overall Compliance</p></div></div>
+                 <div className="flex gap-4"><div className="text-center border-r border-white/5 pr-4"><p className="text-red-500 text-xl font-black">{stats.fleetExpired}</p><p className="text-[7px] text-zinc-500">EXPIRED</p></div><div className="text-center pl-4"><p className="text-orange-500 text-xl font-black">{stats.vesselWarning}</p><p className="text-[7px] text-zinc-500">90 DAYS</p></div></div>
+              </Link>
+           </div>
+        </div>
       </div>
 
-      <div className="mt-12">
-        <Link href="/certificates" className="block bg-zinc-900/30 border border-orange-500/20 p-8 rounded-[40px] hover:border-orange-500 transition-all group">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-8">
-            <div className="flex items-center gap-8">
-               <div className="w-20 h-20 rounded-[24px] border-2 border-orange-500 flex items-center justify-center font-black text-2xl text-orange-500 shadow-[0_0_20px_rgba(249,115,22,0.2)]">54%</div>
-               <div>
-                  <h3 className="text-xl font-black uppercase italic text-white">My Compliance Status</h3>
-                  <p className="text-zinc-500 text-xs mt-1 uppercase font-bold tracking-wider">7 of 13 certificates valid</p>
-               </div>
-            </div>
-            <div className="px-6 py-3 bg-white text-black rounded-2xl font-black uppercase text-[10px] tracking-widest group-hover:bg-orange-500 group-hover:text-white transition-all">
-               Check My Certs
-            </div>
-          </div>
-        </Link>
-      </div>
+      {showReport && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col p-6 animate-in slide-in-from-bottom">
+           <div className="flex justify-between items-center mb-10"><h2 className="text-2xl font-black uppercase italic italic text-orange-500">Analysis</h2><button onClick={() => setShowReport(false)} className="p-3 bg-white/5 rounded-full"><X/></button></div>
+           <div className="space-y-6 max-w-sm mx-auto w-full">
+              {topItems.map(([name, count]: any, idx) => (
+                <div key={idx} className="space-y-2">
+                  <div className="flex justify-between text-[11px] font-black uppercase text-white"><span>{name}</span><span className="text-orange-500">{count} Units</span></div>
+                  <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden"><div className="bg-orange-600 h-full rounded-full transition-all" style={{ width: `${(count / topItems[0][1]) * 100}%` }}></div></div>
+                </div>
+              ))}
+           </div>
+        </div>
+      )}
     </div>
   )
 }
