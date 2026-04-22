@@ -1,6 +1,6 @@
 "use client";
-import { useState, useEffect, useCallback } from 'react';
-import { ShoppingCart, X, Trash2, PackageCheck } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ShoppingCart, X, Trash2, PackageCheck, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 
@@ -8,55 +8,66 @@ export default function CartDrawer() {
   const [isOpen, setIsOpen] = useState(false);
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [reason, setReason] = useState("");
-  const [targetCrew, setTargetCrew] = useState<any>(null); // สำหรับแอดมินเบิกแทน
-
-  const loadCart = useCallback(() => {
-    setCartItems(JSON.parse(localStorage.getItem('kmt_cart') || '[]'));
-    setTargetCrew(JSON.parse(localStorage.getItem('kmt_target_crew') || 'null'));
-  }, []);
+  const [targetCrew, setTargetCrew] = useState<any>(null); 
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const handleOpen = () => { loadCart(); setIsOpen(true); };
+    const handleOpen = () => { 
+      setCartItems(JSON.parse(localStorage.getItem('kmt_cart') || '[]'));
+      setTargetCrew(JSON.parse(localStorage.getItem('kmt_target_crew') || 'null'));
+      setIsOpen(true); 
+    };
+    
+    // ฟังการเปลี่ยนแปลงตะกร้าเพื่ออัปเดตหน้าจอทันที
+    const syncCart = () => {
+      setCartItems(JSON.parse(localStorage.getItem('kmt_cart') || '[]'));
+    };
+
     window.addEventListener('open-cart', handleOpen);
-    window.addEventListener('cart-updated', loadCart);
+    window.addEventListener('cart-updated', syncCart);
+    
     return () => { 
       window.removeEventListener('open-cart', handleOpen);
-      window.removeEventListener('cart-updated', loadCart); 
+      window.removeEventListener('cart-updated', syncCart); 
     };
-  }, [loadCart]);
+  }, []);
 
   const removeItem = (idx: number) => {
-    const newCart = [...cartItems]; newCart.splice(idx, 1);
+    const newCart = [...cartItems]; 
+    newCart.splice(idx, 1);
     localStorage.setItem('kmt_cart', JSON.stringify(newCart));
+    setCartItems(newCart);
     window.dispatchEvent(new CustomEvent('cart-updated', { detail: newCart.length }));
   };
 
   const handleCheckout = async () => {
     if (cartItems.length === 0) return;
-    
-    // ดึงข้อมูลคนล็อกอิน
-    const currentUser = JSON.parse(localStorage.getItem('kmt_user') || '{}');
-    
-    // 🎯 ตัดสินใจว่าจะใช้ชื่อใคร (ถ้าเป็นแอดมินเบิกแทน จะใช้ targetCrew)
-    const crewId = targetCrew ? targetCrew.id : currentUser.id;
-    const crewName = targetCrew ? targetCrew.full_name : currentUser.full_name;
+    setIsSubmitting(true);
+    try {
+      const currentUser = JSON.parse(localStorage.getItem('kmt_user') || '{}');
+      const crewId = targetCrew ? targetCrew.id : currentUser.id;
+      const crewName = targetCrew ? targetCrew.full_name : currentUser.full_name;
 
-    const { error } = await supabase.from('ppe_requests').insert({
-      crew_id: crewId, 
-      crew_name: crewName, 
-      items: cartItems, 
-      reason: reason.trim() || 'No reason provided',
-      status: 'pending'
-    });
+      const { error } = await supabase.from('ppe_requests').insert({
+        crew_id: crewId, 
+        crew_name: crewName, 
+        items: cartItems, 
+        reason: reason.trim() || 'No reason provided',
+        status: 'pending'
+      });
 
-    if (!error) {
+      if (error) throw error;
+
       localStorage.setItem('kmt_cart', '[]');
+      setCartItems([]);
       setReason("");
       window.dispatchEvent(new CustomEvent('cart-updated', { detail: 0 }));
       setIsOpen(false);
       toast.success(`Request submitted for ${crewName}!`);
-    } else {
+    } catch (e) {
       toast.error('Submission Failed');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -72,7 +83,6 @@ export default function CartDrawer() {
           <button onClick={() => setIsOpen(false)} className="p-2 bg-white/5 rounded-full text-zinc-500 hover:text-white transition-colors"><X size={20}/></button>
         </div>
 
-        {/* แจ้งเตือนกรณีแอดมินเบิกแทน */}
         {targetCrew && (
           <div className="bg-orange-500/10 border-b border-orange-500/20 p-4">
              <p className="text-[10px] text-orange-500 font-black uppercase tracking-widest text-center">Requesting on behalf of:<br/><span className="text-white text-xs">{targetCrew.full_name}</span></p>
@@ -94,19 +104,15 @@ export default function CartDrawer() {
           {cartItems.length > 0 && (
             <div className="mt-8 space-y-2">
               <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Reason for Request (Optional)</label>
-              <textarea 
-                rows={3} 
-                placeholder="e.g. Broken boots, need new suit..." 
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none focus:border-orange-500 transition-all resize-none"
-              ></textarea>
+              <textarea rows={3} placeholder="e.g. Broken boots, need new suit..." value={reason} onChange={(e) => setReason(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none focus:border-orange-500 transition-all resize-none"></textarea>
             </div>
           )}
         </div>
 
         <div className="p-6 bg-black/40 border-t border-white/5 shrink-0">
-          <button onClick={handleCheckout} disabled={cartItems.length === 0} className="w-full py-5 bg-orange-600 hover:bg-orange-500 text-white rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl shadow-orange-600/20 disabled:opacity-20 transition-all active:scale-95">Submit Request ({cartItems.length})</button>
+          <button onClick={handleCheckout} disabled={cartItems.length === 0 || isSubmitting} className="w-full py-5 bg-orange-600 hover:bg-orange-500 text-white rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl shadow-orange-600/20 disabled:opacity-20 transition-all active:scale-95 flex items-center justify-center gap-2">
+            <Save size={18}/> Submit Request ({cartItems.length})
+          </button>
         </div>
       </div>
     </div>

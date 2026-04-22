@@ -1,6 +1,6 @@
 'use client'
 import { toast } from 'sonner';
-import { useState, useEffect, useMemo, Suspense, useCallback } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { HardHat, Headphones, Eye, Wind, Hand, Footprints, MoreHorizontal, ChevronDown, ChevronUp, Plus, AlertTriangle, Lock, Shirt, Users } from 'lucide-react'
@@ -12,16 +12,12 @@ function PPEContent() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [crews, setCrews] = useState<any[]>([])
   
-  // 🎯 State สำหรับเก็บชื่อคนที่เราจะเบิกให้ (ค่าเริ่มต้นคือตัวเอง)
   const [targetCrewId, setTargetCrewId] = useState<string>('')
-  
   const [inventory, setInventory] = useState<any[]>([])
-  const [cart, setCart] = useState<any[]>([])
+  const [cartCount, setCartCount] = useState(0) // ใช้แค่นับจำนวนพอ
   const [quotas, setQuotas] = useState({ suit: 0, boot: 0 })
   const [expandedCat, setExpandedCat] = useState<string | null>(null)
   const [expandedItem, setExpandedItem] = useState<string | null>(null)
-
-  const loadCart = useCallback(() => { setCart(JSON.parse(localStorage.getItem('kmt_cart') || '[]')) }, [])
 
   useEffect(() => {
     setMounted(true)
@@ -35,7 +31,9 @@ function PPEContent() {
     const isAdminCheck = ["safety officer", "chief officer", "barge master"].includes(pos)
     setIsAdmin(isAdminCheck)
     
-    loadCart()
+    // โหลดจำนวนในตะกร้าตอนเริ่ม
+    const currentCart = JSON.parse(localStorage.getItem('kmt_cart') || '[]')
+    setCartCount(currentCart.length)
 
     async function fetchData() {
       const { data: inv } = await supabase.from('ppe_inventory').select('*').order('item_name')
@@ -48,11 +46,15 @@ function PPEContent() {
     }
     fetchData()
 
-    window.addEventListener('cart-updated', loadCart)
-    return () => window.removeEventListener('cart-updated', loadCart)
-  }, [router, loadCart])
+    // ดักฟังเวลามีการเปิด/ปิด/ลบของในตะกร้า เพื่ออัปเดตหน้าจอ
+    const handleCartSync = () => {
+      const updatedCart = JSON.parse(localStorage.getItem('kmt_cart') || '[]')
+      setCartCount(updatedCart.length)
+    }
+    window.addEventListener('cart-updated', handleCartSync)
+    return () => window.removeEventListener('cart-updated', handleCartSync)
+  }, [router])
 
-  // 🎯 ดึงโควตาใหม่ทุกครั้งที่สลับชื่อพนักงาน
   useEffect(() => {
     async function fetchQuotas() {
       if (!targetCrewId) return;
@@ -67,7 +69,6 @@ function PPEContent() {
       })
       setQuotas({ suit: sc, boot: bc })
       
-      // บันทึกเป้าหมายลง LocalStorage ให้ CartDrawer รู้
       if (crews.length > 0 && targetCrewId !== user?.id) {
          const tc = crews.find(c => c.id === targetCrewId)
          localStorage.setItem('kmt_target_crew', JSON.stringify(tc))
@@ -77,13 +78,6 @@ function PPEContent() {
     }
     fetchQuotas()
   }, [targetCrewId, crews])
-
-  useEffect(() => {
-    if (mounted) {
-      localStorage.setItem('kmt_cart', JSON.stringify(cart))
-      window.dispatchEvent(new CustomEvent('cart-updated', { detail: cart.length }))
-    }
-  }, [cart, mounted])
 
   const categories = [
     { name: 'Head Protection', icon: <HardHat size={20}/>, keywords: ['helmet', 'hat'] },
@@ -106,12 +100,14 @@ function PPEContent() {
     return Object.values(groups)
   }, [inventory])
 
-  // ดึงข้อมูล Profile ของคนที่เรากำลังเบิกให้ (เผื่อเป็นแอดมิน)
   const activeProfile = targetCrewId === user?.id ? user : crews.find(c => c.id === targetCrewId) || user
 
   const addToCart = (variant: any) => {
+    // 🎯 โหลดตะกร้าปัจจุบันสดๆ จาก LocalStorage เสมอ ป้องกันการทำงานซ้อนกัน
+    const currentCart = JSON.parse(localStorage.getItem('kmt_cart') || '[]')
+    
     const stock = Number(variant.quantity || 0)
-    const inCartCount = cart.filter((i: any) => i.id === variant.id).length
+    const inCartCount = currentCart.filter((i: any) => i.id === variant.id).length
     if (inCartCount >= stock) return toast.error("Out of stock!");
 
     const name = variant.item_name.toLowerCase()
@@ -120,12 +116,11 @@ function PPEContent() {
     if (isSuit || isBoot) {
       const limit = isSuit ? 2 : 1
       const currentQuota = isSuit ? quotas.suit : quotas.boot
-      const inCartItems = cart.filter((i: any) => {
+      const inCartItems = currentCart.filter((i: any) => {
         const n = i.item_name.toLowerCase()
         return isSuit ? n.includes('suit') : (n.includes('safety boot') && !n.includes('rubber'))
       }).length
       
-      // 🎯 ถ้าเป็นแอดมิน ยอมให้ทะลุโควตาได้ แต่มีเตือน
       if (currentQuota + inCartItems >= limit) {
          if (isAdmin) {
             toast.warning(`Over quota (${limit}/year) - Bypassed by Admin`);
@@ -135,7 +130,12 @@ function PPEContent() {
       }
     }
 
-    setCart([...cart, { ...variant, cartId: Date.now() }])
+    // เพิ่มของชิ้นใหม่และเซฟกลับลง LocalStorage
+    const newCart = [...currentCart, { ...variant, cartId: Date.now() }]
+    localStorage.setItem('kmt_cart', JSON.stringify(newCart))
+    
+    // แจ้ง Component อื่นๆ (Navbar/CartDrawer) ว่ามีการเปลี่ยนยอด
+    window.dispatchEvent(new CustomEvent('cart-updated', { detail: newCart.length }))
     toast.success('Added to Cart')
   };
 
@@ -145,13 +145,16 @@ function PPEContent() {
     <div className="min-h-screen bg-black text-white pb-32 pt-28 px-4 font-sans relative z-0">
       <div className="max-w-md mx-auto space-y-4">
         
-        {/* 🎯 แถบเลือกคนเบิก (แสดงเฉพาะแอดมิน) */}
         {isAdmin && (
           <div className="bg-zinc-900 border border-orange-500/30 p-5 rounded-[24px] mb-8 shadow-2xl">
              <label className="text-[10px] font-black uppercase text-orange-500 tracking-widest flex items-center gap-2 mb-3"><Users size={14}/> Request On Behalf Of</label>
              <select 
                value={targetCrewId} 
-               onChange={(e) => { setTargetCrewId(e.target.value); setCart([]); localStorage.setItem('kmt_cart', '[]'); window.dispatchEvent(new CustomEvent('cart-updated', { detail: 0 })); }} 
+               onChange={(e) => { 
+                 setTargetCrewId(e.target.value); 
+                 localStorage.setItem('kmt_cart', '[]'); 
+                 window.dispatchEvent(new CustomEvent('cart-updated', { detail: 0 })); 
+               }} 
                className="w-full bg-black/50 border border-white/10 p-4 rounded-xl text-white outline-none focus:border-orange-500 font-bold uppercase text-xs"
              >
                 <option value={user.id}>Myself ({user.full_name})</option>
@@ -200,7 +203,10 @@ function PPEContent() {
                           <div className="p-2 space-y-2 bg-black/20 border-t border-white/5">
                             {visibleVariants.map((variant: any, vIdx: number) => {
                               const stock = Number(variant.quantity || 0)
-                              const currentStock = stock - cart.filter((i: any) => i.id === variant.id).length
+                              // 🎯 ดึงยอดตะกร้าปัจจุบันมาเช็คกันของหมด
+                              const currentCart = JSON.parse(localStorage.getItem('kmt_cart') || '[]')
+                              const inCartCount = currentCart.filter((i: any) => i.id === variant.id).length
+                              const currentStock = stock - inCartCount
                               const canAdd = currentStock > 0
                               return (
                                 <div key={vIdx} className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-zinc-900/30">
@@ -240,5 +246,5 @@ function PPEContent() {
 }
 
 export default function PPEPage() {
-  return ( <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center text-orange-500 font-black animate-pulse">LOADING...</div>}><PPEContent /></Suspense> )
+  return ( <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse">LOADING...</div>}><PPEContent /></Suspense> )
 }
