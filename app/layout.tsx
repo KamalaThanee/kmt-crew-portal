@@ -9,7 +9,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="dark">
       <body className="bg-slate-950 text-slate-100 antialiased pb-20 pt-16 md:pt-20">
         <RealtimeListener />
-        <Toaster position="top-center" expand={false} richColors theme="dark" />
+        <Toaster closeButton position="top-center" expand={false} richColors theme="dark" />
         <Navbar />
         <CartDrawer />
         <main className="max-w-7xl mx-auto px-4">{children}</main>

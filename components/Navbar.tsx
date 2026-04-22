@@ -1,7 +1,7 @@
 "use client";
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Package, ShieldCheck, Bell, LogOut, ClipboardCheck, ShoppingCart, User, Settings, History, PlusCircle, FileBadge } from 'lucide-react';
+import { Package, ShieldCheck, Bell, LogOut, ClipboardCheck, ShoppingCart, User, Settings, History, PlusCircle, FileBadge } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
@@ -25,14 +25,9 @@ export default function Navbar() {
     }
     const handleCartUpdate = (e: any) => setCartCount(e.detail);
     window.addEventListener('cart-updated', handleCartUpdate);
-    const handleClickOutside = (event: MouseEvent) => {
-      if (profileRef.current && !profileRef.current.contains(event.target as Node)) setShowProfile(false);
-    };
+    const handleClickOutside = (event: MouseEvent) => { if (profileRef.current && !profileRef.current.contains(event.target as Node)) setShowProfile(false); };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      window.removeEventListener('cart-updated', handleCartUpdate);
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => { window.removeEventListener('cart-updated', handleCartUpdate); document.removeEventListener("mousedown", handleClickOutside); };
   }, [pathname]);
 
   const fetchNotifications = async (u: any) => {
@@ -48,14 +43,13 @@ export default function Navbar() {
   const role = (user?.position || "").toLowerCase();
   const isAdmin = ["safety officer", "chief officer", "barge master"].includes(role);
   
+  // 🎯 ถอด Dashboard ออก
   const menuItems = isAdmin ? [
-    { name: 'DASHBOARD', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'APPROVALS', href: '/admin/approvals', icon: ClipboardCheck },
     { name: 'INVENTORY', href: '/admin/inventory', icon: Package },
     { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
     { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
   ] : [
-    { name: 'DASHBOARD', href: '/dashboard', icon: LayoutDashboard },
     { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
     { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
     { name: 'MY HISTORY', href: '/my-requests', icon: History },
@@ -71,23 +65,14 @@ export default function Navbar() {
           </div>
           <div className="hidden md:flex items-center gap-1">
             {menuItems.map((item) => (
-              <Link key={item.href} href={item.href} className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${pathname === item.href ? 'text-white bg-orange-600' : 'text-zinc-500 hover:text-orange-400'}`}>{item.name}</Link>
+              <Link key={item.href} href={item.href} className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${pathname === item.href ? 'text-white bg-orange-600 shadow-lg shadow-orange-600/20' : 'text-zinc-500 hover:text-orange-400'}`}>{item.name}</Link>
             ))}
           </div>
         </div>
 
         <div className="flex items-center gap-2" ref={profileRef}>
-          <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="p-2 text-zinc-500 hover:text-orange-500 relative transition-colors">
-            <ShoppingCart size={18} />
-            {cartCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-orange-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black">{cartCount}</span>}
-          </button>
-          <Link href={isAdmin ? "/admin/approvals" : "/my-requests"} className="p-2 text-zinc-500 hover:text-orange-500 relative transition-colors">
-            <Bell size={18} />
-            {notifCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black animate-bounce">{notifCount}</span>}
-          </Link>
-          <button onClick={() => setShowProfile(!showProfile)} className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-all ${showProfile ? 'bg-orange-600 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]' : 'bg-white/5 border-white/10 text-zinc-400'}`}>
-            <User size={18} />
-          </button>
+          <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="p-2 text-zinc-500 hover:text-orange-500 relative transition-colors"><ShoppingCart size={18} />{cartCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-orange-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black">{cartCount}</span>}</button>
+          <button onClick={() => setShowProfile(!showProfile)} className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-all ${showProfile ? 'bg-orange-600 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]' : 'bg-white/5 border-white/10 text-zinc-400'}`}><User size={18} /></button>
           {showProfile && (
             <div className="absolute right-0 top-12 w-64 bg-zinc-900 border border-orange-500/20 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 z-[110]">
               <div className="p-5 bg-black/40 border-b border-white/5">
@@ -102,10 +87,9 @@ export default function Navbar() {
           )}
         </div>
       </nav>
-
-      {/* Mobile Bottom Nav */}
+      {/* Mobile Nav */}
       <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] h-16 bg-black/90 backdrop-blur-2xl border border-orange-500/20 rounded-3xl z-[100] px-2 shadow-2xl flex items-center justify-around">
-          <Link href={isAdmin ? '/admin/dashboard' : '/dashboard'} className={`flex flex-col items-center gap-1 ${pathname.includes('dashboard') ? 'text-orange-500' : 'text-zinc-500'}`}><LayoutDashboard size={20} /><span className="text-[8px] font-bold uppercase">Home</span></Link>
+          <Link href={isAdmin ? '/admin/dashboard' : '/dashboard'} className={`flex flex-col items-center gap-1 ${pathname.includes('dashboard') ? 'text-orange-500' : 'text-zinc-500'}`}><ShieldCheck size={20} /><span className="text-[8px] font-bold uppercase">Home</span></Link>
           {menuItems.slice(0, 4).map((item) => {
             const Icon = item.icon; const isActive = pathname === item.href;
             return ( <Link key={item.href} href={item.href} className={`flex flex-col items-center gap-1 ${isActive ? 'text-orange-500' : 'text-zinc-500'}`}><Icon size={20} /><span className="text-[8px] font-bold uppercase">{item.name}</span></Link> );
