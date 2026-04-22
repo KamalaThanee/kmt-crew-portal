@@ -13,9 +13,8 @@ export default function Navbar() {
   const [showProfile, setShowProfile] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [cartCount, setCartCount] = useState(0);
-  
-  // 🎯 Notification Center States
   const [notifData, setNotifData] = useState<any>({ pending: 0, lowStock: 0, expiredCerts: 0 });
+  const [unreadCount, setUnreadCount] = useState(0); // 🎯 ตัวเลขนับเฉพาะที่ยังไม่ได้อ่าน
   
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -51,8 +50,9 @@ export default function Navbar() {
     const role = (u.position || "").toLowerCase();
     const isAdmin = ["safety officer", "chief officer", "barge master"].includes(role);
     
+    let currentTotal = 0;
+
     if (isAdmin) {
-      // 🎯 ดึงข้อมูล 3 อย่างสำหรับแอดมิน (Pending, Low Stock, Expired Certs)
       const [pendingRes, invRes, certsRes] = await Promise.all([
         supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('ppe_inventory').select('quantity, threshold'),
@@ -60,11 +60,33 @@ export default function Navbar() {
       ]);
       const lowStock = invRes.data?.filter(i => (i.quantity||0) <= (i.threshold||0)).length || 0;
       const expired = certsRes.data?.filter(c => new Date(c.expiry_date) < new Date() && c.expiry_date !== '2099-12-31').length || 0;
-      setNotifData({ pending: pendingRes.count || 0, lowStock, expiredCerts: expired });
+      const pendingCount = pendingRes.count || 0;
+      
+      setNotifData({ pending: pendingCount, lowStock, expiredCerts: expired });
+      currentTotal = pendingCount + lowStock + expired;
     } else {
-      // ลูกเรือ: ดูเฉพาะใบเบิกของตัวเองที่ผ่านแล้ว
       const { count } = await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('crew_id', u.id).in('status', ['approved', 'rejected']);
       setNotifData({ pending: count || 0, lowStock: 0, expiredCerts: 0 });
+      currentTotal = count || 0;
+    }
+
+    // 🎯 คำนวณ Unread: เอา Total ปัจจุบัน ลบกับตัวเลขที่เคยเซฟไว้ตอนเปิดดูครั้งสุดท้าย
+    const lastSeenTotal = parseInt(localStorage.getItem('kmt_notif_seen') || '0');
+    // ถ้ามีปัญหาใหม่เพิ่มขึ้น (Total ปัจจุบัน > ที่เคยดู) ให้โชว์เฉพาะส่วนต่างที่งอกมา
+    const unread = currentTotal > lastSeenTotal ? currentTotal - lastSeenTotal : 0;
+    setUnreadCount(unread);
+  };
+
+  // 🎯 เมื่อผู้ใช้กดดูกระดิ่ง ให้เคลียร์เลขสีแดงและจำยอดปัจจุบันไว้ (Mark as read)
+  const handleOpenNotif = () => {
+    const isOpening = !showNotif;
+    setShowNotif(isOpening);
+    setShowProfile(false);
+
+    if (isOpening) {
+      const total = notifData.pending + notifData.lowStock + notifData.expiredCerts;
+      localStorage.setItem('kmt_notif_seen', total.toString());
+      setUnreadCount(0); // ลบป้ายแดงทันที
     }
   };
 
@@ -72,8 +94,7 @@ export default function Navbar() {
 
   const role = (user?.position || "").toLowerCase();
   const isAdmin = ["safety officer", "chief officer", "barge master"].includes(role);
-  const totalNotifs = isAdmin ? (notifData.pending + notifData.lowStock + notifData.expiredCerts) : notifData.pending;
-
+  
   const menuItems = isAdmin ? [
     { name: 'APPROVALS', href: '/admin/approvals', icon: ClipboardCheck },
     { name: 'INVENTORY', href: '/admin/inventory', icon: Package },
@@ -103,11 +124,11 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="p-2.5 text-zinc-500 hover:text-orange-500 relative transition-colors"><ShoppingCart size={18} />{cartCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-orange-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black">{cartCount}</span>}</button>
           
-          {/* 🎯 Notification Center Dropdown */}
           <div className="relative" ref={notifRef}>
-            <button onClick={() => { setShowNotif(!showNotif); setShowProfile(false); }} className="p-2.5 text-zinc-500 hover:text-orange-500 relative transition-colors">
+            <button onClick={handleOpenNotif} className="p-2.5 text-zinc-500 hover:text-orange-500 relative transition-colors">
               <Bell size={18} />
-              {totalNotifs > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black animate-pulse">{totalNotifs > 99 ? '99+' : totalNotifs}</span>}
+              {/* 🎯 แสดงเฉพาะ Unread Count */}
+              {unreadCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black animate-pulse">{unreadCount > 99 ? '99+' : unreadCount}</span>}
             </button>
             {showNotif && (
               <div className="absolute right-0 top-12 w-80 bg-zinc-900 border border-white/10 rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 z-[110]">
@@ -116,7 +137,7 @@ export default function Navbar() {
                   {isAdmin ? (
                     <>
                       <Link href="/admin/approvals" onClick={() => setShowNotif(false)} className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group">
-                        <div className="flex items-center gap-4"><div className={`p-2 rounded-xl ${notifData.pending > 0 ? 'bg-amber-500/20 text-amber-500' : 'bg-white/5 text-zinc-500'}`}><Clock size={16}/></div><div><p className="text-xs font-bold text-white uppercase">Pending PPE Requests</p><p className="text-[9px] text-zinc-500 mt-1">Needs Approval</p></div></div>
+                        <div className="flex items-center gap-4"><div className={`p-2 rounded-xl ${notifData.pending > 0 ? 'bg-amber-500/20 text-amber-500' : 'bg-white/5 text-zinc-500'}`}><Clock size={16}/></div><div><p className="text-xs font-bold text-white uppercase">Pending PPE</p><p className="text-[9px] text-zinc-500 mt-1">Needs Approval</p></div></div>
                         {notifData.pending > 0 && <span className="bg-amber-500 text-black px-2 py-1 rounded-md text-[9px] font-black">{notifData.pending}</span>}
                       </Link>
                       <Link href="/admin/inventory?filter=low" onClick={() => setShowNotif(false)} className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group border-t border-white/5">
@@ -134,17 +155,17 @@ export default function Navbar() {
                       {notifData.pending > 0 && <span className="bg-emerald-500 text-black px-2 py-1 rounded-md text-[9px] font-black">{notifData.pending} NEW</span>}
                     </Link>
                   )}
-                  {totalNotifs === 0 && <div className="text-center p-6 text-zinc-600 text-[10px] uppercase font-black tracking-widest">No New Notifications</div>}
+                  {notifData.pending + notifData.lowStock + notifData.expiredCerts === 0 && <div className="text-center p-6 text-zinc-600 text-[10px] uppercase font-black tracking-widest">No Alerts</div>}
                 </div>
               </div>
             )}
           </div>
 
           <div className="relative" ref={profileRef}>
-            <button onClick={() => { setShowProfile(!showProfile); setShowNotif(false); }} className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-all ${showProfile ? 'bg-orange-600 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]' : 'bg-white/5 border-white/10 text-zinc-400'}`}><User size={18} /></button>
+            <button onClick={() => { setShowProfile(!showProfile); setShowNotif(false); }} className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-all ${showProfile ? 'bg-orange-600 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]' : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10'}`}><User size={18} /></button>
             {showProfile && (
               <div className="absolute right-0 top-12 w-64 bg-zinc-900 border border-orange-500/20 rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 z-[110]">
-                <div className="p-6 bg-black/40 border-b border-white/5"><p className="text-white font-bold text-sm truncate">{user?.full_name}</p><p className="text-orange-500 text-[10px] font-black uppercase mt-1">{user?.position}</p></div>
+                <div className="p-6 bg-black/40 border-b border-white/5"><p className="text-white font-bold text-sm truncate">{user?.full_name}</p><p className="text-orange-500 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p></div>
                 <div className="p-2 space-y-1">
                   {isAdmin && (<Link href="/admin/settings" onClick={() => setShowProfile(false)} className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-zinc-400 hover:text-white hover:bg-orange-600/10 rounded-2xl transition-all uppercase tracking-widest"><Settings size={16} /> Admin Panel</Link>)}
                   <button onClick={() => { localStorage.removeItem('kmt_user'); router.push('/login'); }} className="w-full flex items-center gap-3 px-4 py-4 text-xs text-red-400 font-black uppercase tracking-widest hover:bg-red-500/10 rounded-2xl transition-all text-left"><LogOut size={16} /> Logout</button>
@@ -157,10 +178,9 @@ export default function Navbar() {
 
       {/* Mobile Nav */}
       <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] h-16 bg-black/90 backdrop-blur-2xl border border-orange-500/20 rounded-3xl z-[100] px-2 shadow-2xl flex items-center justify-around">
-          <Link href={isAdmin ? '/admin/dashboard' : '/dashboard'} className={`flex flex-col items-center gap-1 ${pathname.includes('dashboard') ? 'text-orange-500' : 'text-zinc-500'}`}><LayoutDashboard size={20} /><span className="text-[8px] font-bold uppercase tracking-tighter">Home</span></Link>
           {menuItems.slice(0, 4).map((item) => {
             const Icon = item.icon; const isActive = pathname === item.href;
-            return ( <Link key={item.href} href={item.href} className={`flex flex-col items-center gap-1 ${isActive ? 'text-orange-500' : 'text-zinc-500'}`}><Icon size={20} /><span className="text-[8px] font-bold uppercase tracking-tighter">{item.name.replace('REQUEST PPE', 'REQUEST')}</span></Link> );
+            return ( <Link key={item.href} href={item.href} className={`flex flex-col items-center justify-center gap-1 w-full h-full relative transition-all ${isActive ? 'text-orange-500' : 'text-zinc-500'}`}><Icon size={22} strokeWidth={isActive ? 2.5 : 2} /><span className="text-[8px] font-black uppercase tracking-tighter">{item.name.replace('REQUEST PPE', 'REQUEST')}</span>{isActive && <div className="absolute bottom-1 w-5 h-0.5 bg-orange-500 rounded-full shadow-[0_0_10px_#f97316]"></div>}</Link> );
           })}
       </nav>
     </>

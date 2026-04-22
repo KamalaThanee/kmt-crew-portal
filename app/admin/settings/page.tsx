@@ -181,9 +181,6 @@ function SettingsContent() {
                 {t === 'crews' ? <Users size={20}/> : <SlidersHorizontal size={20}/>} <span className="text-xs">{t} Master</span>
               </button>
             ))}
-            <button onClick={() => router.push('/admin/inventory')} className="w-full flex items-center gap-4 p-5 rounded-[24px] bg-zinc-900 text-zinc-500 border border-white/5 hover:text-orange-400 transition-all">
-                <Package size={20}/> <span className="text-xs">Inventory Data</span>
-            </button>
           </div>
 
           <div className="flex-1 bg-zinc-900/5 border border-white/5 rounded-[48px] p-8 shadow-inner min-h-[70vh]">
