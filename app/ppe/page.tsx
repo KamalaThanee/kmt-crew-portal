@@ -1,9 +1,12 @@
 'use client'
 import { toast } from 'sonner';
-import { useState, useEffect, useMemo, Suspense } from 'react'
+import { useState, useEffect, useMemo, Suspense, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
-import { HardHat, Headphones, Eye, Wind, Hand, Footprints, MoreHorizontal, ChevronDown, ChevronUp, Plus, AlertTriangle, Lock, Shirt, Users } from 'lucide-react'
+import { 
+  HardHat, Headphones, Eye, Wind, Hand, Footprints, MoreHorizontal, 
+  Plus, AlertTriangle, Lock, Shirt, Users, ChevronRight, ShoppingBag
+} from 'lucide-react'
 
 function PPEContent() {
   const router = useRouter()
@@ -11,13 +14,15 @@ function PPEContent() {
   const [user, setUser] = useState<any>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [crews, setCrews] = useState<any[]>([])
-  
   const [targetCrewId, setTargetCrewId] = useState<string>('')
   const [inventory, setInventory] = useState<any[]>([])
-  const [cartCount, setCartCount] = useState(0) // ใช้แค่นับจำนวนพอ
+  const [cart, setCart] = useState<any[]>([])
   const [quotas, setQuotas] = useState({ suit: 0, boot: 0 })
-  const [expandedCat, setExpandedCat] = useState<string | null>(null)
-  const [expandedItem, setExpandedItem] = useState<string | null>(null)
+  const [activeCat, setActiveCat] = useState('All')
+
+  const loadCart = useCallback(() => { 
+    setCart(JSON.parse(localStorage.getItem('kmt_cart') || '[]')) 
+  }, [])
 
   useEffect(() => {
     setMounted(true)
@@ -27,33 +32,22 @@ function PPEContent() {
     setUser(u)
     setTargetCrewId(u.id)
     
-    const pos = (u.position || "").toLowerCase().trim()
-    const isAdminCheck = ["safety officer", "chief officer", "barge master"].includes(pos)
+    const isAdminCheck = ["safety officer", "chief officer", "barge master"].includes((u.position || "").toLowerCase().trim())
     setIsAdmin(isAdminCheck)
-    
-    // โหลดจำนวนในตะกร้าตอนเริ่ม
-    const currentCart = JSON.parse(localStorage.getItem('kmt_cart') || '[]')
-    setCartCount(currentCart.length)
+    loadCart()
 
     async function fetchData() {
       const { data: inv } = await supabase.from('ppe_inventory').select('*').order('item_name')
       if (inv) setInventory(inv)
-      
       if (isAdminCheck) {
         const { data: cr } = await supabase.from('crews').select('*').order('full_name')
         if (cr) setCrews(cr)
       }
     }
     fetchData()
-
-    // ดักฟังเวลามีการเปิด/ปิด/ลบของในตะกร้า เพื่ออัปเดตหน้าจอ
-    const handleCartSync = () => {
-      const updatedCart = JSON.parse(localStorage.getItem('kmt_cart') || '[]')
-      setCartCount(updatedCart.length)
-    }
-    window.addEventListener('cart-updated', handleCartSync)
-    return () => window.removeEventListener('cart-updated', handleCartSync)
-  }, [router])
+    window.addEventListener('cart-updated', loadCart)
+    return () => window.removeEventListener('cart-updated', loadCart)
+  }, [router, loadCart])
 
   useEffect(() => {
     async function fetchQuotas() {
@@ -69,45 +63,51 @@ function PPEContent() {
       })
       setQuotas({ suit: sc, boot: bc })
       
-      if (crews.length > 0 && targetCrewId !== user?.id) {
-         const tc = crews.find(c => c.id === targetCrewId)
-         localStorage.setItem('kmt_target_crew', JSON.stringify(tc))
-      } else {
-         localStorage.removeItem('kmt_target_crew')
-      }
+      const tc = crews.find(c => c.id === targetCrewId)
+      if (tc && targetCrewId !== user?.id) localStorage.setItem('kmt_target_crew', JSON.stringify(tc))
+      else localStorage.removeItem('kmt_target_crew')
     }
     fetchQuotas()
-  }, [targetCrewId, crews])
+  }, [targetCrewId, crews, user])
 
-  const categories = [
-    { name: 'Head Protection', icon: <HardHat size={20}/>, keywords: ['helmet', 'hat'] },
-    { name: 'Ears Protection', icon: <Headphones size={20}/>, keywords: ['ear'] },
-    { name: 'Eyes Protection', icon: <Eye size={20}/>, keywords: ['glass', 'goggle'] },
-    { name: 'Respiratory Protection', icon: <Wind size={20}/>, keywords: ['mask', 'respirator'] },
-    { name: 'Body Protection', icon: <Shirt size={20}/>, keywords: ['suit', 'coverall', 'vest'] },
-    { name: 'Hands Protection', icon: <Hand size={20}/>, keywords: ['glove'] },
-    { name: 'Foots Protection', icon: <Footprints size={20}/>, keywords: ['boot', 'shoe'] },
-    { name: 'Other', icon: <MoreHorizontal size={20}/>, keywords: [] }
+  useEffect(() => {
+    if (mounted) {
+      localStorage.setItem('kmt_cart', JSON.stringify(cart))
+      window.dispatchEvent(new CustomEvent('cart-updated', { detail: cart.length }))
+    }
+  }, [cart, mounted])
+
+  const categoryConfig = [
+    { name: 'Head Protection', icon: HardHat, label: 'Head' },
+    { name: 'Ears Protection', icon: Headphones, label: 'Ears' },
+    { name: 'Eyes Protection', icon: Eye, label: 'Eyes' },
+    { name: 'Respiratory Protection', icon: Wind, label: 'Resp' },
+    { name: 'Body Protection', icon: Shirt, label: 'Body' },
+    { name: 'Hands Protection', icon: Hand, label: 'Hands' },
+    { name: 'Foots Protection', icon: Footprints, label: 'Foots' },
+    { name: 'Other', icon: MoreHorizontal, label: 'Other' },
   ]
-
-  const groupedInventory = useMemo(() => {
-    const groups: any = {}
-    inventory.forEach((item: any) => {
-      const name = item.item_name || "Unknown"
-      if (!groups[name]) groups[name] = { name, variants: [] }
-      groups[name].variants.push(item)
-    })
-    return Object.values(groups)
-  }, [inventory])
 
   const activeProfile = targetCrewId === user?.id ? user : crews.find(c => c.id === targetCrewId) || user
 
+  const filteredInventory = useMemo(() => {
+    return inventory.filter(item => {
+      const name = item.item_name.toLowerCase()
+      const isSuit = name.includes('suit'); const isBoot = name.includes('safety boot') && !name.includes('rubber');
+      
+      // Filter by Category
+      if (activeCat !== 'All' && item.category !== activeCat) return false;
+
+      // Identity Lock
+      if (isSuit) return String(item.size) === String(activeProfile?.suit_size) && String(item.color) === String(activeProfile?.suit_color);
+      if (isBoot) return String(item.size) === String(activeProfile?.boot_size);
+      return true;
+    })
+  }, [inventory, activeCat, activeProfile])
+
   const addToCart = (variant: any) => {
-    // 🎯 โหลดตะกร้าปัจจุบันสดๆ จาก LocalStorage เสมอ ป้องกันการทำงานซ้อนกัน
-    const currentCart = JSON.parse(localStorage.getItem('kmt_cart') || '[]')
-    
     const stock = Number(variant.quantity || 0)
-    const inCartCount = currentCart.filter((i: any) => i.id === variant.id).length
+    const inCartCount = cart.filter((i: any) => i.id === variant.id).length
     if (inCartCount >= stock) return toast.error("Out of stock!");
 
     const name = variant.item_name.toLowerCase()
@@ -116,135 +116,118 @@ function PPEContent() {
     if (isSuit || isBoot) {
       const limit = isSuit ? 2 : 1
       const currentQuota = isSuit ? quotas.suit : quotas.boot
-      const inCartItems = currentCart.filter((i: any) => {
+      const inCartItems = cart.filter((i: any) => {
         const n = i.item_name.toLowerCase()
         return isSuit ? n.includes('suit') : (n.includes('safety boot') && !n.includes('rubber'))
       }).length
       
       if (currentQuota + inCartItems >= limit) {
-         if (isAdmin) {
-            toast.warning(`Over quota (${limit}/year) - Bypassed by Admin`);
-         } else {
-            return toast.error(`Quota limit reached (${limit}/year)`);
-         }
+         if (isAdmin) toast.warning(`Admin Override: Over quota (${limit}/year)`);
+         else return toast.error(`Quota limit reached (${limit}/year)`);
       }
     }
-
-    // เพิ่มของชิ้นใหม่และเซฟกลับลง LocalStorage
-    const newCart = [...currentCart, { ...variant, cartId: Date.now() }]
-    localStorage.setItem('kmt_cart', JSON.stringify(newCart))
-    
-    // แจ้ง Component อื่นๆ (Navbar/CartDrawer) ว่ามีการเปลี่ยนยอด
-    window.dispatchEvent(new CustomEvent('cart-updated', { detail: newCart.length }))
+    setCart([...cart, { ...variant, cartId: Date.now() }])
     toast.success('Added to Cart')
   };
 
   if (!mounted || !user) return null
 
   return (
-    <div className="min-h-screen bg-black text-white pb-32 pt-28 px-4 font-sans relative z-0">
-      <div className="max-w-md mx-auto space-y-4">
+    <div className="min-h-screen bg-black text-white pb-32 pt-28 px-4 md:px-8 font-sans">
+      <div className="max-w-6xl mx-auto space-y-10">
         
-        {isAdmin && (
-          <div className="bg-zinc-900 border border-orange-500/30 p-5 rounded-[24px] mb-8 shadow-2xl">
-             <label className="text-[10px] font-black uppercase text-orange-500 tracking-widest flex items-center gap-2 mb-3"><Users size={14}/> Request On Behalf Of</label>
-             <select 
-               value={targetCrewId} 
-               onChange={(e) => { 
-                 setTargetCrewId(e.target.value); 
-                 localStorage.setItem('kmt_cart', '[]'); 
-                 window.dispatchEvent(new CustomEvent('cart-updated', { detail: 0 })); 
-               }} 
-               className="w-full bg-black/50 border border-white/10 p-4 rounded-xl text-white outline-none focus:border-orange-500 font-bold uppercase text-xs"
-             >
-                <option value={user.id}>Myself ({user.full_name})</option>
-                <optgroup label="Crew Members">
-                   {crews.filter(c => c.id !== user.id).map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                </optgroup>
-             </select>
-             {targetCrewId !== user.id && <p className="text-[9px] text-zinc-500 mt-3 font-bold">⚠️ Quota and sizes will be based on the selected crew member.</p>}
-          </div>
-        )}
+        {/* 🛠️ IDENTITY & QUOTA HEADER */}
+        <div className="bg-zinc-900 border border-orange-500/20 rounded-[40px] p-6 md:p-10 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
+           <div className="absolute top-0 right-0 p-10 opacity-[0.03] rotate-12"><ShoppingBag size={200}/></div>
+           
+           <div className="w-full md:w-auto space-y-4 relative z-10">
+              <div className="flex items-center gap-4">
+                 <div className="w-16 h-16 bg-orange-600 rounded-3xl flex items-center justify-center text-white shadow-lg shadow-orange-600/20"><User size={32}/></div>
+                 <div>
+                    <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Requesting Personnel</p>
+                    {isAdmin ? (
+                      <select value={targetCrewId} onChange={(e) => setTargetCrewId(e.target.value)} className="bg-transparent text-xl md:text-2xl font-black text-white outline-none cursor-pointer border-b border-orange-500/50 py-1">
+                        <option value={user.id}>{user.full_name} (You)</option>
+                        {crews.filter(c => c.id !== user.id).map(c => <option key={c.id} value={c.id} className="bg-zinc-900">{c.full_name}</option>)}
+                      </select>
+                    ) : (
+                      <h2 className="text-xl md:text-2xl font-black text-white uppercase italic">{user.full_name}</h2>
+                    )}
+                 </div>
+              </div>
+           </div>
 
-        {categories.map(cat => {
-          const catItems: any = groupedInventory.filter((group: any) => {
-            const n = group.name.toLowerCase()
-            return cat.name === 'Other' ? !categories.slice(0, 7).some(c => c.keywords.some(k => n.includes(k))) : cat.keywords.some(k => n.includes(k))
-          })
-          if (catItems.length === 0) return null
-          const isCatOpen = expandedCat === cat.name
-          return (
-            <div key={cat.name} className={`rounded-[32px] border transition-all ${isCatOpen ? 'border-orange-500 bg-zinc-900 shadow-[0_0_30px_rgba(249,115,22,0.1)]' : 'border-white/5 bg-zinc-900/50 hover:bg-zinc-900'}`}>
-              <button onClick={() => setExpandedCat(isCatOpen ? null : cat.name)} className="w-full p-6 flex items-center justify-between outline-none">
-                <div className="flex items-center gap-4">
-                  <div className={`p-3 rounded-2xl ${isCatOpen ? 'bg-orange-500 text-white' : 'bg-black text-zinc-500 border border-white/5'}`}>{cat.icon}</div>
-                  <span className={`text-xs font-black uppercase tracking-tighter ${isCatOpen ? 'text-white' : 'text-zinc-400'}`}>{cat.name}</span>
-                </div>
-                {isCatOpen ? <ChevronUp size={20} className="text-orange-500"/> : <ChevronDown size={20} className="text-zinc-600" />}
-              </button>
-              {isCatOpen && (
-                <div className="px-4 pb-6 space-y-3 animate-in slide-in-from-top-2 duration-300">
-                  {catItems.map((group: any) => {
-                    const name = group.name.toLowerCase()
-                    const isSuit = name.includes('suit'); const isBoot = name.includes('safety boot') && !name.includes('rubber');
-                    const visibleVariants = group.variants.filter((v: any) => {
-                      if (isSuit) return String(v.size) === String(activeProfile?.suit_size) && String(v.color) === String(activeProfile?.suit_color);
-                      if (isBoot) return String(v.size) === String(activeProfile?.boot_size);
-                      return true;
-                    })
-                    if (visibleVariants.length === 0) return null;
-                    return (
-                      <div key={group.name} className="bg-black/40 rounded-2xl overflow-hidden border border-white/5">
-                        <button onClick={() => setExpandedItem(expandedItem === group.name ? null : group.name)} className="w-full p-4 flex items-center justify-between text-left outline-none">
-                          <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">{group.name}</span>
-                          <ChevronDown size={14} className={`text-zinc-600 transition-transform ${expandedItem === group.name ? 'rotate-180' : ''}`} />
-                        </button>
-                        {expandedItem === group.name && (
-                          <div className="p-2 space-y-2 bg-black/20 border-t border-white/5">
-                            {visibleVariants.map((variant: any, vIdx: number) => {
-                              const stock = Number(variant.quantity || 0)
-                              // 🎯 ดึงยอดตะกร้าปัจจุบันมาเช็คกันของหมด
-                              const currentCart = JSON.parse(localStorage.getItem('kmt_cart') || '[]')
-                              const inCartCount = currentCart.filter((i: any) => i.id === variant.id).length
-                              const currentStock = stock - inCartCount
-                              const canAdd = currentStock > 0
-                              return (
-                                <div key={vIdx} className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-zinc-900/30">
-                                  <div className="flex flex-col">
-                                    <span className="text-[10px] font-black uppercase text-white tracking-widest">{variant.color} {variant.size}</span>
-                                    <div className="mt-1">
-                                      {currentStock <= 0 ? (
-                                        <span className="text-red-500 uppercase text-[8px] font-bold flex items-center gap-1"><AlertTriangle size={10}/> Out of Stock</span>
-                                      ) : isAdmin ? (
-                                        <span className="text-zinc-500 text-[8px] uppercase tracking-widest font-black">Stock: <span className="text-white">{currentStock}</span></span>
-                                      ) : (
-                                        <span className="text-emerald-500 uppercase text-[8px] font-bold italic">● In Stock</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {canAdd ? (
-                                    <button onClick={() => addToCart(variant)} className="p-3 bg-orange-600 text-white rounded-xl shadow-lg active:scale-90 transition-all"><Plus size={16}/></button>
-                                  ) : (
-                                    <div className="p-3 text-zinc-800"><Lock size={16}/></div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
+           <div className="flex gap-4 w-full md:w-auto relative z-10">
+              <div className="flex-1 md:w-40 bg-black/40 p-5 rounded-[24px] border border-white/5 space-y-2">
+                 <div className="flex justify-between text-[8px] font-black uppercase text-zinc-500 tracking-tighter"><span>Boiler Suit</span><span>{quotas.suit}/2</span></div>
+                 <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${quotas.suit >= 2 ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${(quotas.suit/2)*100}%` }}></div></div>
+              </div>
+              <div className="flex-1 md:w-40 bg-black/40 p-5 rounded-[24px] border border-white/5 space-y-2">
+                 <div className="flex justify-between text-[8px] font-black uppercase text-zinc-500 tracking-tighter"><span>Safety Boots</span><span>{quotas.boot}/1</span></div>
+                 <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${quotas.boot >= 1 ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${(quotas.boot/1)*100}%` }}></div></div>
+              </div>
+           </div>
+        </div>
+
+        {/* 🎯 CATEGORY SELECTOR */}
+        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-4 px-2">
+           <button onClick={() => setActiveCat('All')} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border ${activeCat === 'All' ? 'bg-orange-600 border-orange-400 text-white shadow-lg' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>All Items</button>
+           {categoryConfig.map(cat => {
+              const Icon = cat.icon;
+              return (
+                <button key={cat.name} onClick={() => setActiveCat(cat.name)} className={`flex items-center gap-3 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border whitespace-nowrap ${activeCat === cat.name ? 'bg-orange-600 border-orange-400 text-white shadow-lg' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>
+                   <Icon size={16}/> {cat.label}
+                </button>
+              )
+           })}
+        </div>
+
+        {/* 🛒 ITEM GRID */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+           {filteredInventory.map((item) => {
+              const stock = Number(item.quantity || 0)
+              const inCartCount = cart.filter(i => i.id === item.id).length
+              const currentStock = stock - inCartCount
+              return (
+                <div key={item.id} className="group bg-zinc-900/50 border border-white/5 rounded-[32px] p-5 md:p-6 flex flex-col justify-between hover:border-orange-500/50 transition-all shadow-xl">
+                   <div className="space-y-4">
+                      <div className="flex justify-between items-start">
+                         <span className="bg-black/40 text-zinc-600 px-2.5 py-1 rounded-lg text-[8px] font-black uppercase tracking-tighter">{item.item_id_code}</span>
+                         {currentStock <= 0 && <span className="text-red-500"><AlertTriangle size={16}/></span>}
                       </div>
-                    )
-                  })}
+                      <div className="space-y-1">
+                         <h3 className="text-white font-black text-xs md:text-sm uppercase leading-tight italic">{item.item_name}</h3>
+                         <p className="text-[10px] text-zinc-500 font-bold uppercase">{item.color} | {item.size}</p>
+                      </div>
+                   </div>
+
+                   <div className="mt-8 flex items-end justify-between pt-4 border-t border-white/5">
+                      <div className="flex flex-col">
+                         {isAdmin ? (
+                            <span className="text-xs font-black text-white">{currentStock} <span className="text-[8px] text-zinc-600 uppercase">{item.unit}</span></span>
+                         ) : (
+                            <span className={`text-[9px] font-black uppercase italic ${currentStock > 0 ? 'text-emerald-500' : 'text-red-600'}`}>{currentStock > 0 ? '● In Stock' : 'Out of Stock'}</span>
+                         )}
+                         <span className="text-[7px] text-zinc-700 font-black uppercase">Availability</span>
+                      </div>
+                      <button 
+                        onClick={() => addToCart(item)} 
+                        disabled={currentStock <= 0}
+                        className="w-10 h-10 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:text-zinc-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-orange-600/10 active:scale-90 transition-all"
+                      >
+                         {currentStock > 0 ? <Plus size={20}/> : <Lock size={16}/>}
+                      </button>
+                   </div>
                 </div>
-              )}
-            </div>
-          )
-        })}
+              )
+           })}
+        </div>
+        {filteredInventory.length === 0 && <div className="py-20 text-center text-zinc-700 font-black uppercase tracking-widest italic">No items found in this section.</div>}
       </div>
     </div>
   )
 }
 
 export default function PPEPage() {
-  return ( <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse">LOADING...</div>}><PPEContent /></Suspense> )
+  return ( <Suspense fallback={<div>Loading Storefront...</div>}><PPEContent /></Suspense> )
 }
