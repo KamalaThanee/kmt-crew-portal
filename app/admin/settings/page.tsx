@@ -1,11 +1,11 @@
 'use client'
-import { User, useState, useEffect, useMemo, Suspense } from 'react'
-import { User, useRouter, useSearchParams } from 'next/navigation'
-import { User, supabase } from '@/lib/supabase'
-import { User, toast } from 'sonner'
-import { User, 
+import { useState, useEffect, useMemo, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { toast } from 'sonner'
+import { 
   Settings, Users, Package, SlidersHorizontal, Search, FileCheck, Clock, Eye, CheckCircle2,
-  Loader2, Upload, Edit, RefreshCw, X, Save, AlertTriangle, Box, Plus, ChevronDown, ChevronRight, XCircle
+  Loader2, Upload, Edit, RefreshCw, X, Save, AlertTriangle, Box, Plus, ChevronDown, ChevronRight, XCircle, Trash2, User
 } from 'lucide-react'
 import imageCompression from 'browser-image-compression'
 
@@ -26,31 +26,14 @@ function SettingsContent() {
   const [rules, setRules] = useState<any[]>([]);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterMode, setFilterMode] = useState('all'); 
+  const [filterMode, setFilterMode] = useState('all');
   const [filterCert, setFilterCert] = useState('all');
-  
-  // 🎯 State สำหรับจัดการการย่อขยายรายชื่อลูกเรือ
-  const [expandedCrews, setExpandedCrews] = useState<string[]>([]);
 
   const [editingCrew, setEditingCrew] = useState<any>(null);
-  const [editingItem, setEditingItem] = useState<any>(null);
   const [isEditCrewOpen, setIsEditCrewOpen] = useState(false);
-  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
-
-  const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
-  const smartSort = (arr: any[]) => {
-    return [...arr].sort((a, b) => {
-      const getNum = (s: string) => { const match = String(s).match(/\d+/); return match ? parseInt(match[0]) : null; };
-      const numA = getNum(a); const numB = getNum(b);
-      if (numA !== null && numB !== null) return numA - numB;
-      const idxA = sizeOrder.indexOf(String(a).toUpperCase()); const idxB = sizeOrder.indexOf(String(b).toUpperCase());
-      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-      return String(a).localeCompare(String(b));
-    });
-  }
 
   const fetchData = async () => {
-    const [stRes, invRes, crewRes, mxRes, ccRes, ruRes] = await Promise.all([
+    const [settingsRes, invRes, crewRes, matrixRes, certsRes, rulesRes] = await Promise.all([
       supabase.from('ppe_settings').select('*').eq('id', 1).single(),
       supabase.from('ppe_inventory').select('*').order('item_name'),
       supabase.from('crews').select('*').order('full_name'),
@@ -59,12 +42,12 @@ function SettingsContent() {
       supabase.from('cert_rules').select('*')
     ]);
 
-    if (stRes.data) setSizeCharts({ suit: stRes.data.suit_chart_url || '', boot: stRes.data.boot_url || '' });
+    if (settingsRes.data) setSizeCharts({ suit: settingsRes.data.suit_chart_url || '', boot: settingsRes.data.boot_url || '' });
     if (invRes.data) setInventory(invRes.data);
     if (crewRes.data) setCrews(crewRes.data);
-    if (mxRes.data) setCertMatrix(mxRes.data);
-    if (ccRes.data) setAllCrewCerts(ccRes.data);
-    if (ruRes.data) setRules(ruRes.data);
+    if (matrixRes.data) setCertMatrix(matrixRes.data);
+    if (certsRes.data) setAllCrewCerts(certsRes.data);
+    if (rulesRes.data) setRules(rulesRes.data);
     setLoading(false);
   };
 
@@ -85,35 +68,22 @@ function SettingsContent() {
     if (tab && ['inventory', 'crews', 'system'].includes(tab)) setActiveTab(tab);
   }, [searchParams]);
 
-  const allCategories = useMemo(() => {
-    const dbCats = inventory.map(i => i.category).filter(Boolean);
-    return [...new Set(['Other', ...dbCats])].sort();
-  }, [inventory]);
-
-  const generateNextCode = (catName: string) => {
-    const catItems = inventory.filter(i => i.category === catName);
-    const numbers = catItems.map(i => {
-      const match = String(i.item_id_code).match(/\d+$/);
-      return match ? parseInt(match[0]) : 0;
+  const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
+  const smartSort = (arr: any[]) => {
+    return [...arr].sort((a, b) => {
+      const getNum = (s: string) => { const match = String(s).match(/\d+/); return match ? parseInt(match[0]) : null; };
+      const numA = getNum(a); const numB = getNum(b);
+      if (numA !== null && numB !== null) return numA - numB;
+      const idxA = sizeOrder.indexOf(String(a).toUpperCase()); const idxB = sizeOrder.indexOf(String(b).toUpperCase());
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      return String(a).localeCompare(String(b));
     });
-    return `${catName}-${numbers.length > 0 ? Math.max(...numbers) + 1 : 1}`;
-  };
+  }
 
-  const filteredInventoryGrouped = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    const filtered = inventory.filter(i => {
-      const matchesSearch = i.item_name.toLowerCase().includes(searchTerm.toLowerCase()) || (i.item_id_code || "").toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesSearch;
-    });
-    filtered.forEach(item => {
-      const cat = item.category || 'Other';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(item);
-    });
-    return groups;
-  }, [inventory, searchTerm]);
+  const suitSizes = useMemo(() => smartSort([...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.size))].filter(Boolean)), [inventory])
+  const suitColors = useMemo(() => [...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.color))].filter(Boolean).sort(), [inventory])
+  const bootSizes = useMemo(() => smartSort([...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')).map(i => i.size))].filter(Boolean)), [inventory])
 
-  // 🎯 คำนวณความพร้อมของใบเซอร์รายบุคคล
   const getCrewCertDetails = (crew: any) => {
     if (!certMatrix.length) return { progress: 0, expired: 0, warning: 0, list: [] };
     const crewPosNorm = normalize(crew.position);
@@ -175,10 +145,12 @@ function SettingsContent() {
   const crewSummary = useMemo(() => {
     const all = crews.map(c => getCrewCertDetails(c));
     return {
-      total: crews.length, ok: all.filter(c => c.progress === 100 && c.expired === 0).length,
+      total: crews.length,
+      ok: all.filter(c => c.progress === 100 && c.expired === 0).length,
       warning: all.filter(c => c.warning > 0 && c.expired === 0).length,
       action: all.filter(c => c.progress < 100 || c.expired > 0).length,
-      days90: all.filter(c => c.warning > 0).length, expired: all.filter(c => c.expired > 0).length
+      days90: all.filter(c => c.warning > 0).length,
+      expired: all.filter(c => c.expired > 0).length
     };
   }, [crews, certMatrix, allCrewCerts, rules]);
 
@@ -187,38 +159,55 @@ function SettingsContent() {
   const handleUpdateCrew = async () => {
     if (!editingCrew) return;
     const { error } = await supabase.from('crews').update({
-      full_name: editingCrew.full_name, position: editingCrew.position, suit_size: editingCrew.suit_size, boot_size: editingCrew.boot_size
+      full_name: editingCrew.full_name, position: editingCrew.position, suit_size: editingCrew.suit_size, suit_color: editingCrew.suit_color, boot_size: editingCrew.boot_size
     }).eq('id', editingCrew.id);
     if (!error) { toast.success('Profile Updated'); setIsEditCrewOpen(false); fetchData(); }
   };
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-orange-500 font-black animate-pulse uppercase">Loading Admin Center...</div>;
+  const handleResetPin = async (id: string, name: string) => {
+    if (confirm(`Reset PIN for ${name}?`)) {
+      await supabase.from('crews').update({ pin: null, registered: false }).eq('id', id);
+      fetchData(); toast.success('PIN Reset');
+    }
+  };
+
+  const handleUpload = async (type: 'suit' | 'boot', file: File) => {
+    setUploading(prev => ({ ...prev, [type]: true }));
+    try {
+      const compressedFile = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1280 });
+      const fileName = `${type}_chart_${Date.now()}.jpg`;
+      await supabase.storage.from('size-charts').upload(fileName, compressedFile);
+      const { data: { publicUrl } } = supabase.storage.from('size-charts').getPublicUrl(fileName);
+      await supabase.from('ppe_settings').update({ [type === 'suit' ? 'suit_chart_url' : 'boot_url']: publicUrl }).eq('id', 1);
+      setSizeCharts(prev => ({ ...prev, [type]: publicUrl }));
+      toast.success('Updated');
+    } finally { setUploading(prev => ({ ...prev, [type]: false })); }
+  }
+
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-orange-500 font-black animate-pulse uppercase tracking-widest text-xs">Initializing Admin Center...</div>;
 
   return (
     <div className="min-h-screen bg-black text-white font-sans pb-32 pt-24 px-4 md:px-12 uppercase font-bold text-[10px]">
       <div className="max-w-[1600px] mx-auto">
         <div className="mb-8 flex justify-between items-center">
           <h1 className="text-3xl font-black italic flex items-center gap-3"><Settings className="text-orange-500"/> Admin Center</h1>
-          <button onClick={() => router.push('/admin/dashboard')} className="p-3 bg-white/5 rounded-full hover:bg-red-500 transition-all"><X/></button>
+          <button onClick={() => router.push('/admin/dashboard')} className="p-3 bg-white/5 rounded-full hover:bg-white/10"><X/></button>
         </div>
 
         <div className="flex flex-col lg:flex-row gap-10">
           <div className="w-full lg:w-64 space-y-3 shrink-0">
-            {['inventory', 'crews', 'system'].map(t => (
+            {['crews', 'system'].map(t => (
               <button key={t} onClick={() => { setActiveTab(t); setSearchTerm(''); }} className={`w-full flex items-center gap-4 p-5 rounded-[24px] transition-all border ${activeTab === t ? 'bg-orange-600 border-orange-400 text-white shadow-lg shadow-orange-600/20' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-orange-400'}`}>
-                {t === 'inventory' ? <Package size={20}/> : t === 'crews' ? <Users size={20}/> : <SlidersHorizontal size={20}/>} <span className="text-xs">{t} Master</span>
+                {t === 'crews' ? <Users size={20}/> : <SlidersHorizontal size={20}/>} <span className="text-xs">{t} Master</span>
               </button>
             ))}
           </div>
 
           <div className="flex-1 bg-zinc-900/50 border border-white/5 rounded-[48px] p-6 md:p-8 shadow-inner min-h-[70vh]">
             
-            {/* 🎯 TAB: CREW MASTER (Accordion Design) */}
             {activeTab === 'crews' && (
               <div className="animate-in fade-in space-y-8">
-                <h2 className="text-2xl font-black italic text-white mb-4 uppercase tracking-tighter">Crew Master</h2>
-                
-                {/* 6-Tile Stats */}
+                <h2 className="text-2xl font-black italic text-white mb-4 uppercase">Crew Master</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                    {[
                      { id: 'all', label: 'ทั้งหมด', val: crewSummary.total, color: 'border-blue-500', text: 'text-blue-500' },
@@ -228,7 +217,7 @@ function SettingsContent() {
                      { id: '90days', label: '90 วัน', val: crewSummary.days90, color: 'border-amber-400', text: 'text-amber-500' },
                      { id: 'expired', label: 'หมดแล้ว', val: crewSummary.expired, color: 'border-red-500', text: 'text-red-500' }
                    ].map(tile => (
-                     <button key={tile.id} onClick={() => setFilterMode(tile.id)} className={`bg-black/30 p-5 rounded-3xl border-t-4 ${tile.color} shadow-lg flex flex-col items-center transition-all ${filterMode === tile.id ? 'bg-zinc-800' : 'opacity-70 hover:opacity-100'}`}>
+                     <button key={tile.id} onClick={() => setFilterMode(tile.id)} className={`bg-black/30 p-5 rounded-3xl border-t-4 ${tile.color} shadow-lg flex flex-col items-center transition-all ${filterMode === tile.id ? 'bg-zinc-800 border-white/20' : 'opacity-70 hover:opacity-100'}`}>
                         <p className={`text-3xl font-black ${tile.text}`}>{tile.val}</p>
                         <p className="text-[10px] font-bold text-zinc-500 mt-2 uppercase">{tile.label}</p>
                      </button>
@@ -236,105 +225,73 @@ function SettingsContent() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={18}/><input type="text" placeholder="Search crew name..." className="w-full bg-black/50 border border-white/10 p-5 pl-12 rounded-[24px] outline-none text-sm font-bold text-white focus:border-orange-500" onChange={(e) => setSearchTerm(e.target.value)} /></div>
-                  <select className="w-full bg-black/50 border border-white/10 p-5 rounded-[24px] outline-none text-orange-500 font-black" value={filterCert} onChange={(e) => setFilterCert(e.target.value)}><option value="all">🔍 Filter by Certificate...</option>{allUniqueCerts.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                  <div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={18}/><input type="text" placeholder="Search name..." className="w-full bg-black/50 border border-white/10 p-5 pl-12 rounded-[24px] outline-none text-sm font-bold text-white focus:border-orange-500 transition-all" onChange={(e) => setSearchTerm(e.target.value)} /></div>
+                  <select className="w-full bg-black/50 border border-white/10 p-5 rounded-[24px] outline-none text-orange-500 font-black focus:border-orange-500 transition-all" value={filterCert} onChange={(e) => setFilterCert(e.target.value)}><option value="all">🔍 Filter by Certificate...</option>{allUniqueCerts.map(c => <option key={c} value={c}>{c}</option>)}</select>
                 </div>
 
-                {/* 🎯 Accordion Crew List */}
                 <div className="space-y-4">
-                  {enhancedCrews.map(crew => {
-                    const isExpanded = expandedCrews.includes(crew.id);
-                    const pColor = crew.certData.progress === 100 ? 'bg-emerald-500' : crew.certData.expired > 0 ? 'bg-red-500' : 'bg-orange-500';
-                    const bColor = crew.certData.progress === 100 ? 'border-emerald-500/50' : crew.certData.expired > 0 ? 'border-red-500/50' : 'border-orange-500/50';
-
-                    return (
-                      <div key={crew.id} className={`bg-zinc-900 border rounded-[32px] overflow-hidden transition-all duration-300 ${isExpanded ? 'border-orange-500/50 shadow-2xl' : 'border-white/5 hover:border-white/20'}`}>
-                        
-                        {/* 🎯 Header Bar */}
-                        <button onClick={() => setExpandedCrews(prev => prev.includes(crew.id) ? prev.filter(id => id !== crew.id) : [...prev, crew.id])} className="w-full p-6 flex flex-col outline-none">
-                           <div className="w-full flex justify-between items-center mb-3">
-                              <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center text-zinc-500"><User size={20}/></div>
-                                <div className="text-left"><p className="font-black text-sm text-white uppercase">{crew.full_name}</p><p className="text-[10px] text-zinc-500 tracking-widest mt-1">{crew.position}</p></div>
-                              </div>
-                              <div className="flex items-center gap-4">
-                                 <div className="text-right hidden md:block"><p className={`text-xl font-black ${pColor.replace('bg-', 'text-')}`}>{crew.certData.progress}%</p><p className="text-[8px] text-zinc-600 uppercase">Readiness</p></div>
-                                 <div className={`px-3 py-1 rounded text-[8px] font-black uppercase ${crew.certData.progress === 100 ? 'bg-emerald-500/20 text-emerald-500' : crew.certData.expired > 0 ? 'bg-red-500/20 text-red-500 animate-pulse' : 'bg-amber-500/20 text-amber-500'}`}>
-                                    {crew.certData.progress === 100 ? '✅ Ready' : crew.certData.expired > 0 ? '🚨 Action Required' : '⚠️ Pending'}
-                                 </div>
-                                 {isExpanded ? <ChevronDown className="text-orange-500" size={24}/> : <ChevronRight className="text-zinc-600" size={24}/>}
-                              </div>
-                           </div>
-                           
-                           {/* 🎯 Progress Bar Line */}
-                           <div className="w-full bg-black/50 h-1.5 rounded-full overflow-hidden">
-                              <div className={`${pColor} h-full transition-all duration-1000`} style={{ width: `${crew.certData.progress}%` }}></div>
-                           </div>
-                        </button>
-
-                        {/* 🎯 Expanded Content (Cert Grid) */}
-                        {isExpanded && (
-                          <div className="p-6 pt-0 border-t border-white/5 bg-black/20 animate-in slide-in-from-top-4">
-                             <div className="flex justify-between items-center py-4">
-                                <p className="text-zinc-500 text-[10px] tracking-widest">Total Certificates: {crew.certData.list.length}</p>
-                                <button onClick={() => { setEditingCrew(crew); setIsEditCrewOpen(true); }} className="px-4 py-2 bg-blue-600/10 text-blue-500 rounded-xl hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 text-[9px]"><Edit size={12}/> Edit Profile</button>
-                             </div>
-                             
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                               {crew.certData.list.map((cert: any, i: number) => (
-                                 <div key={i} className={`flex items-center justify-between p-4 rounded-2xl border-l-4 bg-zinc-900/50 border-y border-r border-y-white/5 border-r-white/5 ${cert.status === 'ok' ? 'border-l-emerald-500' : cert.status === 'expired' ? 'border-l-red-500' : cert.status === 'warning' ? 'border-l-amber-500' : 'border-l-slate-600'}`}>
-                                    <div className="flex items-center gap-4">
-                                       <div className={`p-2 rounded-xl ${cert.status === 'ok' ? 'bg-emerald-500/10 text-emerald-500' : cert.status === 'warning' ? 'bg-amber-500/10 text-amber-500' : cert.status === 'expired' ? 'bg-red-500/10 text-red-500' : 'bg-slate-800 text-slate-500'}`}>
-                                          {cert.status === 'missing' ? <AlertTriangle size={18}/> : cert.status === 'expired' ? <XCircle size={18}/> : cert.status === 'optional' ? <Clock size={18}/> : <FileCheck size={18}/>}
-                                       </div>
-                                       <div>
-                                          <p className="text-white text-[10px] leading-tight font-black">{cert.cert_name}</p>
-                                          <p className={`text-[8px] mt-1 uppercase ${cert.status === 'ok' ? 'text-emerald-500' : cert.status === 'expired' ? 'text-red-500' : 'text-slate-500'}`}>
-                                             {cert.status === 'missing' ? 'Missing Document' : cert.uploaded ? `Exp: ${cert.uploaded.expiry_date === '2099-12-31' ? 'N/A' : cert.uploaded.expiry_date}` : 'Optional'}
-                                          </p>
-                                       </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                       {cert.uploaded ? (
-                                         <>
-                                           <a href={cert.uploaded.file_url} target="_blank" className="p-2 bg-white/5 rounded-lg text-blue-400 hover:text-white transition-all"><Eye size={14}/></a>
-                                           <button onClick={() => router.push(`/certificates/upload?cert=${encodeURIComponent(cert.cert_name)}&crewId=${crew.id}`)} className="px-3 py-2 bg-orange-600/10 text-orange-500 rounded-lg hover:bg-orange-600 hover:text-white transition-all">Update</button>
-                                         </>
-                                       ) : (
-                                         <button onClick={() => router.push(`/certificates/upload?cert=${encodeURIComponent(cert.cert_name)}&crewId=${crew.id}`)} className="px-4 py-2 bg-orange-600 text-white rounded-lg shadow-lg active:scale-90">Upload</button>
-                                       )}
-                                    </div>
-                                 </div>
-                               ))}
-                             </div>
-                          </div>
-                        )}
+                  {enhancedCrews.map(crew => (
+                    <div key={crew.id} className="flex justify-between items-center bg-black/40 p-6 rounded-[32px] border border-white/5 group hover:border-orange-500/50 transition-all cursor-pointer shadow-xl" onClick={() => { setEditingCrew(crew); setIsEditCrewOpen(true); }}>
+                      <div className="flex items-center gap-6">
+                        <div className="relative w-16 h-16 shrink-0"><svg className="w-full h-full transform -rotate-90"><circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="5" fill="transparent" className="text-white/5"/><circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="5" fill="transparent" strokeDasharray="176" strokeDashoffset={176 - (crew.certData.progress/100)*176} className={crew.certData.progress === 100 ? 'text-emerald-500' : 'text-orange-500'}/></svg><span className="absolute inset-0 flex items-center justify-center text-xs font-black">{crew.certData.progress}%</span></div>
+                        <div><p className="font-bold text-lg text-white group-hover:text-orange-500 transition-colors flex items-center gap-2">{crew.full_name} {crew.certData.expired > 0 && <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[8px] animate-pulse">EXP</span>}</p><p className="text-[10px] text-zinc-500 tracking-widest mt-1">{crew.position}</p></div>
                       </div>
-                    )
-                  })}
+                      <ChevronRight size={24} className="text-zinc-800 group-hover:text-orange-500 transition-colors" />
+                    </div>
+                  ))}
+                  {enhancedCrews.length === 0 && <div className="text-center py-20 text-zinc-700 font-black uppercase tracking-widest italic">No members match your criteria.</div>}
                 </div>
               </div>
             )}
-            {activeTab === 'inventory' && <div className="py-20 text-center text-slate-500">Inventory Module Active</div>}
-            {activeTab === 'system' && <div className="py-20 text-center text-slate-500">System Configuration Active</div>}
+
+            {activeTab === 'system' && (
+              <div className="animate-in fade-in grid grid-cols-1 md:grid-cols-2 gap-10">
+                {['suit', 'boot'].map(type => (
+                  <div key={type} className="p-10 bg-black/40 rounded-[48px] border border-white/5 text-center space-y-6">
+                    <p className="text-zinc-500 tracking-widest text-xs font-black uppercase">{type === 'suit' ? 'Boiler Suit Chart' : 'Safety Boot Chart'}</p>
+                    <div className="w-full h-72 bg-zinc-950 rounded-[40px] flex items-center justify-center overflow-hidden border border-white/5 shadow-inner">{sizeCharts[type as 'suit' | 'boot'] ? <img src={sizeCharts[type as 'suit' | 'boot']} className="max-w-full max-h-full object-contain" /> : <p className="text-zinc-800 italic uppercase font-black text-xl">No Image</p>}</div>
+                    <label className="flex items-center justify-center w-full py-5 bg-orange-600 rounded-3xl cursor-pointer hover:bg-orange-500 transition-all text-white font-black uppercase text-xs shadow-xl active:scale-95"><Upload size={20} className="mr-3"/> Update Chart Image<input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleUpload(type as 'suit' | 'boot', e.target.files[0])} /></label>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* MODAL: EDIT CREW PROFILE (Only Profile, no certs here anymore) */}
       {isEditCrewOpen && editingCrew && (
-        <div className="fixed inset-0 z-[1000] bg-black/95 flex items-center justify-center p-6 backdrop-blur-xl animate-in zoom-in">
-          <div className="bg-zinc-900 border border-white/10 rounded-[48px] w-full max-w-lg p-10 shadow-2xl">
-            <div className="flex justify-between items-center border-b border-white/5 pb-6 mb-6 text-orange-500"><h2 className="text-xl font-black italic uppercase">Edit Profile</h2><button onClick={() => setIsEditCrewOpen(false)} className="p-2 bg-white/5 rounded-full hover:bg-red-500 text-white transition-all"><X size={20}/></button></div>
-            <div className="space-y-4">
-              <div className="space-y-1"><label className="text-[9px] text-zinc-500">Full Name</label><input className="w-full bg-black border border-white/10 p-4 rounded-2xl text-white" value={editingCrew.full_name} onChange={e => setEditingCrew({...editingCrew, full_name: e.target.value})}/></div>
-              <div className="space-y-1"><label className="text-[9px] text-zinc-500">Position</label><input className="w-full bg-black border border-white/10 p-4 rounded-2xl text-white" value={editingCrew.position} onChange={e => setEditingCrew({...editingCrew, position: e.target.value})}/></div>
-              <div className="space-y-1"><label className="text-[9px] text-blue-500">Suit Size</label><input className="w-full bg-black border border-white/10 p-4 rounded-2xl text-white" value={editingCrew.suit_size || '-'} onChange={e => setEditingCrew({...editingCrew, suit_size: e.target.value})}/></div>
-              <div className="space-y-1"><label className="text-[9px] text-blue-500">Boot Size</label><input className="w-full bg-black border border-white/10 p-4 rounded-2xl text-white" value={editingCrew.boot_size || '-'} onChange={e => setEditingCrew({...editingCrew, boot_size: e.target.value})}/></div>
-              <div className="flex gap-3 pt-4">
-                 <button onClick={handleUpdateCrew} className="flex-1 py-4 bg-orange-600 rounded-2xl font-black shadow-lg"><Save size={16} className="inline mr-2"/> Save</button>
-                 <button onClick={() => handleResetPin(editingCrew.id, editingCrew.full_name)} className="flex-1 py-4 bg-zinc-800 border border-white/5 rounded-2xl font-black hover:bg-red-600 transition-all"><RefreshCw size={16} className="inline mr-2"/> Reset PIN</button>
-              </div>
+        <div className="fixed inset-0 z-[1000] bg-black/95 flex items-center justify-center p-4 md:p-6 backdrop-blur-md animate-in zoom-in duration-200">
+          <div className="bg-zinc-900 border border-white/10 rounded-[48px] w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="flex justify-between items-center border-b border-white/5 p-8 md:p-10 shrink-0"><h2 className="text-3xl font-black italic uppercase tracking-tighter text-orange-500">{editingCrew.full_name}</h2><button onClick={() => setIsEditCrewOpen(false)} className="p-3 bg-white/5 rounded-full hover:bg-red-500 transition-all text-white"><X size={24}/></button></div>
+            <div className="overflow-y-auto p-8 md:p-10 space-y-12 flex-1 no-scrollbar pb-24">
+               <div className="space-y-6">
+                  <h3 className="text-blue-500 text-sm font-black uppercase tracking-widest border-b border-white/5 pb-3">Personnel Profile</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-white uppercase text-[10px]">
+                    <div className="space-y-2"><label className="text-zinc-600 font-bold">Position</label><input className="w-full bg-black border border-white/10 p-5 rounded-2xl text-orange-500 font-black italic outline-none" value={editingCrew.position} readOnly /></div>
+                    <div className="space-y-2"><label className="text-zinc-600 font-bold">PIN Number Security</label><div className="w-full bg-black border border-white/5 p-5 rounded-2xl text-zinc-700 italic font-black">LOCKED ACCESS</div></div>
+                    <div className="space-y-2"><label className="text-zinc-600 font-bold">Boiler Suit</label><select className="w-full bg-black border border-white/10 p-5 rounded-2xl outline-none text-white font-bold uppercase text-xs focus:border-orange-500 transition-all" value={editingCrew.suit_color} onChange={e => setEditingCrew({...editingCrew, suit_color: e.target.value})}><option value="">-- Select Color --</option>{suitColors.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                    <div className="space-y-2"><label className="text-zinc-600 font-bold">Boiler Size</label><select className="w-full bg-black border border-white/10 p-5 rounded-2xl outline-none text-white font-bold uppercase text-xs focus:border-orange-500 transition-all" value={editingCrew.suit_size || ''} onChange={e => setEditingCrew({...editingCrew, suit_size: e.target.value})}><option value="">-- Select Size --</option>{suitSizes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                    <div className="col-span-1 md:col-span-2 space-y-2"><label className="text-zinc-600 font-bold">Safety Boot Size</label><select className="w-full bg-black border border-white/10 p-5 rounded-2xl outline-none text-white font-bold uppercase text-xs focus:border-orange-500 transition-all" value={editingCrew.boot_size || ''} onChange={e => setEditingCrew({...editingCrew, boot_size: e.target.value})}><option value="">-- Select Size --</option>{bootSizes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                  </div>
+                  <div className="flex gap-4 pt-4">
+                     <button onClick={handleUpdateCrew} className="flex-1 py-5 bg-orange-600 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"><Save size={18}/> Update Member Information</button>
+                     <button onClick={() => handleResetPin(editingCrew.id, editingCrew.full_name)} className="px-8 py-5 bg-zinc-800 border border-white/5 rounded-3xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-red-600 transition-all"><RefreshCw size={18}/> Reset PIN</button>
+                  </div>
+               </div>
+               <div className="space-y-6">
+                  <div className="flex justify-between items-center border-b border-white/5 pb-3 font-black"><h3 className="text-purple-500 text-sm uppercase tracking-widest">Compliance Status</h3><span className="px-4 py-2 bg-purple-500/10 text-purple-400 rounded-2xl text-[10px] uppercase shadow-inner border border-purple-500/20">Readiness {editingCrew.certData.progress}%</span></div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-12">
+                     {editingCrew.certData.list.map((cert: any, idx: number) => (
+                        <div key={idx} className={`flex justify-between items-center bg-black/40 p-5 rounded-[24px] border border-white/5 ${cert.status === 'optional' ? 'opacity-30' : ''}`}>
+                           <div className="flex items-center gap-4">
+                              {cert.status === 'ok' ? <CheckCircle2 size={24} className="text-emerald-500"/> : cert.status === 'warning' ? <Clock size={24} className="text-amber-500"/> : cert.status === 'expired' ? <AlertTriangle size={24} className="text-red-500"/> : <XCircle size={24} className="text-zinc-700"/>}
+                              <div><p className="text-white text-[10px] font-black uppercase leading-tight">{cert.cert_name}</p><p className={`text-[8px] font-bold mt-1 uppercase ${cert.status === 'ok' ? 'text-emerald-500/70' : 'text-zinc-600'}`}>{cert.uploaded ? `Expiry: ${cert.uploaded.expiry_date}` : 'Document Missing'}</p></div>
+                           </div>
+                           {cert.uploaded && <a href={cert.uploaded.file_url} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/5 rounded-2xl text-orange-500 hover:bg-orange-600 hover:text-white transition-all shadow-lg"><Eye size={18}/></a>}
+                        </div>
+                     ))}
+                  </div>
+               </div>
             </div>
           </div>
         </div>
