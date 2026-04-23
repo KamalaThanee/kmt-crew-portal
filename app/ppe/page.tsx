@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { 
   HardHat, Headphones, Eye, Wind, Hand, Footprints, MoreHorizontal, 
-  Plus, AlertTriangle, Lock, Shirt, Users, ChevronRight, ShoppingBag
+  Plus, AlertTriangle, Lock, Shirt, Users, ChevronRight, ShoppingBag, User
 } from 'lucide-react'
 
 function PPEContent() {
@@ -94,11 +94,7 @@ function PPEContent() {
     return inventory.filter(item => {
       const name = item.item_name.toLowerCase()
       const isSuit = name.includes('suit'); const isBoot = name.includes('safety boot') && !name.includes('rubber');
-      
-      // Filter by Category
       if (activeCat !== 'All' && item.category !== activeCat) return false;
-
-      // Identity Lock
       if (isSuit) return String(item.size) === String(activeProfile?.suit_size) && String(item.color) === String(activeProfile?.suit_color);
       if (isBoot) return String(item.size) === String(activeProfile?.boot_size);
       return true;
@@ -120,7 +116,6 @@ function PPEContent() {
         const n = i.item_name.toLowerCase()
         return isSuit ? n.includes('suit') : (n.includes('safety boot') && !n.includes('rubber'))
       }).length
-      
       if (currentQuota + inCartItems >= limit) {
          if (isAdmin) toast.warning(`Admin Override: Over quota (${limit}/year)`);
          else return toast.error(`Quota limit reached (${limit}/year)`);
@@ -135,11 +130,8 @@ function PPEContent() {
   return (
     <div className="min-h-screen bg-black text-white pb-32 pt-28 px-4 md:px-8 font-sans">
       <div className="max-w-6xl mx-auto space-y-10">
-        
-        {/* 🛠️ IDENTITY & QUOTA HEADER */}
         <div className="bg-zinc-900 border border-orange-500/20 rounded-[40px] p-6 md:p-10 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
            <div className="absolute top-0 right-0 p-10 opacity-[0.03] rotate-12"><ShoppingBag size={200}/></div>
-           
            <div className="w-full md:w-auto space-y-4 relative z-10">
               <div className="flex items-center gap-4">
                  <div className="w-16 h-16 bg-orange-600 rounded-3xl flex items-center justify-center text-white shadow-lg shadow-orange-600/20"><User size={32}/></div>
@@ -156,20 +148,17 @@ function PPEContent() {
                  </div>
               </div>
            </div>
-
            <div className="flex gap-4 w-full md:w-auto relative z-10">
               <div className="flex-1 md:w-40 bg-black/40 p-5 rounded-[24px] border border-white/5 space-y-2">
                  <div className="flex justify-between text-[8px] font-black uppercase text-zinc-500 tracking-tighter"><span>Boiler Suit</span><span>{quotas.suit}/2</span></div>
-                 <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${quotas.suit >= 2 ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${(quotas.suit/2)*100}%` }}></div></div>
+                 <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${quotas.suit >= 2 ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${Math.min((quotas.suit/2)*100, 100)}%` }}></div></div>
               </div>
               <div className="flex-1 md:w-40 bg-black/40 p-5 rounded-[24px] border border-white/5 space-y-2">
                  <div className="flex justify-between text-[8px] font-black uppercase text-zinc-500 tracking-tighter"><span>Safety Boots</span><span>{quotas.boot}/1</span></div>
-                 <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${quotas.boot >= 1 ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${(quotas.boot/1)*100}%` }}></div></div>
+                 <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${quotas.boot >= 1 ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${Math.min((quotas.boot/1)*100, 100)}%` }}></div></div>
               </div>
            </div>
         </div>
-
-        {/* 🎯 CATEGORY SELECTOR */}
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-4 px-2">
            <button onClick={() => setActiveCat('All')} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border ${activeCat === 'All' ? 'bg-orange-600 border-orange-400 text-white shadow-lg' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>All Items</button>
            {categoryConfig.map(cat => {
@@ -181,8 +170,6 @@ function PPEContent() {
               )
            })}
         </div>
-
-        {/* 🛒 ITEM GRID */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
            {filteredInventory.map((item) => {
               const stock = Number(item.quantity || 0)
@@ -200,7 +187,6 @@ function PPEContent() {
                          <p className="text-[10px] text-zinc-500 font-bold uppercase">{item.color} | {item.size}</p>
                       </div>
                    </div>
-
                    <div className="mt-8 flex items-end justify-between pt-4 border-t border-white/5">
                       <div className="flex flex-col">
                          {isAdmin ? (
@@ -210,11 +196,7 @@ function PPEContent() {
                          )}
                          <span className="text-[7px] text-zinc-700 font-black uppercase">Availability</span>
                       </div>
-                      <button 
-                        onClick={() => addToCart(item)} 
-                        disabled={currentStock <= 0}
-                        className="w-10 h-10 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:text-zinc-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-orange-600/10 active:scale-90 transition-all"
-                      >
+                      <button onClick={() => addToCart(item)} disabled={currentStock <= 0} className="w-10 h-10 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:text-zinc-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-orange-600/10 active:scale-90 transition-all">
                          {currentStock > 0 ? <Plus size={20}/> : <Lock size={16}/>}
                       </button>
                    </div>
@@ -222,7 +204,7 @@ function PPEContent() {
               )
            })}
         </div>
-        {filteredInventory.length === 0 && <div className="py-20 text-center text-zinc-700 font-black uppercase tracking-widest italic">No items found in this section.</div>}
+        {filteredInventory.length === 0 && <div className="py-20 text-center text-zinc-700 font-black uppercase tracking-widest italic">No items found.</div>}
       </div>
     </div>
   )
