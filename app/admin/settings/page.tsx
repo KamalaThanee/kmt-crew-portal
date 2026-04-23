@@ -1,9 +1,9 @@
 'use client'
-import { useState, useEffect, useMemo, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { toast } from 'sonner'
-import { 
+import { User, useState, useEffect, useMemo, Suspense } from 'react'
+import { User, useRouter, useSearchParams } from 'next/navigation'
+import { User, supabase } from '@/lib/supabase'
+import { User, toast } from 'sonner'
+import { User, 
   Settings, Users, Package, SlidersHorizontal, Search, FileCheck, Clock, Eye, CheckCircle2,
   Loader2, Upload, Edit, RefreshCw, X, Save, AlertTriangle, Box, Plus, ChevronDown, ChevronRight, XCircle
 } from 'lucide-react'
