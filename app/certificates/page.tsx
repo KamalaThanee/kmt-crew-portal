@@ -109,10 +109,10 @@ function CertificatesContent() {
     const all = crews.map(c => calculateCerts(c, allCerts.filter(ac => ac.crew_id === c.id)));
     return {
       total: crews.length,
-      ready: all.filter(a => a.progress === 100 && a.exp === 0).length,
-      warning: all.filter(a => a.warning > 0 && a.exp === 0).length,
-      expired: all.filter(a => a.exp > 0).length,
-      action: all.filter(a => a.progress < 100 || a.exp > 0).length
+      ready: all.filter(a => a.progress === 100 && a.expired === 0).length,
+      warning: all.filter(a => a.warning > 0 && a.expired === 0).length,
+      expired: all.filter(a => a.expired > 0).length,
+      action: all.filter(a => a.progress < 100 || a.expired > 0).length
     }
   }, [crews, allCerts, matrix]);
 
@@ -123,10 +123,10 @@ function CertificatesContent() {
       const matchPos = filterPos === 'All' || c.position === filterPos;
       
       let matchMode = true;
-      if (filterMode === 'ready') matchMode = c.certData.progress === 100 && c.certData.exp === 0;
-      if (filterMode === 'warning') matchMode = c.certData.warning > 0 && c.certData.exp === 0;
-      if (filterMode === 'expired') matchMode = c.certData.exp > 0;
-      if (filterMode === 'action') matchMode = c.certData.progress < 100 || c.certData.exp > 0;
+      if (filterMode === 'ready') matchMode = c.certData.progress === 100 && c.certData.expired === 0;
+      if (filterMode === 'warning') matchMode = c.certData.warning > 0 && c.certData.expired === 0;
+      if (filterMode === 'expired') matchMode = c.certData.expired > 0;
+      if (filterMode === 'action') matchMode = c.certData.progress < 100 || c.certData.expired > 0;
 
       let matchCert = true;
       if (filterSpecificCert !== 'All') {
