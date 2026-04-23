@@ -59,7 +59,7 @@ function UploadContent() {
 
     setIsScanning(true); setScanResult(null);
     try {
-      const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
+      const user = JSON.parse(localStorage.getItem('kmt_user') || '{}'); const targetCrewId = searchParams.get('crewId');
       let base64 = ""; let mimeType = isPDF ? "application/pdf" : "image/jpeg";
       if (isPDF) {
         base64 = await new Promise((resolve) => {
@@ -93,7 +93,7 @@ function UploadContent() {
     if (!file || !finalData.issueDate || !finalData.expiryDate) return toast.error('Complete all fields');
     setIsSaving(true);
     try {
-      const user = JSON.parse(localStorage.getItem('kmt_user') || '{}');
+      const user = JSON.parse(localStorage.getItem('kmt_user') || '{}'); const targetCrewId = searchParams.get('crewId');;
       
       let fileToUpload: Blob = file;
       if (!file.type.includes('pdf') && preview) {
@@ -116,7 +116,7 @@ function UploadContent() {
 
       // 🎯 แก้ไขตรงนี้: เพิ่ม onConflict เพื่อให้บันทึกทับข้อมูลเดิมได้
       const { error: dbError } = await supabase.from('crew_certs').upsert({
-        crew_id: user.id,
+        crew_id: targetCrewId || user.id,
         cert_name: certName,
         issue_date: finalData.issueDate,
         expiry_date: finalData.expiryDate,
