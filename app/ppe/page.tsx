@@ -20,8 +20,12 @@ function PPEContent() {
   const [quotas, setQuotas] = useState({ suit: 0, boot: 0 })
   const [activeCat, setActiveCat] = useState('All')
 
+  // ลำดับไซส์มาตรฐาน
+  const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
+
   const loadCart = useCallback(() => { 
-    setCart(JSON.parse(localStorage.getItem('kmt_cart') || '[]')) 
+    const saved = localStorage.getItem('kmt_cart') || '[]'
+    setCart(JSON.parse(saved)) 
   }, [])
 
   useEffect(() => {
@@ -37,7 +41,7 @@ function PPEContent() {
     loadCart()
 
     async function fetchData() {
-      const { data: inv } = await supabase.from('ppe_inventory').select('*').order('item_name')
+      const { data: inv } = await supabase.from('ppe_inventory').select('*')
       if (inv) setInventory(inv)
       if (isAdminCheck) {
         const { data: cr } = await supabase.from('crews').select('*').order('full_name')
@@ -70,13 +74,6 @@ function PPEContent() {
     fetchQuotas()
   }, [targetCrewId, crews, user])
 
-  useEffect(() => {
-    if (mounted) {
-      localStorage.setItem('kmt_cart', JSON.stringify(cart))
-      window.dispatchEvent(new CustomEvent('cart-updated', { detail: cart.length }))
-    }
-  }, [cart, mounted])
-
   const categoryConfig = [
     { name: 'Head Protection', icon: HardHat, label: 'Head' },
     { name: 'Ears Protection', icon: Headphones, label: 'Ears' },
@@ -90,6 +87,7 @@ function PPEContent() {
 
   const activeProfile = targetCrewId === user?.id ? user : crews.find(c => c.id === targetCrewId) || user
 
+  // 🎯 กรองและเรียงลำดับข้อมูล: ID Code > Color > Size
   const filteredInventory = useMemo(() => {
     return inventory.filter(item => {
       const name = item.item_name.toLowerCase()
@@ -98,12 +96,25 @@ function PPEContent() {
       if (isSuit) return String(item.size) === String(activeProfile?.suit_size) && String(item.color) === String(activeProfile?.suit_color);
       if (isBoot) return String(item.size) === String(activeProfile?.boot_size);
       return true;
+    }).sort((a, b) => {
+      // 1. เรียงตาม Code
+      const codeA = a.item_id_code || ''; const codeB = b.item_id_code || '';
+      if (codeA !== codeB) return codeA.localeCompare(codeB, undefined, {numeric: true});
+      // 2. เรียยตาม Color
+      const colorA = a.color || ''; const colorB = b.color || '';
+      if (colorA !== colorB) return colorA.localeCompare(colorB);
+      // 3. เรียงตาม Size
+      const idxA = sizeOrder.indexOf(String(a.size).toUpperCase());
+      const idxB = sizeOrder.indexOf(String(b.size).toUpperCase());
+      return idxA - idxB;
     })
   }, [inventory, activeCat, activeProfile])
 
   const addToCart = (variant: any) => {
+    // โหลดตะกร้าล่าสุดมาเช็ค
+    const currentCart = JSON.parse(localStorage.getItem('kmt_cart') || '[]')
     const stock = Number(variant.quantity || 0)
-    const inCartCount = cart.filter((i: any) => i.id === variant.id).length
+    const inCartCount = currentCart.filter((i: any) => i.id === variant.id).length
     if (inCartCount >= stock) return toast.error("Out of stock!");
 
     const name = variant.item_name.toLowerCase()
@@ -112,24 +123,29 @@ function PPEContent() {
     if (isSuit || isBoot) {
       const limit = isSuit ? 2 : 1
       const currentQuota = isSuit ? quotas.suit : quotas.boot
-      const inCartItems = cart.filter((i: any) => {
+      const inCartItems = currentCart.filter((i: any) => {
         const n = i.item_name.toLowerCase()
         return isSuit ? n.includes('suit') : (n.includes('safety boot') && !n.includes('rubber'))
       }).length
+      
       if (currentQuota + inCartItems >= limit) {
          if (isAdmin) toast.warning(`Admin Override: Over quota (${limit}/year)`);
          else return toast.error(`Quota limit reached (${limit}/year)`);
       }
     }
-    setCart([...cart, { ...variant, cartId: Date.now() }])
-    toast.success('Added to Cart')
+    
+    // บันทึกลง LocalStorage และยิง Event
+    const newCart = [...currentCart, { ...variant, cartId: Date.now() }]
+    localStorage.setItem('kmt_cart', JSON.stringify(newCart))
+    window.dispatchEvent(new CustomEvent('cart-updated', { detail: newCart.length }))
+    toast.success(`${variant.item_name} added to cart`)
   };
 
   if (!mounted || !user) return null
 
   return (
     <div className="min-h-screen bg-black text-white pb-32 pt-28 px-4 md:px-8 font-sans">
-      <div className="max-w-6xl mx-auto space-y-10">
+      <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-500">
         <div className="bg-zinc-900 border border-orange-500/20 rounded-[40px] p-6 md:p-10 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
            <div className="absolute top-0 right-0 p-10 opacity-[0.03] rotate-12"><ShoppingBag size={200}/></div>
            <div className="w-full md:w-auto space-y-4 relative z-10">
@@ -151,20 +167,20 @@ function PPEContent() {
            <div className="flex gap-4 w-full md:w-auto relative z-10">
               <div className="flex-1 md:w-40 bg-black/40 p-5 rounded-[24px] border border-white/5 space-y-2">
                  <div className="flex justify-between text-[8px] font-black uppercase text-zinc-500 tracking-tighter"><span>Boiler Suit</span><span>{quotas.suit}/2</span></div>
-                 <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${quotas.suit >= 2 ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${Math.min((quotas.suit/2)*100, 100)}%` }}></div></div>
+                 <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${quotas.suit >= 2 ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${(quotas.suit/2)*100}%` }}></div></div>
               </div>
               <div className="flex-1 md:w-40 bg-black/40 p-5 rounded-[24px] border border-white/5 space-y-2">
                  <div className="flex justify-between text-[8px] font-black uppercase text-zinc-500 tracking-tighter"><span>Safety Boots</span><span>{quotas.boot}/1</span></div>
-                 <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${quotas.boot >= 1 ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${Math.min((quotas.boot/1)*100, 100)}%` }}></div></div>
+                 <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${quotas.boot >= 1 ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${(quotas.boot/1)*100}%` }}></div></div>
               </div>
            </div>
         </div>
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-4 px-2">
-           <button onClick={() => setActiveCat('All')} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border ${activeCat === 'All' ? 'bg-orange-600 border-orange-400 text-white shadow-lg' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>All Items</button>
+           <button onClick={() => setActiveCat('All')} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border ${activeCat === 'All' ? 'bg-orange-600 border-orange-400 text-white shadow-lg shadow-orange-600/20' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>All Items</button>
            {categoryConfig.map(cat => {
               const Icon = cat.icon;
               return (
-                <button key={cat.name} onClick={() => setActiveCat(cat.name)} className={`flex items-center gap-3 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border whitespace-nowrap ${activeCat === cat.name ? 'bg-orange-600 border-orange-400 text-white shadow-lg' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>
+                <button key={cat.name} onClick={() => setActiveCat(cat.name)} className={`flex items-center gap-3 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border whitespace-nowrap ${activeCat === cat.name ? 'bg-orange-600 border-orange-400 text-white shadow-lg shadow-orange-600/20' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>
                    <Icon size={16}/> {cat.label}
                 </button>
               )
@@ -194,7 +210,7 @@ function PPEContent() {
                          ) : (
                             <span className={`text-[9px] font-black uppercase italic ${currentStock > 0 ? 'text-emerald-500' : 'text-red-600'}`}>{currentStock > 0 ? '● In Stock' : 'Out of Stock'}</span>
                          )}
-                         <span className="text-[7px] text-zinc-700 font-black uppercase">Availability</span>
+                         <span className="text-[7px] text-zinc-700 font-black uppercase tracking-tighter">Availability</span>
                       </div>
                       <button onClick={() => addToCart(item)} disabled={currentStock <= 0} className="w-10 h-10 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:text-zinc-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-orange-600/10 active:scale-90 transition-all">
                          {currentStock > 0 ? <Plus size={20}/> : <Lock size={16}/>}
