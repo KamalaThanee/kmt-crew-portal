@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ShoppingCart, X, Trash2, PackageCheck, Save, Users, ShieldAlert, AlertTriangle, Loader2, Lock, History as HistoryIcon } from 'lucide-react';
+import { ShoppingCart, X, Trash2, PackageCheck, Save, Users, ShieldAlert, AlertTriangle, Loader2, Lock, History as HistoryIcon, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 
@@ -14,7 +14,7 @@ export default function CartDrawer() {
   const [targetCrewId, setTargetCrewId] = useState("");
   const [crews, setCrews] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
-  const [targetHistory, setTargetHistory] = useState<any[]>([]); // ประวัติของคนที่ถูกเลือกเบิกแทน
+  const [targetHistory, setTargetHistory] = useState<any[]>([]); 
   const [personalQuotas, setPersonalQuotas] = useState({ suit: 0, boot: 0 });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -30,8 +30,12 @@ export default function CartDrawer() {
       if (data) setCrews(data);
     }
 
-    // โหลดโควตาของแอดมินเอง
-    const { data: reqs } = await supabase.from('ppe_requests').select('items').eq('crew_id', u.id).neq('status', 'rejected').gte('created_at', `${new Date().getFullYear()}-01-01`);
+    const { data: reqs } = await supabase.from('ppe_requests')
+      .select('items')
+      .eq('crew_id', u.id)
+      .neq('status', 'rejected')
+      .gte('created_at', `${new Date().getFullYear()}-01-01`);
+    
     let sc = 0; let bc = 0;
     reqs?.forEach(r => r.items?.forEach((i:any) => {
       if (i.item_name.toLowerCase().includes('suit')) sc++;
@@ -40,7 +44,6 @@ export default function CartDrawer() {
     setPersonalQuotas({ suit: sc, boot: bc });
   }, []);
 
-  // 🎯 ดึงประวัติพนักงานเมื่อมีการเลือกชื่อ
   useEffect(() => {
     const fetchTargetHistory = async () => {
       if (!onBehalf || !targetCrewId) { setTargetHistory([]); return; }
@@ -52,38 +55,32 @@ export default function CartDrawer() {
 
   useEffect(() => {
     window.addEventListener('open-cart', () => { loadData(); setIsOpen(true); });
-    window.addEventListener('cart-updated', () => setCartItems(JSON.parse(localStorage.getItem('kmt_cart') || '[]')));
+    window.addEventListener('cart-updated', () => {
+      setCartItems(JSON.parse(localStorage.getItem('kmt_cart') || '[]'));
+    });
     return () => { window.removeEventListener('cart-updated', loadData); };
   }, [loadData]);
 
-  // 🎯 กฎตรวจสอบพฤติกรรมแอดมิน (Personal Rules Enforcement)
   const personalViolation = useMemo(() => {
-    if (onBehalf) return null; // ถ้าเบิกให้คนอื่น กฎนี้จะไม่ถูกนำมาใช้
-    
+    if (onBehalf) return null;
     let violation = "";
     let suitInCart = 0; let bootInCart = 0;
-
     for (const item of cartItems) {
       const name = item.item_name.toLowerCase();
-      const isSuit = name.includes('suit');
-      const isBoot = name.includes('safety boot') && !name.includes('rubber');
-
-      if (isSuit) {
+      if (name.includes('suit')) {
         suitInCart++;
         if (item.size !== user?.suit_size || item.color !== user?.suit_color) violation = "ผิดไซส์หรือสีประจำตัว (Personal Size Mismatch)";
       }
-      if (isBoot) {
+      if (name.includes('safety boot') && !name.includes('rubber')) {
         bootInCart++;
         if (item.size !== user?.boot_size) violation = "ผิดไซส์รองเท้าประจำตัว (Personal Boot Size Mismatch)";
       }
     }
     if (personalQuotas.suit + suitInCart > 2) violation = "คุณเบิกชุด Boiler Suit เกินโควตาส่วนตัวประจำปี";
     if (personalQuotas.boot + bootInCart > 1) violation = "คุณเบิก Safety Boots เกินโควตาส่วนตัวประจำปี";
-
     return violation;
   }, [cartItems, onBehalf, user, personalQuotas]);
 
-  // 🎯 ฟังก์ชันช่วยดูว่าพนักงานเป้าหมายเคยเบิกของชิ้นนี้ไปหรือยัง
   const getTargetItemStats = (itemName: string) => {
     let count = 0; let lastDate = "Never";
     targetHistory.forEach(req => {
@@ -136,11 +133,10 @@ export default function CartDrawer() {
       <div className="relative w-full max-w-sm bg-zinc-950 h-full shadow-2xl border-l border-orange-500/20 flex flex-col animate-in slide-in-from-right duration-300">
         <div className="p-6 border-b border-white/5 flex items-center justify-between shadow-xl">
           <div className="flex items-center gap-3 text-orange-500"><ShoppingCart size={24}/><h2 className="text-xl font-black uppercase italic italic tracking-tighter text-white">Cart Check</h2></div>
-          <button onClick={() => setIsOpen(false)} className="p-2 bg-white/5 rounded-full text-zinc-500 hover:text-white transition-colors"><X size={20}/></button>
+          <button onClick={() => setIsOpen(false)} className="p-2 text-zinc-500 hover:text-white transition-colors"><X size={20}/></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
-          {/* Section: Mode Toggle */}
           {user && ["safety officer", "chief officer", "barge master"].includes(user.position.toLowerCase()) && (
              <div className={`p-5 rounded-[32px] border transition-all ${onBehalf ? 'bg-orange-500 border-orange-400' : 'bg-zinc-900 border-white/5 shadow-xl'}`}>
                 <div className="flex items-center justify-between">
@@ -159,7 +155,6 @@ export default function CartDrawer() {
              </div>
           )}
 
-          {/* Section: Items with Contextual History */}
           <div className="space-y-4">
              {cartItems.map((item, idx) => {
                 const targetStats = (onBehalf && targetCrewId) ? getTargetItemStats(item.item_name) : null;
@@ -169,7 +164,6 @@ export default function CartDrawer() {
                         <div><p className="text-white font-black text-sm uppercase leading-tight">{item.item_name}</p><p className="text-[10px] text-orange-500 font-bold mt-1 uppercase">{item.color} | Size: {item.size}</p></div>
                         <button onClick={() => { const n = [...cartItems]; n.splice(idx, 1); localStorage.setItem('kmt_cart', JSON.stringify(n)); window.dispatchEvent(new CustomEvent('cart-updated')); }} className="text-zinc-700 hover:text-red-500 p-1"><Trash2 size={16}/></button>
                      </div>
-                     {/* 🎯 Contextual History Display */}
                      {targetStats && (
                         <div className="bg-black/50 p-3 rounded-xl border border-white/5 flex items-center gap-3">
                            <HistoryIcon size={14} className="text-zinc-600"/>
