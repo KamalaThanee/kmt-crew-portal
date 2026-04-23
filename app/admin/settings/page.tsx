@@ -4,10 +4,12 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { 
-  Settings, Users, Package, SlidersHorizontal, Search,
+  Settings, Users, Package, SlidersHorizontal, Search, UserPlus,
   Loader2, Upload, Edit, RefreshCw, X, Save, Box, ChevronRight, User
 } from 'lucide-react'
 import imageCompression from 'browser-image-compression'
+
+const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 
 function SettingsContent() {
   const router = useRouter();
@@ -65,6 +67,8 @@ function SettingsContent() {
     if (tab && ['crews', 'system'].includes(tab)) setActiveTab(tab);
   }, [searchParams]);
 
+  // 🎯 สกัดตัวเลือกสำหรับ Dropdowns จากสต๊อกจริง
+  const suitColors = useMemo(() => [...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.color))].filter(Boolean).sort(), [inventory])
   const suitSizes = useMemo(() => smartSort([...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.size))].filter(Boolean)), [inventory])
   const bootSizes = useMemo(() => smartSort([...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')).map(i => i.size))].filter(Boolean)), [inventory])
 
@@ -72,13 +76,27 @@ function SettingsContent() {
     return crews.filter(crew => crew.full_name.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [crews, searchTerm]);
 
-  const handleUpdateCrew = async () => {
-    if (!editingCrew) return;
-    const { error } = await supabase.from('crews').update({
-      full_name: editingCrew.full_name, position: editingCrew.position, suit_size: editingCrew.suit_size, boot_size: editingCrew.boot_size
-    }).eq('id', editingCrew.id);
-    if (!error) { toast.success('Crew Profile Updated'); setIsEditCrewOpen(false); fetchData(); }
-    else toast.error('Update failed');
+  const handleSaveCrew = async () => {
+    if (!editingCrew.full_name || !editingCrew.position) return toast.error('Full Name and Position required');
+    
+    // บันทึกข้อมูลลงฐานข้อมูล (ใช้ upsert เพื่อรองรับทั้งการเพิ่มและแก้ไข)
+    const { error } = await supabase.from('crews').upsert({
+      id: editingCrew.id || undefined,
+      full_name: editingCrew.full_name,
+      position: editingCrew.position,
+      suit_color: editingCrew.suit_color,
+      suit_size: editingCrew.suit_size,
+      boot_size: editingCrew.boot_size,
+      registered: editingCrew.registered || false
+    });
+
+    if (!error) { 
+      toast.success(editingCrew.id ? 'Member updated' : 'New member added'); 
+      setIsEditCrewOpen(false); 
+      fetchData(); 
+    } else {
+      toast.error('Save failed: ' + error.message);
+    }
   };
 
   const handleResetPin = async (id: string, name: string) => {
@@ -101,7 +119,7 @@ function SettingsContent() {
     } finally { setUploading(prev => ({ ...prev, [type]: false })); }
   }
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-orange-500 font-black animate-pulse uppercase tracking-widest">Admin Hub Loading...</div>;
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-orange-500 font-black animate-pulse uppercase">Admin Hub Loading...</div>;
 
   return (
     <div className="min-h-screen bg-black text-white font-sans pb-32 pt-24 px-4 md:px-12 uppercase font-bold text-[10px]">
@@ -114,7 +132,7 @@ function SettingsContent() {
         <div className="flex flex-col lg:flex-row gap-10">
           <div className="w-full lg:w-72 space-y-3 shrink-0">
             {['crews', 'system'].map(t => (
-              <button key={t} onClick={() => { setActiveTab(t); setSearchTerm(''); }} className={`w-full flex items-center gap-4 p-5 rounded-[24px] transition-all border ${activeTab === t ? 'bg-orange-600 border-orange-400 text-white shadow-lg shadow-orange-600/20' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-orange-400'}`}>
+              <button key={t} onClick={() => { setActiveTab(t); setSearchTerm(''); }} className={`w-full flex items-center gap-4 p-5 rounded-[24px] transition-all border ${activeTab === t ? 'bg-orange-600 border-orange-400 text-white shadow-[0_0_30px_rgba(249,115,22,0.3)]' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-orange-400'}`}>
                 {t === 'crews' ? <Users size={20}/> : <SlidersHorizontal size={20}/>} <span className="text-xs">{t === 'crews' ? 'Crew Master' : 'System Master'}</span>
               </button>
             ))}
@@ -123,9 +141,13 @@ function SettingsContent() {
           <div className="flex-1 bg-zinc-900/5 border border-white/5 rounded-[48px] p-8 shadow-inner min-h-[70vh]">
             {activeTab === 'crews' && (
               <div className="animate-in fade-in space-y-8">
-                <div className="flex justify-between items-center">
-                  <h2 className="text-2xl font-black italic text-white uppercase tracking-tighter">Crew Directory</h2>
-                  <span className="px-4 py-2 bg-black/40 rounded-xl text-zinc-500 border border-white/5">{crews.length} Registered Personnel</span>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                  <div>
+                    <h2 className="text-2xl font-black italic text-white uppercase tracking-tighter leading-none">Barge Crew Master</h2>
+                    <p className="text-zinc-600 mt-2">{crews.length} Personnel in Database</p>
+                  </div>
+                  {/* 🎯 ปุ่มเพิ่มลูกเรือใหม่ */}
+                  <button onClick={() => { setEditingCrew({ full_name: '', position: '', suit_color: '', suit_size: '', boot_size: '', registered: false }); setIsEditCrewOpen(true); }} className="px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white rounded-2xl flex items-center gap-3 active:scale-95 transition-all shadow-lg shadow-orange-600/20"><UserPlus size={18}/> Add New Barge Crew</button>
                 </div>
                 
                 <div className="relative">
@@ -137,19 +159,13 @@ function SettingsContent() {
                   {filteredCrews.map(crew => (
                     <div key={crew.id} className="flex justify-between items-center bg-black/40 p-6 rounded-[32px] border border-white/5 group hover:border-orange-500/50 transition-all cursor-pointer shadow-xl" onClick={() => { setEditingCrew(crew); setIsEditCrewOpen(true); }}>
                       <div className="flex items-center gap-5">
-                        <div className="w-14 h-14 bg-zinc-800 rounded-2xl flex items-center justify-center text-zinc-600 group-hover:text-orange-500 transition-colors"><User size={28}/></div>
+                        <div className="w-14 h-14 bg-zinc-800 rounded-2xl flex items-center justify-center text-zinc-600 group-hover:text-orange-500 transition-colors border border-white/5"><User size={28}/></div>
                         <div>
-                          <p className="font-bold text-lg text-white group-hover:text-orange-500 transition-colors">{crew.full_name}</p>
-                          <p className="text-xs text-zinc-500 mt-1 uppercase tracking-widest">{crew.position}</p>
+                          <p className="font-bold text-lg text-white group-hover:text-orange-500 transition-colors leading-tight">{crew.full_name}</p>
+                          <p className="text-xs text-zinc-500 mt-1 uppercase tracking-widest italic">{crew.position}</p>
                         </div>
                       </div>
-                      <div className="text-right flex items-center gap-4">
-                         <div className="hidden sm:block">
-                            <p className="text-[8px] text-zinc-700">PPE SIZES</p>
-                            <p className="text-[10px] text-zinc-400 font-black">{crew.suit_size || '-'} / {crew.boot_size || '-'}</p>
-                         </div>
-                         <ChevronRight size={24} className="text-zinc-800 group-hover:text-orange-500 transition-all" />
-                      </div>
+                      <ChevronRight size={24} className="text-zinc-800 group-hover:text-orange-500 transition-all" />
                     </div>
                   ))}
                 </div>
@@ -171,26 +187,32 @@ function SettingsContent() {
         </div>
       </div>
 
-      {/* 🛠️ MODAL: EDIT CREW PROFILE (NO CERTIFICATES) */}
+      {/* 🛠️ MODAL: MANAGE CREW MEMBER */}
       {isEditCrewOpen && editingCrew && (
         <div className="fixed inset-0 z-[1000] bg-black/95 flex items-center justify-center p-6 backdrop-blur-xl animate-in zoom-in duration-300">
-          <div className="bg-zinc-900 border border-white/10 rounded-[48px] w-full max-w-lg p-12 space-y-8 shadow-2xl">
+          <div className="bg-zinc-900 border border-orange-500/20 rounded-[48px] w-full max-w-xl p-12 space-y-8 shadow-2xl max-h-[92vh] overflow-y-auto no-scrollbar">
             <div className="flex justify-between items-center border-b border-white/5 pb-8 mb-4 text-orange-500">
-               <h2 className="text-3xl font-black italic uppercase tracking-tighter">Edit Profile</h2>
+               <h2 className="text-3xl font-black italic uppercase tracking-tighter">{editingCrew.id ? 'Edit Profile' : 'New Member'}</h2>
                <button onClick={() => setIsEditCrewOpen(false)} className="p-3 bg-white/5 rounded-full hover:bg-red-500 text-white transition-all"><X size={24}/></button>
             </div>
             <div className="space-y-6">
-              <div className="space-y-2"><label className="text-zinc-500 text-[10px] font-black tracking-widest ml-2">FULL NAME</label><input className="w-full bg-black border border-white/10 p-5 rounded-2xl text-white font-bold text-sm focus:border-orange-500" value={editingCrew.full_name} onChange={e => setEditingCrew({...editingCrew, full_name: e.target.value})}/></div>
-              <div className="space-y-2"><label className="text-zinc-500 text-[10px] font-black tracking-widest ml-2">POSITION</label><input className="w-full bg-black border border-white/10 p-5 rounded-2xl text-orange-500 font-black italic text-sm" value={editingCrew.position} onChange={e => setEditingCrew({...editingCrew, position: e.target.value})}/></div>
+              <div className="space-y-2"><label className="text-zinc-500 text-[10px] font-black tracking-widest ml-2 uppercase">FULL NAME *</label><input className="w-full bg-black border border-white/10 p-5 rounded-2xl text-white font-bold text-sm focus:border-orange-500" value={editingCrew.full_name} onChange={e => setEditingCrew({...editingCrew, full_name: e.target.value})}/></div>
+              <div className="space-y-2"><label className="text-zinc-500 text-[10px] font-black tracking-widest ml-2 uppercase">POSITION *</label><input className="w-full bg-black border border-white/10 p-5 rounded-2xl text-orange-500 font-black italic text-sm focus:border-orange-500" value={editingCrew.position} onChange={e => setEditingCrew({...editingCrew, position: e.target.value})}/></div>
               
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><label className="text-blue-500 text-[10px] font-black tracking-widest ml-2">BOILER SUIT</label><select className="w-full bg-black border border-white/10 p-5 rounded-2xl text-white outline-none focus:border-orange-500 text-xs font-black" value={editingCrew.suit_size || ''} onChange={e => setEditingCrew({...editingCrew, suit_size: e.target.value})}><option value="">-- Size --</option>{suitSizes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-                <div className="space-y-2"><label className="text-blue-500 text-[10px] font-black tracking-widest ml-2">SAFETY BOOT</label><select className="w-full bg-black border border-white/10 p-5 rounded-2xl text-white outline-none focus:border-orange-500 text-xs font-black" value={editingCrew.boot_size || ''} onChange={e => setEditingCrew({...editingCrew, boot_size: e.target.value})}><option value="">-- Size --</option>{bootSizes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+              <div className="space-y-4 pt-4 border-t border-white/5">
+                <p className="text-orange-500 text-[10px] font-black tracking-widest ml-2 uppercase">PPE Configuration</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2"><label className="text-zinc-600 text-[10px] font-bold ml-2">SUIT COLOR</label><select className="w-full bg-black border border-white/10 p-5 rounded-2xl text-white font-bold text-xs" value={editingCrew.suit_color || ''} onChange={e => setEditingCrew({...editingCrew, suit_color: e.target.value})}><option value="">-- Color --</option>{suitColors.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                  <div className="space-y-2"><label className="text-zinc-600 text-[10px] font-bold ml-2">SUIT SIZE</label><select className="w-full bg-black border border-white/10 p-5 rounded-2xl text-white font-bold text-xs" value={editingCrew.suit_size || ''} onChange={e => setEditingCrew({...editingCrew, suit_size: e.target.value})}><option value="">-- Size --</option>{suitSizes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                </div>
+                <div className="space-y-2"><label className="text-zinc-600 text-[10px] font-bold ml-2">SAFETY BOOT SIZE</label><select className="w-full bg-black border border-white/10 p-5 rounded-2xl text-white font-bold text-xs" value={editingCrew.boot_size || ''} onChange={e => setEditingCrew({...editingCrew, boot_size: e.target.value})}><option value="">-- Select Size --</option>{bootSizes.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
               </div>
 
               <div className="flex gap-4 pt-6">
-                 <button onClick={handleUpdateCrew} className="flex-[2] py-5 bg-orange-600 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3"><Save size={18}/> Update Member</button>
-                 <button onClick={() => handleResetPin(editingCrew.id, editingCrew.full_name)} className="flex-1 py-5 bg-zinc-800 border border-white/5 rounded-3xl font-black uppercase text-[10px] text-zinc-500 hover:bg-red-600 hover:text-white transition-all">Reset PIN</button>
+                 <button onClick={handleSaveCrew} className="flex-[2] py-5 bg-orange-600 hover:bg-orange-500 text-white rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3"><Save size={18}/> {editingCrew.id ? 'Save Profile' : 'Create Account'}</button>
+                 {editingCrew.id && (
+                    <button onClick={() => handleResetPin(editingCrew.id, editingCrew.full_name)} className="flex-1 py-5 bg-zinc-800 border border-white/5 rounded-3xl font-black uppercase text-[10px] text-zinc-500 hover:bg-red-600 hover:text-white transition-all">Reset PIN</button>
+                 )}
               </div>
             </div>
           </div>
