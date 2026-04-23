@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { 
   HardHat, Headphones, Eye, Wind, Hand, Footprints, MoreHorizontal, 
-  Plus, AlertTriangle, Lock, Shirt, ShoppingBag, User, ShieldAlert, XCircle
+  Plus, AlertTriangle, Lock, Shirt, ShoppingBag, User, ShieldAlert, XCircle, ChevronDown
 } from 'lucide-react'
 
 function PPEContent() {
@@ -16,6 +16,7 @@ function PPEContent() {
   const [inventory, setInventory] = useState<any[]>([])
   const [cartCount, setCartCount] = useState(0)
   const [activeCat, setActiveCat] = useState('All')
+  const [expandedItemName, setExpandedItemName] = useState<string | null>(null) // 🎯 สำหรับยุบขยายชื่อสินค้า
 
   const loadCart = useCallback(() => { 
     setCartCount(JSON.parse(localStorage.getItem('kmt_cart') || '[]').length) 
@@ -45,16 +46,34 @@ function PPEContent() {
     { name: 'Other', icon: MoreHorizontal, label: 'Other' },
   ]
 
-  const filteredInventory = useMemo(() => {
-    return inventory.filter(item => {
-      if (activeCat !== 'All' && item.category !== activeCat) return false;
-      if (isAdmin) return true;
-      const name = item.item_name.toLowerCase()
-      const isSuit = name.includes('suit'); const isBoot = name.includes('safety boot') && !name.includes('rubber');
-      if (isSuit) return String(item.size) === String(user?.suit_size) && String(item.color) === String(user?.suit_color);
-      if (isBoot) return String(item.size) === String(user?.boot_size);
-      return true;
-    }).sort((a, b) => (a.item_id_code || "").localeCompare(b.item_id_code || "", undefined, {numeric: true}))
+  // 🎯 จัดกลุ่มสินค้าตามชื่อ (Grouping by Name)
+  const groupedInventory = useMemo(() => {
+    const filtered = inventory.filter(item => activeCat === 'All' || item.category === activeCat);
+    const groups: Record<string, any[]> = {};
+    
+    filtered.forEach(item => {
+      if (!groups[item.item_name]) groups[item.item_name] = [];
+      
+      if (isAdmin) {
+        groups[item.item_name].push(item);
+      } else {
+        // ลูกเรือเห็นเฉพาะไซส์ตัวเองสำหรับชุดและรองเท้า
+        const name = item.item_name.toLowerCase();
+        const isSuit = name.includes('suit'); const isBoot = name.includes('safety boot') && !name.includes('rubber');
+        if (isSuit) {
+          if (String(item.size) === String(user?.suit_size) && String(item.color) === String(user?.suit_color)) groups[item.item_name].push(item);
+        } else if (isBoot) {
+          if (String(item.size) === String(user?.boot_size)) groups[item.item_name].push(item);
+        } else {
+          groups[item.item_name].push(item);
+        }
+      }
+    });
+
+    return Object.entries(groups)
+      .filter(([_, variants]) => variants.length > 0)
+      .map(([name, variants]) => ({ name, variants }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [inventory, activeCat, isAdmin, user])
 
   const addToCart = (item: any) => {
@@ -69,52 +88,78 @@ function PPEContent() {
   if (!mounted || !user) return null
 
   return (
-    <div className="min-h-screen bg-black text-white pb-32 pt-28 px-4 md:px-8 font-sans">
-      <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-b border-white/5 pb-8">
+    <div className="min-h-screen bg-black text-white pb-32 pt-20 px-4 md:px-8 font-sans">
+      <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-500">
+        
+        {/* 🛠️ HEADER - กระชับพื้นที่ขึ้น */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-white/5 pb-6">
            <div>
-              <h1 className="text-3xl md:text-5xl font-black italic uppercase text-white tracking-tighter">Request PPE</h1>
-              <p className="text-orange-500 text-xs font-bold uppercase tracking-[0.3em] mt-2 flex items-center gap-2">
-                {isAdmin ? <ShieldAlert size={14} className="animate-pulse"/> : <User size={14}/>}
-                {isAdmin ? 'ADMIN OVERRIDE ENABLED' : `Personnel: ${user.full_name}`}
+              <h1 className="text-2xl md:text-4xl font-black italic uppercase text-white tracking-tighter">Request PPE</h1>
+              <p className="text-orange-500 text-[10px] font-bold uppercase tracking-[0.2em] mt-1 flex items-center gap-2">
+                {isAdmin ? <ShieldAlert size={12} className="animate-pulse"/> : <User size={12}/>}
+                {isAdmin ? 'Admin Mode' : `Personnel: ${user.full_name}`}
               </p>
            </div>
-           <div className="bg-zinc-900 border border-orange-500/20 px-6 py-3 rounded-2xl flex items-center gap-4 shadow-xl">
-              <ShoppingBag className="text-orange-500" size={20}/>
-              <span className="text-xl font-black">{cartCount} <span className="text-[10px] text-zinc-500 uppercase tracking-widest">Items</span></span>
+           <div className="bg-zinc-900 border border-orange-500/20 px-4 py-2 rounded-xl flex items-center gap-3 shadow-xl">
+              <ShoppingBag className="text-orange-500" size={18}/>
+              <span className="text-lg font-black">{cartCount} <span className="text-[9px] text-zinc-500 uppercase tracking-widest">Items</span></span>
            </div>
         </div>
 
-        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-2">
-           <button onClick={() => setActiveCat('All')} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border ${activeCat === 'All' ? 'bg-orange-600 border-orange-400 text-white shadow-lg' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>All</button>
+        {/* 🎯 CATEGORY SELECTOR */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2">
+           <button onClick={() => setActiveCat('All')} className={`px-5 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all border ${activeCat === 'All' ? 'bg-orange-600 border-orange-400 text-white shadow-lg' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>All</button>
            {categoryConfig.map(cat => (
-             <button key={cat.name} onClick={() => setActiveCat(cat.name)} className={`flex items-center gap-3 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border whitespace-nowrap ${activeCat === cat.name ? 'bg-orange-600 border-orange-400 text-white shadow-lg' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}><cat.icon size={16}/> {cat.label}</button>
+             <button key={cat.name} onClick={() => setActiveCat(cat.name)} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all border whitespace-nowrap ${activeCat === cat.name ? 'bg-orange-600 border-orange-400 text-white shadow-lg' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>
+                <cat.icon size={14}/> {cat.label}
+             </button>
            ))}
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-           {filteredInventory.map((item) => {
-              const inStock = Number(item.quantity || 0) > 0
+        {/* 🛒 GROUPED ITEM GRID */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+           {groupedInventory.map((group) => {
+              const isExpanded = expandedItemName === group.name;
+              const totalStock = group.variants.reduce((sum, v) => sum + v.quantity, 0);
+              
               return (
-                <div key={item.id} className={`bg-zinc-900/50 border ${inStock ? 'border-white/5' : 'border-red-500/30'} rounded-[32px] p-5 flex flex-col justify-between hover:border-orange-500/50 transition-all shadow-xl group`}>
-                   <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[8px] font-black uppercase text-zinc-600 bg-black/40 px-2 py-1 rounded-md">{item.item_id_code}</span>
-                        {!inStock && <span className="bg-red-500/10 text-red-500 px-2 py-0.5 rounded text-[8px] font-black uppercase animate-pulse">Out of Stock</span>}
+                <div key={group.name} className={`bg-zinc-900/50 border transition-all rounded-[32px] overflow-hidden ${isExpanded ? 'border-orange-500/50 bg-zinc-900 shadow-2xl' : 'border-white/5 hover:border-white/10'}`}>
+                   {/* Main Card Header */}
+                   <button onClick={() => setExpandedItemName(isExpanded ? null : group.name)} className="w-full p-6 flex items-center justify-between outline-none">
+                      <div className="flex items-center gap-4">
+                         <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center text-orange-500 border border-white/5"><Package size={24}/></div>
+                         <div className="text-left">
+                            <h3 className="text-white font-black text-sm uppercase italic">{group.name}</h3>
+                            <p className="text-[9px] text-zinc-500 font-bold uppercase mt-1">{group.variants.length} Variants Available</p>
+                         </div>
                       </div>
-                      <div>
-                        <h3 className="text-white font-black text-xs md:text-sm uppercase italic leading-tight">{item.item_name}</h3>
-                        <p className="text-[10px] text-zinc-500 font-bold mt-1 uppercase">{item.color} | {item.size}</p>
+                      <ChevronDown className={`text-zinc-600 transition-transform ${isExpanded ? 'rotate-180 text-orange-500' : ''}`} />
+                   </button>
+
+                   {/* Variants List (Expanded) */}
+                   {isExpanded && (
+                      <div className="px-4 pb-6 space-y-2 animate-in slide-in-from-top-2">
+                         {group.variants.map((v, vIdx) => {
+                            const inStock = v.quantity > 0;
+                            const inCart = JSON.parse(localStorage.getItem('kmt_cart') || '[]').filter((i:any) => i.id === v.id).length;
+                            const currentStock = v.quantity - inCart;
+                            
+                            return (
+                               <div key={vIdx} className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-white/5 hover:border-orange-500/30 transition-all">
+                                  <div>
+                                     <p className="text-white text-[10px] font-black uppercase">{v.color} | {v.size}</p>
+                                     <p className={`text-[8px] font-bold mt-1 ${currentStock > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                        {currentStock > 0 ? `● ${currentStock} In Stock` : 'Out of Stock'}
+                                     </p>
+                                  </div>
+                                  <button onClick={() => addToCart(v)} disabled={currentStock <= 0} className="w-9 h-9 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:text-zinc-900 text-white rounded-xl flex items-center justify-center transition-all active:scale-90">
+                                     {currentStock > 0 ? <Plus size={18}/> : <Lock size={14}/>}
+                                  </button>
+                               </div>
+                            )
+                         })}
                       </div>
-                   </div>
-                   <div className="mt-6 flex items-end justify-between pt-4 border-t border-white/5">
-                      <div className="flex flex-col">
-                         {isAdmin ? <span className="text-xs font-black text-orange-500">{item.quantity} <span className="text-[7px] text-zinc-700">STK</span></span> : <span className={`text-[8px] font-bold uppercase ${inStock ? 'text-emerald-500' : 'text-red-600'}`}>{inStock ? '● In Stock' : 'Out of Stock'}</span>}
-                      </div>
-                      <button onClick={() => addToCart(item)} disabled={!inStock} className="w-10 h-10 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-900 disabled:text-zinc-800 text-white rounded-2xl flex items-center justify-center transition-all active:scale-90 shadow-lg shadow-orange-600/10">
-                         {inStock ? <Plus size={18}/> : <XCircle size={18}/>}
-                      </button>
-                   </div>
+                   )}
                 </div>
               )
            })}
