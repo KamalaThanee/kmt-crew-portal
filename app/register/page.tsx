@@ -16,7 +16,7 @@ export default function RegisterPage() {
   
   const [searchTerm, setSearchTerm] = useState('')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  const [formData, setFormData] = useState({ full_name: '', position: '', pin: '', suit_color: '', suit_size: '', boot_size: '' })
+  const [formData, setFormData] = useState({ id: null as number | null, full_name: '', position: '', pin: '', suit_color: '', suit_size: '', boot_size: '' })
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
@@ -49,11 +49,27 @@ export default function RegisterPage() {
 
   const handleFinalSubmit = async () => {
     setSaving(true)
-    const { error } = await supabase.from('crews').update({
+    if (!formData.id) {
+      toast.error('Please select your name from the list')
+      setSaving(false)
+      return
+    }
+
+    const { data, error } = await supabase.from('crews').update({
       pin: formData.pin, suit_color: formData.suit_color, suit_size: formData.suit_size, boot_size: formData.boot_size, registered: true
-    }).eq('full_name', formData.full_name)
-    if (!error) { toast.success('Registration Complete'); router.push('/login'); }
-    else { toast.error('Error saving data'); }
+    }).eq('id', formData.id).select('id').single()
+
+    if (!error && data) {
+      toast.success('Registration Complete')
+      router.push('/login')
+    } else {
+      const message = (error?.message || '').toLowerCase()
+      if (message.includes('duplicate key') || message.includes('unique')) {
+        toast.error('PIN already in use, please choose another PIN')
+      } else {
+        toast.error(error?.message || 'Error saving data')
+      }
+    }
     setSaving(false)
   }
 
@@ -74,7 +90,7 @@ export default function RegisterPage() {
               <input type="text" placeholder="Search your name..." value={searchTerm} onFocus={() => setIsDropdownOpen(true)} onChange={(e) => {setSearchTerm(e.target.value); setIsDropdownOpen(true);}} className="w-full bg-zinc-900 border border-white/10 p-4 rounded-2xl outline-none focus:border-orange-500 font-bold text-sm" />
               {isDropdownOpen && filtered.length > 0 && (
                 <div className="absolute z-50 w-full mt-2 bg-zinc-900 border border-white/10 rounded-2xl max-h-60 overflow-y-auto shadow-2xl">
-                  {filtered.map(c => <div key={c.id} onClick={() => {setFormData({...formData, full_name: c.full_name, position: c.position}); setSearchTerm(c.full_name); setIsDropdownOpen(false);}} className="p-4 hover:bg-orange-600 border-b border-white/5 cursor-pointer font-bold uppercase text-xs">{c.full_name}</div>)}
+                  {filtered.map(c => <div key={c.id} onClick={() => {setFormData({...formData, id: c.id, full_name: c.full_name, position: c.position}); setSearchTerm(c.full_name); setIsDropdownOpen(false);}} className="p-4 hover:bg-orange-600 border-b border-white/5 cursor-pointer font-bold uppercase text-xs">{c.full_name}</div>)}
                 </div>
               )}
             </div>
