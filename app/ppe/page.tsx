@@ -69,6 +69,36 @@ function PPEContent() {
 
   const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
 
+  const compareSize = (a: any, b: any) => {
+    const sa = String(a || '').trim().toUpperCase()
+    const sb = String(b || '').trim().toUpperCase()
+
+    const freeRank: Record<string, number> = { 'FREE SIZE': 9998, 'FREESIZE': 9998, 'FS': 9998 }
+    if (freeRank[sa] !== undefined || freeRank[sb] !== undefined) {
+      const ra = freeRank[sa] ?? 10000
+      const rb = freeRank[sb] ?? 10000
+      if (ra !== rb) return ra - rb
+    }
+
+    const idxA = sizeOrder.indexOf(sa)
+    const idxB = sizeOrder.indexOf(sb)
+    const hasA = idxA !== -1
+    const hasB = idxB !== -1
+    if (hasA && hasB) return idxA - idxB
+    if (hasA) return -1
+    if (hasB) return 1
+
+    const numA = Number(sa)
+    const numB = Number(sb)
+    const isNumA = !Number.isNaN(numA)
+    const isNumB = !Number.isNaN(numB)
+    if (isNumA && isNumB) return numA - numB
+    if (isNumA) return -1
+    if (isNumB) return 1
+
+    return sa.localeCompare(sb, undefined, { numeric: true })
+  }
+
   // 🎯 กรองและจัดกลุ่มสินค้าตาม "กฎเหล็ก"
   const groupedInventory = useMemo(() => {
     const filtered = inventory.filter(item => activeCat === 'All' || item.category === activeCat);
@@ -100,11 +130,10 @@ function PPEContent() {
       .map(([name, variants]) => ({
         name,
         variants: variants.sort((a, b) => {
-          const codeA = a.item_id_code || ''; const codeB = b.item_id_code || '';
-          if (codeA !== codeB) return codeA.localeCompare(codeB, undefined, {numeric: true});
-          const idxA = sizeOrder.indexOf(String(a.size).toUpperCase());
-          const idxB = sizeOrder.indexOf(String(b.size).toUpperCase());
-          return idxA - idxB;
+          const colorA = String(a.color || '').toUpperCase()
+          const colorB = String(b.color || '').toUpperCase()
+          if (colorA !== colorB) return colorA.localeCompare(colorB, undefined, { numeric: true })
+          return compareSize(a.size, b.size)
         })
       }))
       .sort((a, b) => a.name.localeCompare(b.name));

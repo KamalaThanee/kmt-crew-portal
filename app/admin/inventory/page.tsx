@@ -13,6 +13,37 @@ import {
 import imageCompression from 'browser-image-compression'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
+
+const compareSize = (a: any, b: any) => {
+  const sa = String(a || '').trim().toUpperCase()
+  const sb = String(b || '').trim().toUpperCase()
+
+  const freeRank: Record<string, number> = { 'FREE SIZE': 9998, 'FREESIZE': 9998, 'FS': 9998 }
+  if (freeRank[sa] !== undefined || freeRank[sb] !== undefined) {
+    const ra = freeRank[sa] ?? 10000
+    const rb = freeRank[sb] ?? 10000
+    if (ra !== rb) return ra - rb
+  }
+
+  const idxA = sizeOrder.indexOf(sa)
+  const idxB = sizeOrder.indexOf(sb)
+  const hasA = idxA !== -1
+  const hasB = idxB !== -1
+  if (hasA && hasB) return idxA - idxB
+  if (hasA) return -1
+  if (hasB) return 1
+
+  const numA = Number(sa)
+  const numB = Number(sb)
+  const isNumA = !Number.isNaN(numA)
+  const isNumB = !Number.isNaN(numB)
+  if (isNumA && isNumB) return numA - numB
+  if (isNumA) return -1
+  if (isNumB) return 1
+
+  return sa.localeCompare(sb, undefined, { numeric: true })
+}
 
 function InventoryContent() {
   const searchParams = useSearchParams()
@@ -30,7 +61,7 @@ function InventoryContent() {
   const [isRestockModalOpen, setIsRestockModalOpen] = useState(false)
   const [restockView, setRestockView] = useState<'entry' | 'history'>('entry')
 
-  const [restockEntries, setRestockEntries] = useState([{ id: Date.now(), inventory_id: '', qty: '' }])
+  const [restockEntries, setRestockEntries] = useState([{ id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }])
   const [doFile, setDoFile] = useState<File | null>(null)
   const [isProcessingRestock, setIsProcessingRestock] = useState(false)
 
@@ -88,17 +119,62 @@ function InventoryContent() {
   const generateNextCode = (catName: string) => {
     const catItems = inventory.filter(i => i.category === catName)
     const numbers = catItems.map(i => {
-      const match = String(i.item_id_code).match(/\d+$/)
-      return match ? parseInt(match[0]) : 0
+      const match = String(i.item_id_code).match(/(\d+)\s*$/)
+      return match ? parseInt(match[1], 10) : 0
     })
-    return `${catName}-${numbers.length > 0 ? Math.max(...numbers) + 1 : 1}`
+    const nextNumber = numbers.length > 0 ? Math.max(...numbers) + 1 : 1
+    const padded = String(nextNumber).padStart(2, '0')
+
+    const prefixMap: Record<string, string> = {
+      'Head Protection': 'Head',
+      'Ears Protection': 'Ear',
+      'Eyes Protection': 'Eye',
+      'Respiratory Protection': 'Resp',
+      'Body Protection': 'Body',
+      'Hands Protection': 'Hand',
+      'Foots Protection': 'Foot',
+      'Other': 'Other'
+    }
+
+    const existingPrefix = catItems
+      .map(i => String(i.item_id_code || '').match(/^([A-Za-z]+)-\d+$/)?.[1])
+      .find(Boolean)
+
+    const prefix = existingPrefix || prefixMap[catName] || catName.replace(/\s+Protection$/i, '').replace(/\s+/g, '')
+    return `${prefix}-${padded}`
   }
 
   const updateRow = (id: number, field: string, value: string) => {
-    setRestockEntries(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e))
+    setRestockEntries(prev => prev.map(e => {
+      if (e.id !== id) return e
+      const next = { ...e, [field]: value }
+
+      if (field === 'product_key') {
+        next.color = ''
+        next.size = ''
+        next.inventory_id = ''
+      }
+
+      if (field === 'color') {
+        next.size = ''
+        next.inventory_id = ''
+      }
+
+      if (field === 'size') {
+        next.inventory_id = ''
+      }
+
+      const productItems = inventory.filter(i => `${i.category}||${i.item_name}` === next.product_key)
+      let matched = productItems
+      if (next.color) matched = matched.filter(i => String(i.color || '') === next.color)
+      if (next.size) matched = matched.filter(i => String(i.size || '') === next.size)
+      if (matched.length === 1) next.inventory_id = String(matched[0].id)
+
+      return next
+    }))
   }
 
-  const addRow = () => setRestockEntries([...restockEntries, { id: Date.now(), inventory_id: '', qty: '' }])
+  const addRow = () => setRestockEntries([...restockEntries, { id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }])
   const removeRow = (id: number) => setRestockEntries(restockEntries.filter(e => e.id !== id))
 
   const filteredInventoryGrouped = useMemo(() => {
@@ -114,6 +190,15 @@ function InventoryContent() {
       const cat = item.category || 'Other'
       if (!groups[cat]) groups[cat] = []
       groups[cat].push(item)
+    })
+    Object.keys(groups).forEach(cat => {
+      groups[cat] = groups[cat].sort((a, b) => {
+        const nameCmp = String(a.item_name || '').localeCompare(String(b.item_name || ''), undefined, { numeric: true })
+        if (nameCmp !== 0) return nameCmp
+        const colorCmp = String(a.color || '').localeCompare(String(b.color || ''), undefined, { numeric: true })
+        if (colorCmp !== 0) return colorCmp
+        return compareSize(a.size, b.size)
+      })
     })
     return groups;
   }, [inventory, searchTerm, selectedCats, showLowStock])
@@ -144,7 +229,7 @@ function InventoryContent() {
         await supabase.from('ppe_inventory').update({ quantity: Number(item.quantity) + Number(entry.qty) }).eq('id', item.id)
         await supabase.from('restock_history').insert({ item_id: item.id, item_name: item.item_name, quantity_added: Number(entry.qty), added_by: admin.full_name || 'Admin', receipt_url: publicUrl })
       }
-      toast.success('Restock Complete'); setRestockEntries([{ id: Date.now(), inventory_id: '', qty: '' }]); setDoFile(null); setRestockView('history'); fetchData();
+      toast.success('Restock Complete'); setRestockEntries([{ id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }]); setDoFile(null); setRestockView('history'); fetchData();
     } catch (e: any) { toast.error(e.message) } finally { setIsProcessingRestock(false) }
   }
 
@@ -242,7 +327,36 @@ function InventoryContent() {
                   <div className="space-y-6">
                     {restockEntries.map((entry, index) => (
                       <div key={entry.id} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center bg-black/50 p-6 rounded-[32px] border border-white/5 group hover:border-emerald-500/30 transition-all">
-                        <div className="md:col-span-8"><select value={entry.inventory_id} onChange={(e) => updateRow(entry.id, 'inventory_id', e.target.value)} className="w-full bg-transparent text-base text-white font-black outline-none p-2 uppercase"><option value="">-- Select Product --</option>{inventory.map(i => <option key={i.id} value={i.id} className="bg-zinc-900">{i.category} | {i.item_id_code} {i.item_name}</option>)}</select></div>
+                        <div className="md:col-span-4">
+                          <select value={entry.product_key} onChange={(e) => updateRow(entry.id, 'product_key', e.target.value)} className="w-full bg-transparent text-base text-white font-black outline-none p-2 uppercase">
+                            <option value="">-- Select Product --</option>
+                            {[...new Map(inventory.map(i => [`${i.category}||${i.item_name}`, i])).values()].map(i => (
+                              <option key={`${i.category}||${i.item_name}`} value={`${i.category}||${i.item_name}`} className="bg-zinc-900">{i.category} | {i.item_name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <select value={entry.color} onChange={(e) => updateRow(entry.id, 'color', e.target.value)} className="w-full bg-transparent text-base text-white font-black outline-none p-2 uppercase">
+                            <option value="">-- Color --</option>
+                            {[...new Set(inventory.filter(i => `${i.category}||${i.item_name}` === entry.product_key).map(i => i.color).filter(Boolean))].map(color => (
+                              <option key={color} value={color} className="bg-zinc-900">{color}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <select value={entry.size} onChange={(e) => updateRow(entry.id, 'size', e.target.value)} className="w-full bg-transparent text-base text-white font-black outline-none p-2 uppercase">
+                            <option value="">-- Size --</option>
+                            {[...new Set(
+                              inventory
+                                .filter(i => `${i.category}||${i.item_name}` === entry.product_key)
+                                .filter(i => !entry.color || String(i.color || '') === entry.color)
+                                .map(i => i.size)
+                                .filter(Boolean)
+                            )].map(size => (
+                              <option key={size} value={size} className="bg-zinc-900">{size}</option>
+                            ))}
+                          </select>
+                        </div>
                         <div className="md:col-span-3"><input type="number" min="1" placeholder="QTY" value={entry.qty} onChange={(e) => updateRow(entry.id, 'qty', e.target.value)} className="w-full bg-zinc-950 border-2 border-emerald-500/20 p-5 rounded-2xl text-center font-black text-emerald-400 outline-none focus:border-emerald-500 text-2xl" /></div>
                         <div className="md:col-span-1 flex justify-center"><button onClick={() => removeRow(entry.id)} className="text-zinc-800 hover:text-red-500 p-4 bg-white/5 rounded-2xl transition-colors"><Trash2 size={24}/></button></div>
                       </div>
