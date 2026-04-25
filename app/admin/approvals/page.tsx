@@ -82,7 +82,12 @@ export default function ApprovalsPage() {
     setIsSubmitting(true)
     const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
     const { error } = await supabase.from('ppe_requests').update({ status: 'approved', approved_by: admin.id }).eq('id', req.id)
-    if (!error) { toast.success('Request Approved!'); fetchData(); }
+    if (!error) {
+      toast.success('Request Approved!')
+      fetchData()
+    } else {
+      toast.error(error.message)
+    }
     setIsSubmitting(false)
   }
 
@@ -91,7 +96,14 @@ export default function ApprovalsPage() {
     setIsSubmitting(true)
     const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
     const { error } = await supabase.from('ppe_requests').update({ status: 'rejected', approved_by: admin.id, admin_remark: rejectReason.trim() }).eq('id', rejectingReq.id)
-    if (!error) { toast.success('Request Rejected'); setRejectingReq(null); setRejectReason(''); fetchData(); }
+    if (!error) {
+      toast.success('Request Rejected')
+      setRejectingReq(null)
+      setRejectReason('')
+      fetchData()
+    } else {
+      toast.error(error.message)
+    }
     setIsSubmitting(false)
   }
 

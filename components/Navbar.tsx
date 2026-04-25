@@ -90,6 +90,10 @@ export default function Navbar() {
     setShowNotif(isOpening);
     setShowProfile(false);
 
+    if (isOpening && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => undefined);
+    }
+
     if (isOpening) {
       const total = notifData.pending + notifData.lowStock + notifData.expiredCerts;
       localStorage.setItem('kmt_notif_seen', total.toString());
