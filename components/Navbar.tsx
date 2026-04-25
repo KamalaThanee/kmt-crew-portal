@@ -169,7 +169,8 @@ export default function Navbar() {
           pending: pendingCount,
           lowStock,
           expiredCerts: expired,
-          adminActions: [...pendingActions, ...systemActions],
+          pendingActions,
+          adminActions: systemActions,
           updates: [],
           approvedCount: 0,
         });
@@ -334,6 +335,56 @@ export default function Navbar() {
                             : 'Your approval queue, stock alerts, and compliance alerts are all clear.'}
                         </p>
                       </div>
+
+                      <div className="px-1 pt-2">
+                        <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-amber-300">
+                          PPE Request Feed
+                        </p>
+                        {(notifData.pendingActions || []).length > 0 ? (
+                          <div className="space-y-2">
+                            {(notifData.pendingActions || []).map((item: AdminActionItem) => {
+                              const Icon = item.icon;
+                              return (
+                                <Link
+                                  key={item.id}
+                                  href={item.href}
+                                  onClick={() => setShowNotif(false)}
+                                  className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-amber-500/10 bg-amber-500/[0.04]"
+                                >
+                                  <div className="flex items-center gap-4 min-w-0">
+                                    <div className="p-2 rounded-xl border border-amber-500/20 bg-amber-500/15 text-amber-300">
+                                      <Icon size={16} />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
+                                      <p className="text-[9px] text-zinc-400 mt-1 normal-case">{item.description}</p>
+                                      <p className="text-[9px] text-amber-300 mt-2 normal-case font-black">{item.meta}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-col items-end gap-2 shrink-0">
+                                    <span className="px-2 py-1 rounded-md text-[9px] font-black bg-amber-400 text-black">
+                                      {item.countLabel || 'NEW'}
+                                    </span>
+                                    <ArrowRight size={14} className="text-zinc-600 group-hover:text-orange-400" />
+                                  </div>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                            No new PPE requests right now
+                          </div>
+                        )}
+                      </div>
+
+                      {(notifData.adminActions || []).length > 0 && (
+                        <div className="px-1 pt-3">
+                          <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                            System Alerts
+                          </p>
+                        </div>
+                      )}
 
                       {(notifData.adminActions || []).map((item: AdminActionItem) => {
                         const Icon = item.icon;
