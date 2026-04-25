@@ -8,14 +8,11 @@ import { isNoExpiryDate } from '@/lib/certificates'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import {
   AlertTriangle,
-  Archive,
   ArrowRight,
   Clock3,
   LayoutDashboard,
   Package,
   RefreshCw,
-  TrendingUp,
-  Users,
 } from 'lucide-react'
 
 const normalize = (str: string) => String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -32,6 +29,13 @@ type MetricCard = {
   color: string
   href?: string
   icon: any
+}
+
+type QuickAction = {
+  label: string
+  description: string
+  href: string
+  tone: string
 }
 
 export default function AdminDashboard() {
@@ -195,9 +199,9 @@ export default function AdminDashboard() {
   const metricCards: MetricCard[] = useMemo(
     () => [
       {
-        label: 'Queue Pressure',
-        value: overview.stalePending,
-        note: `${overview.pending} total pending requests`,
+        label: 'Pending Requests',
+        value: overview.pending,
+        note: overview.stalePending > 0 ? `${overview.stalePending} waiting more than 24h` : 'No overdue approvals',
         color: 'amber',
         href: '/admin/approvals',
         icon: Clock3,
@@ -211,23 +215,45 @@ export default function AdminDashboard() {
         icon: AlertTriangle,
       },
       {
-        label: 'Received This Month',
-        value: overview.receivedThisMonth,
-        note: 'Completed issue flow this month',
-        color: 'emerald',
-        href: '/admin/history',
-        icon: Archive,
-      },
-      {
         label: 'PPE Quota',
         value: `${quota.suit}/2`,
-        note: `Boots ${quota.boot}/1 this year`,
-        color: 'blue',
+        note: `Safety boots ${quota.boot}/1 this year`,
+        color: 'emerald',
         href: '/my-requests',
         icon: Package,
       },
     ],
     [overview, quota],
+  )
+
+  const quickActions: QuickAction[] = useMemo(
+    () => [
+      {
+        label: 'Review approvals',
+        description: overview.pending > 0 ? `${overview.pending} requests are waiting for action` : 'Queue is currently clear',
+        href: '/admin/approvals',
+        tone: 'amber',
+      },
+      {
+        label: 'Open history',
+        description: `${overview.receivedThisMonth} completed issues this month`,
+        href: '/admin/history',
+        tone: 'blue',
+      },
+      {
+        label: 'Fix low stock',
+        description: overview.lowStock > 0 ? `${overview.lowStock} items are below threshold` : 'All tracked items are above threshold',
+        href: '/admin/inventory?filter=low',
+        tone: 'red',
+      },
+      {
+        label: 'Check certificates',
+        description: `${personal.okCount}/${personal.reqCount} certs ready for your role`,
+        href: '/certificates',
+        tone: 'emerald',
+      },
+    ],
+    [overview, personal],
   )
 
   if (loading) {
@@ -296,33 +322,50 @@ export default function AdminDashboard() {
         <div className="app-surface-strong rounded-[36px] border p-5 md:p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
           <div className="flex items-center justify-between gap-4 mb-6">
             <div>
-              <p className="text-[9px] uppercase tracking-[0.3em] app-text-muted">Workflow Funnel</p>
-              <h2 className="mt-2 text-xl font-black italic">Request Movement</h2>
+              <p className="text-[9px] uppercase tracking-[0.3em] app-text-muted">Quick Actions</p>
+              <h2 className="mt-2 text-xl font-black italic">What Needs Attention</h2>
             </div>
-            <Link href="/admin/history" className="text-xs uppercase tracking-[0.2em] text-orange-400 hover:text-orange-300">
-              Open History
+            <Link href="/admin/approvals" className="text-xs uppercase tracking-[0.2em] text-orange-400 hover:text-orange-300">
+              Open Queue
             </Link>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {quickActions.map((action) => (
+              <Link
+                key={action.label}
+                href={action.href}
+                className={`app-surface rounded-[26px] border p-5 transition-all hover:-translate-y-0.5 ${
+                  action.tone === 'amber'
+                    ? 'hover:border-amber-500/30'
+                    : action.tone === 'red'
+                      ? 'hover:border-red-500/30'
+                      : action.tone === 'blue'
+                        ? 'hover:border-blue-500/30'
+                        : 'hover:border-emerald-500/30'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-black normal-case">{action.label}</p>
+                    <p className="mt-2 text-[11px] normal-case app-text-soft">{action.description}</p>
+                  </div>
+                  <ArrowRight size={16} className="app-text-muted mt-1" />
+                </div>
+              </Link>
+            ))}
+          </div>
+          <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
               ['Pending', overview.funnel.pending, 'amber'],
               ['Approved', overview.funnel.approved, 'blue'],
               ['Received', overview.funnel.received, 'emerald'],
               ['Rejected', overview.funnel.rejected, 'red'],
             ].map(([label, value, tone]) => (
-              <div key={String(label)} className="app-surface rounded-[24px] border p-4">
+              <div key={String(label)} className="app-surface rounded-[22px] border p-4">
                 <p className="text-[9px] uppercase tracking-[0.2em] app-text-muted">{label}</p>
                 <p className={`mt-3 text-2xl font-black ${tone === 'amber' ? 'text-amber-400' : tone === 'blue' ? 'text-blue-400' : tone === 'emerald' ? 'text-emerald-400' : 'text-red-400'}`}>{value}</p>
               </div>
             ))}
-          </div>
-          <div className="mt-6 rounded-[26px] border border-orange-500/10 bg-gradient-to-r from-orange-500/8 to-transparent p-5">
-            <p className="text-[9px] uppercase tracking-[0.2em] app-text-muted">Queue Pressure</p>
-            <p className="mt-2 text-sm font-black normal-case">
-              {overview.stalePending > 0
-                ? `${overview.stalePending} pending requests have been waiting more than 24 hours.`
-                : 'No pending requests have crossed the 24 hour threshold.'}
-            </p>
           </div>
         </div>
 
@@ -376,15 +419,17 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
-        <div className="app-surface-strong rounded-[36px] border p-5 md:p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <p className="text-[9px] uppercase tracking-[0.3em] app-text-muted">Demand Board</p>
-              <h2 className="mt-2 text-xl font-black italic">Top Items This Month</h2>
-            </div>
-            <TrendingUp className="text-orange-500" size={18} />
+      <div className="app-surface-strong rounded-[36px] border p-5 md:p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+          <div>
+            <p className="text-[9px] uppercase tracking-[0.3em] app-text-muted">Monthly Signal</p>
+            <h2 className="mt-2 text-xl font-black italic">Most Requested This Month</h2>
           </div>
+          <Link href="/admin/history" className="text-xs uppercase tracking-[0.2em] text-orange-400 hover:text-orange-300">
+            Explore full history
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <div className="space-y-3">
             {overview.topItems.length === 0 && <div className="app-surface rounded-2xl border p-5 app-text-muted text-sm normal-case">No issued items in the current dataset yet.</div>}
             {overview.topItems.map((item: any, index: number) => (
@@ -400,16 +445,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-
-        <div className="app-surface-strong rounded-[36px] border p-5 md:p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <p className="text-[9px] uppercase tracking-[0.3em] app-text-muted">Activity Board</p>
-              <h2 className="mt-2 text-xl font-black italic">Top Crew This Month</h2>
-            </div>
-            <Users className="text-orange-500" size={18} />
           </div>
           <div className="space-y-3">
             {overview.topCrew.length === 0 && <div className="app-surface rounded-2xl border p-5 app-text-muted text-sm normal-case">No crew activity captured yet.</div>}
