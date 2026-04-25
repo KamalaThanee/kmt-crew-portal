@@ -107,7 +107,9 @@ export default function AdminHistoryPage() {
           itemName: item.item_name || 'Unknown Item',
           color: item.color || '-',
           size: item.size || '-',
-          approvedByName: request.approved_by ? crewMap.get(String(request.approved_by)) || 'Unknown Admin' : null,
+          approvedByName:
+            request.approved_by_name ||
+            (request.approved_by ? crewMap.get(String(request.approved_by)) || 'Unknown Admin' : null),
         }))
       })
 

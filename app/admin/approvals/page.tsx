@@ -47,19 +47,46 @@ export default function ApprovalsPage() {
     extra: Record<string, any> = {},
   ) => {
     const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
-    const payload = { status, ...extra } as Record<string, any>
-    if (isUuid(admin.id)) payload.approved_by = admin.id
+    const basePayload = { status, ...extra } as Record<string, any>
+    if (admin.full_name) basePayload.approved_by_name = admin.full_name
+    if (isUuid(admin.id)) basePayload.approved_by = admin.id
 
-    let result = await supabase.from('ppe_requests').update(payload).eq('id', requestId).select('id, status, approved_by').maybeSingle()
-    if (!result.error) return result
+    const variants: Record<string, any>[] = [
+      basePayload,
+      (() => {
+        const { approved_by: _approvedBy, ...rest } = basePayload
+        return rest
+      })(),
+      (() => {
+        const { approved_by_name: _approvedByName, ...rest } = basePayload
+        return rest
+      })(),
+      (() => {
+        const { approved_by: _approvedBy, approved_by_name: _approvedByName, ...rest } = basePayload
+        return rest
+      })(),
+    ]
 
-    if ('approved_by' in payload) {
-      const { approved_by: _approvedBy, ...fallbackPayload } = payload
-      result = await supabase.from('ppe_requests').update(fallbackPayload).eq('id', requestId).select('id, status, approved_by').maybeSingle()
+    let lastResult: any = null
+    const tried = new Set<string>()
+
+    for (const payload of variants) {
+      const key = Object.keys(payload).sort().join('|')
+      if (tried.has(key)) continue
+      tried.add(key)
+
+      const result = await supabase
+        .from('ppe_requests')
+        .update(payload)
+        .eq('id', requestId)
+        .select('id, status, approved_by, approved_by_name')
+        .maybeSingle()
+
       if (!result.error) return result
+      lastResult = result
     }
 
-    return result
+    return lastResult
   }
 
   const getSmartContext = async (req: any, itemName: string) => {
