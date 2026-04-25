@@ -53,6 +53,11 @@ export default function ApprovalsPage() {
     return message.includes(column.toLowerCase()) && (message.includes('schema cache') || message.includes('column'))
   }
 
+  const isApprovedByForeignKeyError = (error: unknown) => {
+    const message = String((error as { message?: string })?.message || '').toLowerCase()
+    return message.includes('approved_by_fkey') || (message.includes('approved_by') && message.includes('foreign key'))
+  }
+
   const updateRequestStatus = async (
     requestId: string,
     status: 'approved' | 'rejected',
@@ -64,13 +69,13 @@ export default function ApprovalsPage() {
     if (admin.full_name) payload.approved_by_name = admin.full_name
 
     const variants: Record<string, any>[] = [payload]
-    if ('approved_by_name' in payload) {
-      const { approved_by_name: _approvedByName, ...withoutApprovedByName } = payload
-      variants.push(withoutApprovedByName)
-    }
     if ('approved_by' in payload) {
       const { approved_by: _approvedBy, ...withoutApprovedBy } = payload
       variants.push(withoutApprovedBy)
+    }
+    if ('approved_by_name' in payload) {
+      const { approved_by_name: _approvedByName, ...withoutApprovedByName } = payload
+      variants.push(withoutApprovedByName)
     }
     if ('approved_by' in payload && 'approved_by_name' in payload) {
       const { approved_by: _approvedBy, approved_by_name: _approvedByName, ...statusOnly } = payload
@@ -96,7 +101,8 @@ export default function ApprovalsPage() {
 
       if (
         !isMissingColumnError(result.error, 'approved_by') &&
-        !isMissingColumnError(result.error, 'approved_by_name')
+        !isMissingColumnError(result.error, 'approved_by_name') &&
+        !isApprovedByForeignKeyError(result.error)
       ) {
         return result
       }
