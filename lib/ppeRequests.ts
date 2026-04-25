@@ -11,6 +11,10 @@ const NAME_COLUMN_CANDIDATES = ['crew_name', 'requester_name', 'full_name']
 let cachedColumns: Promise<PpeRequestColumns> | null = null
 let cachedInsertColumns: { idColumn: string | null; nameColumn: string | null } | null = null
 
+function toPostgrestEqValue(value: string) {
+  return `"${String(value).replace(/"/g, '\\"')}"`
+}
+
 function isMissingColumnError(error: unknown, column: string) {
   const message = String((error as { message?: string })?.message || '').toLowerCase()
   return message.includes(column.toLowerCase()) && message.includes('schema cache')
@@ -49,6 +53,12 @@ export async function getPpeRequestColumns() {
 
 export async function applyPpeRequestUserFilter(query: any, user: { id?: string; full_name?: string }) {
   const columns = await getPpeRequestColumns()
+
+  if (columns.idColumn && user?.id && columns.nameColumn && user?.full_name) {
+    return query.or(
+      `${columns.idColumn}.eq.${toPostgrestEqValue(user.id)},${columns.nameColumn}.eq.${toPostgrestEqValue(user.full_name)}`,
+    )
+  }
 
   if (columns.idColumn && user?.id) {
     return query.eq(columns.idColumn, user.id)
@@ -131,12 +141,12 @@ export async function insertPpeRequest(payload: {
 export async function matchesPpeRequestUser(row: Record<string, any>, user: { id?: string; full_name?: string }) {
   const columns = await getPpeRequestColumns()
 
-  if (columns.idColumn && user?.id) {
-    return String(row?.[columns.idColumn] || '') === String(user.id)
+  if (columns.idColumn && user?.id && String(row?.[columns.idColumn] || '') === String(user.id)) {
+    return true
   }
 
-  if (columns.nameColumn && user?.full_name) {
-    return String(row?.[columns.nameColumn] || '') === String(user.full_name)
+  if (columns.nameColumn && user?.full_name && String(row?.[columns.nameColumn] || '') === String(user.full_name)) {
+    return true
   }
 
   return false
