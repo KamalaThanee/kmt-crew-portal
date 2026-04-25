@@ -200,6 +200,38 @@ export default function Navbar() {
     }
   };
 
+  const adminActions = [
+    {
+      href: '/admin/approvals',
+      count: notifData.pending || 0,
+      title: 'Pending approvals waiting',
+      detail: 'Review new PPE requests from crew',
+      icon: Clock,
+      tone: 'amber',
+      cta: 'Review now',
+    },
+    {
+      href: '/admin/inventory?filter=low',
+      count: notifData.lowStock || 0,
+      title: 'Low stock needs restock',
+      detail: 'Critical inventory lines are below threshold',
+      icon: AlertTriangle,
+      tone: 'red',
+      cta: 'Open inventory',
+    },
+    {
+      href: '/admin/settings?tab=crews',
+      count: notifData.expiredCerts || 0,
+      title: 'Crew certificates expired',
+      detail: 'Compliance follow-up is required',
+      icon: Users,
+      tone: 'violet',
+      cta: 'Check crew',
+    },
+  ].filter((item) => item.count > 0);
+
+  const totalAdminActions = (notifData.pending || 0) + (notifData.lowStock || 0) + (notifData.expiredCerts || 0);
+
   if (!mounted || ['/login', '/register'].includes(pathname)) return null;
 
   return (
@@ -259,44 +291,59 @@ export default function Navbar() {
                 <div className="p-2 space-y-1 bg-black/20">
                   {isAdmin ? (
                     <>
-                      <Link href="/admin/approvals" onClick={() => setShowNotif(false)} className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group">
-                        <div className="flex items-center gap-4">
-                          <div className={`p-2 rounded-xl ${notifData.pending > 0 ? 'bg-amber-500/20 text-amber-500' : 'bg-white/5 text-zinc-500'}`}>
-                            <Clock size={16}/>
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-white uppercase">Pending PPE</p>
-                            <p className="text-[9px] text-zinc-500 mt-1">Needs Approval</p>
-                          </div>
-                        </div>
-                        {notifData.pending > 0 && <span className="bg-amber-500 text-black px-2 py-1 rounded-md text-[9px] font-black">{notifData.pending}</span>}
-                      </Link>
+                      <div className="rounded-2xl border border-orange-500/15 bg-orange-500/10 px-4 py-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-orange-300">
+                          {totalAdminActions > 0 ? `${totalAdminActions} actions need attention` : 'No urgent admin actions'}
+                        </p>
+                        <p className="mt-1 text-[9px] text-orange-100/70 normal-case">
+                          {totalAdminActions > 0
+                            ? 'Open each item below to review, restock, or follow up.'
+                            : 'Your approval queue, stock alerts, and compliance alerts are all clear.'}
+                        </p>
+                      </div>
 
-                      <Link href="/admin/inventory?filter=low" onClick={() => setShowNotif(false)} className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group border-t border-white/5">
-                        <div className="flex items-center gap-4">
-                          <div className={`p-2 rounded-xl ${notifData.lowStock > 0 ? 'bg-red-500/20 text-red-500' : 'bg-white/5 text-zinc-500'}`}>
-                            <AlertTriangle size={16}/>
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-white uppercase">Low Stock Alerts</p>
-                            <p className="text-[9px] text-zinc-500 mt-1">Inventory Management</p>
-                          </div>
-                        </div>
-                        {notifData.lowStock > 0 && <span className="bg-red-500 text-white px-2 py-1 rounded-md text-[9px] font-black animate-pulse">{notifData.lowStock}</span>}
-                      </Link>
+                      {adminActions.map((item) => {
+                        const Icon = item.icon;
+                        const toneClassName =
+                          item.tone === 'amber'
+                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/20'
+                            : item.tone === 'red'
+                              ? 'bg-red-500/15 text-red-300 border-red-500/20'
+                              : 'bg-violet-500/15 text-violet-300 border-violet-500/20';
 
-                      <Link href="/admin/settings?tab=crews" onClick={() => setShowNotif(false)} className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group border-t border-white/5">
-                        <div className="flex items-center gap-4">
-                          <div className={`p-2 rounded-xl ${notifData.expiredCerts > 0 ? 'bg-purple-500/20 text-purple-500' : 'bg-white/5 text-zinc-500'}`}>
-                            <Users size={16}/>
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-white uppercase">Expired Certificates</p>
-                            <p className="text-[9px] text-zinc-500 mt-1">Crew Compliance</p>
-                          </div>
-                        </div>
-                        {notifData.expiredCerts > 0 && <span className="bg-purple-500 text-white px-2 py-1 rounded-md text-[9px] font-black">{notifData.expiredCerts}</span>}
-                      </Link>
+                        const badgeClassName =
+                          item.tone === 'amber'
+                            ? 'bg-amber-400 text-black'
+                            : item.tone === 'red'
+                              ? 'bg-red-500 text-white'
+                              : 'bg-violet-500 text-white';
+
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => setShowNotif(false)}
+                            className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-white/5"
+                          >
+                            <div className="flex items-center gap-4 min-w-0">
+                              <div className={`p-2 rounded-xl border ${toneClassName}`}>
+                                <Icon size={16} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
+                                <p className="text-[9px] text-zinc-500 mt-1 normal-case">{item.detail}</p>
+                                <p className="text-[9px] text-orange-400 mt-2 uppercase font-black tracking-wider">{item.cta}</p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-2 shrink-0">
+                              <span className={`px-2 py-1 rounded-md text-[9px] font-black ${badgeClassName}`}>
+                                {item.count}
+                              </span>
+                              <ArrowRight size={14} className="text-zinc-600 group-hover:text-orange-400" />
+                            </div>
+                          </Link>
+                        );
+                      })}
                     </>
                   ) : (
                     <>
