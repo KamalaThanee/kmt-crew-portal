@@ -14,6 +14,7 @@ export default function ApprovalsPage() {
   const [rejectReason, setRejectReason] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState('')
   const [pastHistory, setPastHistory] = useState<any[]>([])
 
   const fetchData = async () => {
@@ -47,12 +48,12 @@ export default function ApprovalsPage() {
     const payload = { status, ...extra } as Record<string, any>
     if (isUuid(admin.id)) payload.approved_by = admin.id
 
-    let result = await supabase.from('ppe_requests').update(payload).eq('id', requestId)
+    let result = await supabase.from('ppe_requests').update(payload).eq('id', requestId).select('id, status, approved_by').maybeSingle()
     if (!result.error) return result
 
     if ('approved_by' in payload) {
       const { approved_by: _approvedBy, ...fallbackPayload } = payload
-      result = await supabase.from('ppe_requests').update(fallbackPayload).eq('id', requestId)
+      result = await supabase.from('ppe_requests').update(fallbackPayload).eq('id', requestId).select('id, status, approved_by').maybeSingle()
       if (!result.error) return result
     }
 
@@ -105,19 +106,38 @@ export default function ApprovalsPage() {
     if (!confirm(`Approve request for ${requestCrewName}?`)) return;
     setIsSubmitting(true)
     setActiveRequestId(req.id)
+    setActionMessage(`Approving request ${String(req.id).slice(0, 8)}...`)
     try {
-      const { error } = await updateRequestStatus(req.id, 'approved')
+      const response = await Promise.race([
+        updateRequestStatus(req.id, 'approved'),
+        new Promise<{ data: null; error: Error }>((resolve) =>
+          setTimeout(() => resolve({ data: null, error: new Error('Request timed out after 10 seconds') }), 10000),
+        ),
+      ])
+      const { data, error } = response
       if (error) {
+        setActionMessage(`Approve failed: ${error.message}`)
         toast.error(`Approve failed: ${error.message}`)
+        alert(`Approve failed: ${error.message}`)
+        return
+      }
+      if (!data) {
+        const message = 'Approve failed: no rows updated'
+        setActionMessage(message)
+        toast.error(message)
+        alert(message)
         return
       }
 
       setRequests((prev) => prev.filter((item) => item.id !== req.id))
-      setPastHistory((prev) => [{ ...req, status: 'approved' }, ...prev])
+      setPastHistory((prev) => [{ ...req, ...data }, ...prev])
+      setActionMessage(`Approved request ${String(req.id).slice(0, 8)} successfully`)
       toast.success('Request Approved!')
       fetchData()
     } catch (error: any) {
+      setActionMessage(`Approve failed: ${error?.message || 'Unknown error'}`)
       toast.error(`Approve failed: ${error?.message || 'Unknown error'}`)
+      alert(`Approve failed: ${error?.message || 'Unknown error'}`)
     } finally {
       setIsSubmitting(false)
       setActiveRequestId(null)
@@ -128,21 +148,40 @@ export default function ApprovalsPage() {
     if (!rejectReason.trim()) return toast.error('Please provide a reason');
     setIsSubmitting(true)
     setActiveRequestId(rejectingReq.id)
+    setActionMessage(`Rejecting request ${String(rejectingReq.id).slice(0, 8)}...`)
     try {
-      const { error } = await updateRequestStatus(rejectingReq.id, 'rejected', { admin_remark: rejectReason.trim() })
+      const response = await Promise.race([
+        updateRequestStatus(rejectingReq.id, 'rejected', { admin_remark: rejectReason.trim() }),
+        new Promise<{ data: null; error: Error }>((resolve) =>
+          setTimeout(() => resolve({ data: null, error: new Error('Request timed out after 10 seconds') }), 10000),
+        ),
+      ])
+      const { data, error } = response
       if (error) {
+        setActionMessage(`Reject failed: ${error.message}`)
         toast.error(`Reject failed: ${error.message}`)
+        alert(`Reject failed: ${error.message}`)
+        return
+      }
+      if (!data) {
+        const message = 'Reject failed: no rows updated'
+        setActionMessage(message)
+        toast.error(message)
+        alert(message)
         return
       }
 
       setRequests((prev) => prev.filter((item) => item.id !== rejectingReq.id))
-      setPastHistory((prev) => [{ ...rejectingReq, status: 'rejected', admin_remark: rejectReason.trim() }, ...prev])
+      setPastHistory((prev) => [{ ...rejectingReq, ...data, admin_remark: rejectReason.trim() }, ...prev])
+      setActionMessage(`Rejected request ${String(rejectingReq.id).slice(0, 8)} successfully`)
       toast.success('Request Rejected')
       setRejectingReq(null)
       setRejectReason('')
       fetchData()
     } catch (error: any) {
+      setActionMessage(`Reject failed: ${error?.message || 'Unknown error'}`)
       toast.error(`Reject failed: ${error?.message || 'Unknown error'}`)
+      alert(`Reject failed: ${error?.message || 'Unknown error'}`)
     } finally {
       setIsSubmitting(false)
       setActiveRequestId(null)
@@ -156,6 +195,11 @@ export default function ApprovalsPage() {
       <div className="mb-10 flex justify-between items-center">
         <div><h1 className="text-3xl font-black italic text-white flex items-center gap-3"><ShieldCheck className="text-orange-500" size={32}/> Approvals</h1><p className="text-zinc-500 mt-1 uppercase">Pending Crew Requests</p></div>
       </div>
+      {actionMessage && (
+        <div className="mb-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-[10px] text-orange-300 normal-case">
+          {actionMessage}
+        </div>
+      )}
       <div className="space-y-6">
         {requests.length === 0 && <div className="py-20 text-center bg-zinc-900/50 rounded-[40px] border border-dashed border-white/5 text-zinc-500 font-black">NO PENDING REQUESTS</div>}
         {requests.map(req => (
