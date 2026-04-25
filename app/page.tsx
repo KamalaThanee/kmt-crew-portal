@@ -13,7 +13,9 @@ export default function RootPage() {
     }
 
     const user = JSON.parse(userStr);
-    const isAdmin = ["Safety Officer", "Chief Officer", "Barge Master"].includes(user.position);
+    const isAdmin = ["safety officer", "chief officer", "barge master", "storekeeper", "storekeeper admin"].includes(
+      String(user.position || "").toLowerCase().trim(),
+    );
 
     if (isAdmin) {
       router.replace("/admin/dashboard");

@@ -57,7 +57,7 @@ export default function LoginPage() {
       } else {
         localStorage.setItem('kmt_user', JSON.stringify(crew))
         toast.success(`สวัสดีคุณ ${crew.full_name}`)
-        const isAdmin = ["safety officer", "chief officer", "barge master"].includes((crew.position || "").toLowerCase())
+        const isAdmin = ["safety officer", "chief officer", "barge master", "storekeeper", "storekeeper admin"].includes(((crew.position || "").toLowerCase()).trim())
         router.push(isAdmin ? '/admin/dashboard' : '/dashboard')
       }
     } catch (err) {
