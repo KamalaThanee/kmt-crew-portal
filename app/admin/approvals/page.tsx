@@ -11,6 +11,7 @@ export default function ApprovalsPage() {
   const router = useRouter()
   const [requests, setRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [approvingReq, setApprovingReq] = useState<any>(null)
   const [rejectingReq, setRejectingReq] = useState<any>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -103,8 +104,6 @@ export default function ApprovalsPage() {
   }, [requests, pastHistory])
 
   const handleApprove = async (req: any) => {
-    const requestCrewName = req.crew_name || req.requester_name || req.full_name || 'this crew member'
-    if (!confirm(`Approve request for ${requestCrewName}?`)) return;
     setIsSubmitting(true)
     setActiveRequestId(req.id)
     setActionMessage(`Approving request ${String(req.id).slice(0, 8)}...`)
@@ -134,6 +133,7 @@ export default function ApprovalsPage() {
       setPastHistory((prev) => [{ ...req, ...data }, ...prev])
       setActionMessage(`Approved request ${String(req.id).slice(0, 8)} successfully`)
       toast.success('Request Approved!')
+      setApprovingReq(null)
       fetchData()
     } catch (error: any) {
       setActionMessage(`Approve failed: ${error?.message || 'Unknown error'}`)
@@ -212,7 +212,7 @@ export default function ApprovalsPage() {
               </div>
               <div className="flex gap-2 w-full md:w-auto">
                 <button disabled={isSubmitting} onClick={() => setRejectingReq(req)} className="flex-1 md:flex-none p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"><X size={20}/></button>
-                <button disabled={isSubmitting} onClick={() => handleApprove(req)} className="flex-1 md:flex-none p-3 bg-emerald-500/10 text-emerald-500 rounded-xl hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                <button disabled={isSubmitting} onClick={() => setApprovingReq(req)} className="flex-1 md:flex-none p-3 bg-emerald-500/10 text-emerald-500 rounded-xl hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                   {isSubmitting && activeRequestId === req.id ? <Loader2 size={20} className="animate-spin"/> : <Check size={20}/>}
                 </button>
               </div>
@@ -235,6 +235,22 @@ export default function ApprovalsPage() {
             <h2 className="text-2xl font-black italic text-red-500">Reject Request</h2>
             <textarea rows={4} placeholder="Reason for rejection..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} className="w-full bg-black border border-white/10 p-4 rounded-2xl text-white outline-none focus:border-red-500 text-sm font-bold"/>
             <div className="flex gap-3"><button onClick={() => setRejectingReq(null)} className="flex-1 py-4 bg-zinc-800 rounded-2xl">Cancel</button><button onClick={handleRejectSubmit} disabled={isSubmitting} className="flex-1 py-4 bg-red-600 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed">{isSubmitting && activeRequestId === rejectingReq.id ? 'Processing...' : 'Confirm Reject'}</button></div>
+          </div>
+        </div>
+      )}
+      {approvingReq && (
+        <div className="fixed inset-0 z-[1000] bg-black/95 flex items-center justify-center p-6 backdrop-blur-xl animate-in zoom-in">
+          <div className="bg-zinc-900 border border-emerald-500/20 rounded-[40px] w-full max-w-md p-10 space-y-6">
+            <h2 className="text-2xl font-black italic text-emerald-500">Approve Request</h2>
+            <div className="rounded-2xl border border-white/10 bg-black/40 p-5 text-sm normal-case text-zinc-200">
+              Approve request for <span className="font-black text-white">{approvingReq.crew_name || approvingReq.requester_name || approvingReq.full_name || 'this crew member'}</span>?
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setApprovingReq(null)} className="flex-1 py-4 bg-zinc-800 rounded-2xl">Cancel</button>
+              <button onClick={() => handleApprove(approvingReq)} disabled={isSubmitting} className="flex-1 py-4 bg-emerald-600 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed">
+                {isSubmitting && activeRequestId === approvingReq.id ? 'Processing...' : 'Confirm Approve'}
+              </button>
+            </div>
           </div>
         </div>
       )}
