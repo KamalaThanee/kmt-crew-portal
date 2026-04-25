@@ -31,13 +31,6 @@ type MetricCard = {
   icon: any
 }
 
-type QuickAction = {
-  label: string
-  description: string
-  href: string
-  tone: string
-}
-
 export default function AdminDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
@@ -226,39 +219,9 @@ export default function AdminDashboard() {
     [overview, quota],
   )
 
-  const quickActions: QuickAction[] = useMemo(
-    () => [
-      {
-        label: 'Review approvals',
-        description: overview.pending > 0 ? `${overview.pending} requests are waiting for action` : 'Queue is currently clear',
-        href: '/admin/approvals',
-        tone: 'amber',
-      },
-      {
-        label: 'Open history',
-        description: `${overview.receivedThisMonth} completed issues this month`,
-        href: '/admin/history',
-        tone: 'blue',
-      },
-      {
-        label: 'Fix low stock',
-        description: overview.lowStock > 0 ? `${overview.lowStock} items are below threshold` : 'All tracked items are above threshold',
-        href: '/admin/inventory?filter=low',
-        tone: 'red',
-      },
-      {
-        label: 'Check certificates',
-        description: `${personal.okCount}/${personal.reqCount} certs ready for your role`,
-        href: '/certificates',
-        tone: 'emerald',
-      },
-    ],
-    [overview, personal],
-  )
-
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse uppercase tracking-widest text-xs">
+      <div className="min-h-screen flex items-center justify-center app-shell text-orange-500 font-black animate-pulse uppercase tracking-widest text-xs">
         Loading Command Center...
       </div>
     )
@@ -322,39 +285,14 @@ export default function AdminDashboard() {
         <div className="app-surface-strong rounded-[36px] border p-5 md:p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
           <div className="flex items-center justify-between gap-4 mb-6">
             <div>
-              <p className="text-[9px] uppercase tracking-[0.3em] app-text-muted">Quick Actions</p>
-              <h2 className="mt-2 text-xl font-black italic">What Needs Attention</h2>
+              <p className="text-[9px] uppercase tracking-[0.3em] app-text-muted">Request Movement</p>
+              <h2 className="mt-2 text-xl font-black italic">Workflow Funnel</h2>
             </div>
-            <Link href="/admin/approvals" className="text-xs uppercase tracking-[0.2em] text-orange-400 hover:text-orange-300">
-              Open Queue
+            <Link href="/admin/history" className="text-xs uppercase tracking-[0.2em] text-orange-400 hover:text-orange-300">
+              Open History
             </Link>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {quickActions.map((action) => (
-              <Link
-                key={action.label}
-                href={action.href}
-                className={`app-surface rounded-[26px] border p-5 transition-all hover:-translate-y-0.5 ${
-                  action.tone === 'amber'
-                    ? 'hover:border-amber-500/30'
-                    : action.tone === 'red'
-                      ? 'hover:border-red-500/30'
-                      : action.tone === 'blue'
-                        ? 'hover:border-blue-500/30'
-                        : 'hover:border-emerald-500/30'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-black normal-case">{action.label}</p>
-                    <p className="mt-2 text-[11px] normal-case app-text-soft">{action.description}</p>
-                  </div>
-                  <ArrowRight size={16} className="app-text-muted mt-1" />
-                </div>
-              </Link>
-            ))}
-          </div>
-          <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
               ['Pending', overview.funnel.pending, 'amber'],
               ['Approved', overview.funnel.approved, 'blue'],
@@ -366,6 +304,25 @@ export default function AdminDashboard() {
                 <p className={`mt-3 text-2xl font-black ${tone === 'amber' ? 'text-amber-400' : tone === 'blue' ? 'text-blue-400' : tone === 'emerald' ? 'text-emerald-400' : 'text-red-400'}`}>{value}</p>
               </div>
             ))}
+          </div>
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Link href="/admin/approvals" className="app-surface rounded-[24px] border p-4 hover:border-amber-500/30 transition-all">
+              <p className="text-[9px] uppercase tracking-[0.2em] app-text-muted">Approval Queue</p>
+              <p className="mt-2 text-lg font-black">{overview.pending}</p>
+              <p className="mt-2 text-[11px] normal-case app-text-soft">
+                {overview.stalePending > 0 ? `${overview.stalePending} requests older than 24 hours` : 'All pending requests are still fresh'}
+              </p>
+            </Link>
+            <Link href="/admin/history" className="app-surface rounded-[24px] border p-4 hover:border-blue-500/30 transition-all">
+              <p className="text-[9px] uppercase tracking-[0.2em] app-text-muted">Completed This Month</p>
+              <p className="mt-2 text-lg font-black">{overview.receivedThisMonth}</p>
+              <p className="mt-2 text-[11px] normal-case app-text-soft">Requests fully received and closed this month</p>
+            </Link>
+            <Link href="/certificates" className="app-surface rounded-[24px] border p-4 hover:border-emerald-500/30 transition-all">
+              <p className="text-[9px] uppercase tracking-[0.2em] app-text-muted">Certificate Readiness</p>
+              <p className="mt-2 text-lg font-black">{personal.okCount}/{personal.reqCount}</p>
+              <p className="mt-2 text-[11px] normal-case app-text-soft">Open compliance view and check missing or expiring certs</p>
+            </Link>
           </div>
         </div>
 

@@ -29,8 +29,17 @@ html[data-theme='light'] {
   --chip-text: #334155;
 }
 
+html,
 body {
   background-color: var(--background);
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
   color: var(--foreground);
   font-family: Georgia, 'Times New Roman', serif;
   background-image:
