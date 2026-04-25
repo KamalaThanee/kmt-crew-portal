@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { toast } from 'sonner'
 import { PackageCheck, CheckCircle2, Clock, XCircle, ChevronDown, MessageCircle, ArrowRight, Loader2 } from 'lucide-react'
 
@@ -12,7 +13,11 @@ export default function MyRequests() {
 
   const fetchRequests = async () => {
     const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
-    const { data } = await supabase.from('ppe_requests').select('*').eq('crew_id', user.id).order('created_at', { ascending: false })
+    const query = await applyPpeRequestUserFilter(
+      supabase.from('ppe_requests').select('*').order('created_at', { ascending: false }),
+      user,
+    )
+    const { data } = await query
     if (data) setRequests(data)
     setLoading(false)
   }
@@ -63,7 +68,7 @@ export default function MyRequests() {
                   req.status === 'approved' ? 'bg-blue-500/20 text-blue-400 animate-pulse' :
                   req.status === 'rejected' ? 'bg-red-500/20 text-red-500' : 'bg-white/5 text-zinc-500'
                 }`}>{req.status.toUpperCase()}</span>
-                <p className="text-white text-sm mt-2">Request #{req.id.slice(0,8)}</p>
+                <p className="text-white text-sm mt-2">Request #{String(req.id).slice(0, 8)}</p>
                 <p className="text-zinc-600 text-[8px] mt-1">{new Date(req.created_at).toLocaleString()}</p>
               </div>
               <ChevronDown size={20} className={`text-zinc-700 transition-transform ${expanded === req.id ? 'rotate-180' : ''}`} />

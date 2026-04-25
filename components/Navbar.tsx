@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { LayoutDashboard, Package, ShieldCheck, Bell, LogOut, ClipboardCheck, ShoppingCart, User, Settings, History, PlusCircle, FileBadge, AlertTriangle, Clock, Users } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { applyPpeRequestUserFilter } from '@/lib/ppeRequests';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -65,7 +66,13 @@ export default function Navbar() {
       setNotifData({ pending: pendingCount, lowStock, expiredCerts: expired });
       currentTotal = pendingCount + lowStock + expired;
     } else {
-      const { count } = await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('crew_id', u.id).in('status', ['approved', 'rejected']);
+      const query = await applyPpeRequestUserFilter(
+        supabase.from('ppe_requests')
+          .select('*', { count: 'exact', head: true })
+          .in('status', ['approved', 'rejected']),
+        u,
+      );
+      const { count } = await query;
       setNotifData({ pending: count || 0, lowStock: 0, expiredCerts: 0 });
       currentTotal = count || 0;
     }
@@ -82,6 +89,10 @@ export default function Navbar() {
     const isOpening = !showNotif;
     setShowNotif(isOpening);
     setShowProfile(false);
+
+    if (isOpening && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => undefined);
+    }
 
     if (isOpening) {
       const total = notifData.pending + notifData.lowStock + notifData.expiredCerts;

@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ShoppingCart, X, Trash2, PackageCheck, Save, Users, ShieldAlert, AlertTriangle, Loader2, Lock, History as HistoryIcon, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
+import { applyPpeRequestUserFilter, insertPpeRequest } from '@/lib/ppeRequests';
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 
@@ -30,14 +31,17 @@ export default function CartDrawer() {
       if (data) setCrews(data);
     }
 
-    const { data: reqs } = await supabase.from('ppe_requests')
-      .select('items')
-      .eq('crew_id', u.id)
-      .neq('status', 'rejected')
-      .gte('created_at', `${new Date().getFullYear()}-01-01`);
+    const reqQuery = await applyPpeRequestUserFilter(
+      supabase.from('ppe_requests')
+        .select('items')
+        .neq('status', 'rejected')
+        .gte('created_at', `${new Date().getFullYear()}-01-01`),
+      u,
+    );
+    const { data: reqs } = await reqQuery;
     
     let sc = 0; let bc = 0;
-    reqs?.forEach(r => r.items?.forEach((i:any) => {
+    reqs?.forEach((r: any) => r.items?.forEach((i:any) => {
       if (i.item_name.toLowerCase().includes('suit')) sc++;
       if (i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')) bc++;
     }));
@@ -47,18 +51,37 @@ export default function CartDrawer() {
   useEffect(() => {
     const fetchTargetHistory = async () => {
       if (!onBehalf || !targetCrewId) { setTargetHistory([]); return; }
-      const { data } = await supabase.from('ppe_requests').select('created_at, items').eq('crew_id', targetCrewId).neq('status', 'rejected').order('created_at', { ascending: false });
+      const targetCrew = crews.find((crew) => String(crew.id) === String(targetCrewId));
+      if (!targetCrew) {
+        setTargetHistory([]);
+        return;
+      }
+
+      const targetQuery = await applyPpeRequestUserFilter(
+        supabase.from('ppe_requests')
+          .select('created_at, items')
+          .neq('status', 'rejected')
+          .order('created_at', { ascending: false }),
+        targetCrew,
+      );
+      const { data } = await targetQuery;
       if (data) setTargetHistory(data);
     };
     fetchTargetHistory();
-  }, [onBehalf, targetCrewId]);
+  }, [onBehalf, targetCrewId, crews]);
 
   useEffect(() => {
-    window.addEventListener('open-cart', () => { loadData(); setIsOpen(true); });
-    window.addEventListener('cart-updated', () => {
+    const handleOpenCart = () => { loadData(); setIsOpen(true); };
+    const handleCartUpdated = () => {
       setCartItems(JSON.parse(localStorage.getItem('kmt_cart') || '[]'));
-    });
-    return () => { window.removeEventListener('cart-updated', loadData); };
+    };
+
+    window.addEventListener('open-cart', handleOpenCart);
+    window.addEventListener('cart-updated', handleCartUpdated);
+    return () => {
+      window.removeEventListener('open-cart', handleOpenCart);
+      window.removeEventListener('cart-updated', handleCartUpdated);
+    };
   }, [loadData]);
 
   const personalViolation = useMemo(() => {
@@ -103,9 +126,13 @@ export default function CartDrawer() {
       const selectedCrew = onBehalf ? crews.find(c => c.id === targetCrewId) : user;
       const isDirect = onBehalf && selectedCrew.id !== user.id;
 
-      const { error } = await supabase.from('ppe_requests').insert({
-        crew_id: selectedCrew.id, crew_name: selectedCrew.full_name, items: cartItems, 
-        reason: reason.trim() || 'Standard Request', status: isDirect ? 'received' : 'pending'
+      const { error } = await insertPpeRequest({
+        crew: selectedCrew,
+        extra: {
+          items: cartItems,
+          reason: reason.trim() || 'Standard Request',
+          status: isDirect ? 'received' : 'pending',
+        },
       });
 
       if (error) throw error;

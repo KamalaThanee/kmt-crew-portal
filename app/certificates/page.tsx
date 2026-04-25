@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { formatExpiryLabel, isNoExpiryDate } from '@/lib/certificates'
 import { toast } from 'sonner'
 import { 
   ShieldCheck, FileBadge, User, Ship, ChevronRight, ChevronDown, Eye, RefreshCcw, 
@@ -85,7 +86,7 @@ function CertificatesContent() {
       let status = req.is_mandatory ? 'missing' : 'optional';
       let daysLeft = -1;
       if (uploaded) {
-        if (uploaded.expiry_date === '2099-12-31') { status = 'ok'; ok++; daysLeft = 9999; }
+        if (isNoExpiryDate(uploaded.expiry_date)) { status = 'ok'; ok++; daysLeft = 9999; }
         else {
           const expDate = new Date(uploaded.expiry_date);
           daysLeft = Math.floor((expDate.getTime() - today.getTime()) / 86400000);
@@ -199,7 +200,7 @@ function CertificatesContent() {
                     <div className={`p-3.5 rounded-2xl ${item.status === 'ok' ? 'bg-emerald-500/10 text-emerald-500' : item.status === 'warning' ? 'bg-amber-500/10 text-amber-500' : item.status === 'optional' ? 'bg-slate-800 text-slate-500' : 'bg-red-500/10 text-red-500'}`}>
                       {item.status === 'ok' ? <CheckCircle2 size={24}/> : item.status === 'optional' ? <Clock size={24}/> : <AlertTriangle size={24}/>}
                     </div>
-                    <div><p className={`text-[8px] font-black uppercase tracking-widest mb-1 ${item.is_mandatory ? 'text-blue-500' : 'text-zinc-600'}`}>{item.is_mandatory ? 'MANDATORY' : 'OPTIONAL'}</p><h3 className="text-white text-xs md:text-sm font-black leading-tight">{item.cert_name}</h3>{item.uploaded && <p className="text-[9px] mt-1 text-blue-500 font-black">Exp: {item.uploaded.expiry_date === '2099-12-31' ? 'Indefinite' : item.uploaded.expiry_date}</p>}</div>
+                    <div><p className={`text-[8px] font-black uppercase tracking-widest mb-1 ${item.is_mandatory ? 'text-blue-500' : 'text-zinc-600'}`}>{item.is_mandatory ? 'MANDATORY' : 'OPTIONAL'}</p><h3 className="text-white text-xs md:text-sm font-black leading-tight">{item.cert_name}</h3>{item.uploaded && <p className="text-[9px] mt-1 text-blue-500 font-black">Exp: {formatExpiryLabel(item.uploaded.expiry_date)}</p>}</div>
                   </div>
                   <button onClick={() => router.push(`/certificates/upload?cert=${encodeURIComponent(item.cert_name)}`)} className="px-6 py-3 bg-orange-600 rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all">Upload</button>
                 </div>
@@ -259,7 +260,7 @@ function CertificatesContent() {
                                <div key={i} className={`flex items-center justify-between p-4 rounded-2xl bg-zinc-900 border-l-4 ${c.status === 'ok' ? 'border-l-emerald-500' : c.status === 'expired' ? 'border-l-red-500' : c.status === 'warning' ? 'border-l-amber-500' : 'border-l-zinc-700'}`}>
                                   <div>
                                      <p className="text-white text-[11px] font-black leading-tight uppercase">{c.cert_name}</p>
-                                     <p className={`text-[8px] mt-1 font-bold uppercase ${c.status === 'ok' ? 'text-emerald-500' : c.status === 'expired' ? 'text-red-500' : 'text-zinc-500'}`}>{c.uploaded ? `Expiry: ${c.uploaded.expiry_date}` : 'Document Missing'}</p>
+                                     <p className={`text-[8px] mt-1 font-bold uppercase ${c.status === 'ok' ? 'text-emerald-500' : c.status === 'expired' ? 'text-red-500' : 'text-zinc-500'}`}>{c.uploaded ? `Expiry: ${formatExpiryLabel(c.uploaded.expiry_date)}` : 'Document Missing'}</p>
                                   </div>
                                   <div className="flex gap-2 shrink-0">
                                      {c.uploaded && <a href={c.uploaded.file_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/5 rounded-lg text-orange-500 hover:bg-orange-600 hover:text-white"><Eye size={16}/></a>}

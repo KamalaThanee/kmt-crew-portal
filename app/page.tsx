@@ -8,7 +8,7 @@ export default function RootPage() {
   useEffect(() => {
     const userStr = localStorage.getItem("kmt_user");
     if (!userStr) {
-      router.push("/login");
+      router.replace("/login");
       return;
     }
 
@@ -16,9 +16,9 @@ export default function RootPage() {
     const isAdmin = ["Safety Officer", "Chief Officer", "Barge Master"].includes(user.position);
 
     if (isAdmin) {
-      router.push("/admin/dashboard");
+      router.replace("/admin/dashboard");
     } else {
-      router.push("/ppe");
+      router.replace("/ppe");
     }
   }, [router]);
 

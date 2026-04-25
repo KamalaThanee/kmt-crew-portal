@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { useState, useEffect, useMemo, Suspense, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
+import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { 
   HardHat, Headphones, Eye, Wind, Hand, Footprints, MoreHorizontal, 
   Plus, AlertTriangle, Lock, Shirt, ShoppingBag, User, ShieldAlert, ChevronDown, Package
@@ -39,9 +40,16 @@ function PPEContent() {
     // ดึงโควตาส่วนตัว
     const fetchMyQuotas = async () => {
       const currentYear = new Date().getFullYear()
-      const { data: reqs } = await supabase.from('ppe_requests').select('items').eq('crew_id', u.id).neq('status', 'rejected').gte('created_at', `${currentYear}-01-01`)
+      const reqQuery = await applyPpeRequestUserFilter(
+        supabase.from('ppe_requests')
+          .select('items')
+          .neq('status', 'rejected')
+          .gte('created_at', `${currentYear}-01-01`),
+        u,
+      )
+      const { data: reqs } = await reqQuery
       let sc = 0; let bc = 0;
-      reqs?.forEach(r => {
+      reqs?.forEach((r: any) => {
         r.items?.forEach((i:any) => {
           if (i.item_name.toLowerCase().includes('suit')) sc++;
           if (i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')) bc++;

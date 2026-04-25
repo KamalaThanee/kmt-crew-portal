@@ -2,6 +2,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { isNoExpiryDate } from '@/lib/certificates'
+import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { User, FileBadge, ChevronRight, ShieldCheck, Clock, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import Link from 'next/link'
 
@@ -22,7 +24,14 @@ export default function CrewDashboard() {
   async function fetchStats(u: any) {
     const { data: matrix } = await supabase.from('cert_matrix').select('*')
     const { data: myCerts } = await supabase.from('crew_certs').select('*').eq('crew_id', u.id)
-    const { data: myReqs } = await supabase.from('ppe_requests').select('*').eq('crew_id', u.id).neq('status', 'rejected').order('created_at', { ascending: false })
+    const reqQuery = await applyPpeRequestUserFilter(
+      supabase.from('ppe_requests')
+        .select('*')
+        .neq('status', 'rejected')
+        .order('created_at', { ascending: false }),
+      u,
+    )
+    const { data: myReqs } = await reqQuery
     
     if (matrix && myCerts) {
       const uPos = normalize(u.position);
@@ -33,7 +42,7 @@ export default function CrewDashboard() {
       required.forEach(req => {
         const c = myCerts.find(mc => normalize(mc.cert_name) === normalize(req.cert_name))
         if (c) {
-          if (c.expiry_date === '2099-12-31') ok++;
+          if (isNoExpiryDate(c.expiry_date)) ok++;
           else {
             const d = (new Date(c.expiry_date).getTime() - today.getTime()) / 86400000;
             if (d < 0) exp++; else if (d <= 90) warn++; else ok++;
@@ -42,7 +51,7 @@ export default function CrewDashboard() {
       })
 
       let sCount = 0, bCount = 0;
-      myReqs?.forEach(r => {
+      myReqs?.forEach((r: any) => {
         r.items?.forEach((i: any) => {
           if (i.item_name.toLowerCase().includes('suit')) sCount++
           if (i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')) bCount++

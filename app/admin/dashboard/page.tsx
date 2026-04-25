@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { isNoExpiryDate } from '@/lib/certificates'
+import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { 
   FileBadge, Users, User, AlertTriangle, ChevronRight, 
   CheckCircle2, ShieldCheck, Package, RefreshCw, Clock, Archive, Activity, ArrowUpRight 
@@ -24,13 +26,21 @@ export default function AdminDashboard() {
 
   async function fetchAdminData(u: any) {
     setLoading(true)
+    const myReqsQuery = await applyPpeRequestUserFilter(
+      supabase.from('ppe_requests')
+        .select('*')
+        .neq('status', 'rejected')
+        .order('created_at', { ascending: false }),
+      u,
+    )
+
     const [matrixRes, crewsRes, allCertsRes, invRes, restockRes, myReqsRes] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
       supabase.from('crews').select('*'),
       supabase.from('crew_certs').select('*'),
       supabase.from('ppe_inventory').select('quantity, threshold'),
       supabase.from('restock_history').select('created_at').order('created_at', { ascending: false }).limit(1),
-      supabase.from('ppe_requests').select('*').eq('crew_id', u.id).neq('status', 'rejected').order('created_at', { ascending: false })
+      myReqsQuery,
     ]);
 
     const matrix = matrixRes.data || []; const allCerts = allCertsRes.data || [];
@@ -42,10 +52,10 @@ export default function AdminDashboard() {
     const myCerts = allCerts.filter(cc => cc.crew_id === u.id);
     const today = new Date();
 
-    myReqRows: myRequired.forEach(req => {
+    myRequired.forEach(req => {
       const uploaded = myCerts.find(c => normalize(c.cert_name) === normalize(req.cert_name))
       if (uploaded) {
-        if (uploaded.expiry_date === '2099-12-31') okCount++;
+        if (isNoExpiryDate(uploaded.expiry_date)) okCount++;
         else {
           const expDate = new Date(uploaded.expiry_date); const dDiff = (expDate.getTime() - today.getTime()) / 86400000;
           if (dDiff < 0) expired++; else if (dDiff <= 90) { warning++; okCount++; } else okCount++;
