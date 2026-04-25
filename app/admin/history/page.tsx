@@ -267,30 +267,25 @@ export default function AdminHistoryPage() {
   }, [rows])
 
   const summary = useMemo(() => {
-    const crewCounts = new Map<string, number>()
-    const itemCounts = new Map<string, number>()
-    let itemTotal = 0
+    let pendingCount = 0
+    let approvedCount = 0
+    let rejectedCount = 0
+    let receivedCount = 0
 
     filteredRows.forEach((row) => {
-      const crewName = getCrewName(row)
-      const items = row.items || []
-      crewCounts.set(crewName, (crewCounts.get(crewName) || 0) + 1)
-
-      items.forEach((item) => {
-        const itemName = item.item_name || 'Unknown Item'
-        itemCounts.set(itemName, (itemCounts.get(itemName) || 0) + 1)
-        itemTotal += 1
-      })
+      const status = normalize(row.status || 'pending')
+      if (status === 'approved') approvedCount += 1
+      else if (status === 'rejected') rejectedCount += 1
+      else if (status === 'received') receivedCount += 1
+      else pendingCount += 1
     })
-
-    const topCrew = [...crewCounts.entries()].sort((a, b) => b[1] - a[1])[0]
-    const topItem = [...itemCounts.entries()].sort((a, b) => b[1] - a[1])[0]
 
     return {
       requestCount: filteredRows.length,
-      itemCount: itemTotal,
-      topCrew: topCrew ? `${topCrew[0]} (${topCrew[1]})` : '-',
-      topItem: topItem ? `${topItem[0]} (${topItem[1]})` : '-',
+      pendingCount,
+      approvedCount,
+      rejectedCount,
+      receivedCount,
     }
   }, [filteredRows])
 
@@ -348,26 +343,31 @@ export default function AdminHistoryPage() {
         </button>
       </div>
 
-      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/14 to-zinc-950 p-5 shadow-xl shadow-amber-950/20">
           <p className="text-[9px] uppercase tracking-widest text-amber-200">Requests</p>
           <p className="mt-3 text-3xl font-black text-white">{summary.requestCount}</p>
-          <p className="mt-2 text-xs font-semibold text-amber-100/70">Visible after current filters</p>
+          <p className="mt-2 text-xs font-semibold text-amber-100/70">Total rows in the current view</p>
         </div>
-        <div className="rounded-[28px] border border-sky-400/20 bg-gradient-to-br from-sky-500/14 to-zinc-950 p-5 shadow-xl shadow-sky-950/20">
-          <p className="text-[9px] uppercase tracking-widest text-sky-200">Items</p>
-          <p className="mt-3 text-3xl font-black text-white">{summary.itemCount}</p>
-          <p className="mt-2 text-xs font-semibold text-sky-100/70">Total pieces in the current list</p>
+        <div className="rounded-[28px] border border-orange-400/20 bg-gradient-to-br from-orange-500/14 to-zinc-950 p-5 shadow-xl shadow-orange-950/20">
+          <p className="text-[9px] uppercase tracking-widest text-orange-200">Pending</p>
+          <p className="mt-3 text-3xl font-black text-white">{summary.pendingCount}</p>
+          <p className="mt-2 text-xs font-semibold text-orange-100/70">Waiting for approval</p>
         </div>
         <div className="rounded-[28px] border border-emerald-400/20 bg-gradient-to-br from-emerald-500/14 to-zinc-950 p-5 shadow-xl shadow-emerald-950/20">
-          <p className="text-[9px] uppercase tracking-widest text-emerald-200">Top Crew</p>
-          <p className="mt-3 text-sm font-black normal-case text-white md:text-base">{summary.topCrew}</p>
-          <p className="mt-2 text-xs font-semibold text-emerald-100/70">Most active requester in view</p>
+          <p className="text-[9px] uppercase tracking-widest text-emerald-200">Approved</p>
+          <p className="mt-3 text-3xl font-black text-white">{summary.approvedCount}</p>
+          <p className="mt-2 text-xs font-semibold text-emerald-100/70">Approved and waiting to receive</p>
         </div>
-        <div className="rounded-[28px] border border-violet-400/20 bg-gradient-to-br from-violet-500/14 to-zinc-950 p-5 shadow-xl shadow-violet-950/20">
-          <p className="text-[9px] uppercase tracking-widest text-violet-200">Top Item</p>
-          <p className="mt-3 text-sm font-black normal-case text-white md:text-base">{summary.topItem}</p>
-          <p className="mt-2 text-xs font-semibold text-violet-100/70">Most requested item in view</p>
+        <div className="rounded-[28px] border border-rose-400/20 bg-gradient-to-br from-rose-500/14 to-zinc-950 p-5 shadow-xl shadow-rose-950/20">
+          <p className="text-[9px] uppercase tracking-widest text-rose-200">Rejected</p>
+          <p className="mt-3 text-3xl font-black text-white">{summary.rejectedCount}</p>
+          <p className="mt-2 text-xs font-semibold text-rose-100/70">Rejected requests in this view</p>
+        </div>
+        <div className="rounded-[28px] border border-sky-400/20 bg-gradient-to-br from-sky-500/14 to-zinc-950 p-5 shadow-xl shadow-sky-950/20">
+          <p className="text-[9px] uppercase tracking-widest text-sky-200">Received</p>
+          <p className="mt-3 text-3xl font-black text-white">{summary.receivedCount}</p>
+          <p className="mt-2 text-xs font-semibold text-sky-100/70">Completed and received</p>
         </div>
       </div>
 
