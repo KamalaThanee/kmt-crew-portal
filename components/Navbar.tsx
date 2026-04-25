@@ -33,6 +33,17 @@ type CrewActionItem = {
   description: string;
 };
 
+type AdminActionItem = {
+  id: string;
+  href: string;
+  title: string;
+  description: string;
+  meta: string;
+  countLabel?: string;
+  tone: 'amber' | 'red' | 'violet';
+  icon: typeof Clock;
+};
+
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -45,6 +56,7 @@ export default function Navbar() {
     pending: 0,
     lowStock: 0,
     expiredCerts: 0,
+    adminActions: [] as AdminActionItem[],
     updates: [] as CrewActionItem[],
     approvedCount: 0,
   });
@@ -90,8 +102,14 @@ export default function Navbar() {
       let currentTotal = 0;
 
       if (isAdmin) {
-        const [pendingRes, invRes, certsRes] = await Promise.all([
+        const [pendingRes, pendingRowsRes, invRes, certsRes] = await Promise.all([
           supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+          supabase
+            .from('ppe_requests')
+            .select('id, created_at, crew_name, requester_name, full_name, items')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false })
+            .limit(5),
           supabase.from('ppe_inventory').select('quantity, threshold'),
           supabase.from('crew_certs').select('expiry_date'),
         ]);
@@ -102,11 +120,56 @@ export default function Navbar() {
             (cert: any) => new Date(cert.expiry_date) < new Date() && cert.expiry_date !== '2099-12-31',
           ).length || 0;
         const pendingCount = pendingRes.count || 0;
+        const pendingRows = pendingRowsRes.data || [];
+
+        const pendingActions: AdminActionItem[] = pendingRows.map((req: any) => {
+          const crewName = req.crew_name || req.requester_name || req.full_name || 'Unknown crew';
+          const firstItem = req.items?.[0]?.item_name || 'PPE request';
+          const itemCount = req.items?.length || 0;
+          const moreLabel = itemCount > 1 ? ` +${itemCount - 1} more` : '';
+          return {
+            id: `pending-${req.id}`,
+            href: `/admin/approvals?request=${req.id}`,
+            title: `${crewName} sent a PPE request`,
+            description: `${firstItem}${moreLabel}`,
+            meta: new Date(req.created_at).toLocaleString('en-GB'),
+            countLabel: 'NEW',
+            tone: 'amber',
+            icon: Clock,
+          };
+        });
+
+        const systemActions: AdminActionItem[] = [];
+        if (lowStock > 0) {
+          systemActions.push({
+            id: 'low-stock',
+            href: '/admin/inventory?filter=low',
+            title: 'Low stock needs attention',
+            description: 'Critical inventory lines are below threshold',
+            meta: `${lowStock} item${lowStock > 1 ? 's' : ''} affected`,
+            countLabel: String(lowStock),
+            tone: 'red',
+            icon: AlertTriangle,
+          });
+        }
+        if (expired > 0) {
+          systemActions.push({
+            id: 'expired-certs',
+            href: '/admin/settings?tab=crews',
+            title: 'Expired certificates need follow-up',
+            description: 'Crew compliance issues require review',
+            meta: `${expired} certificate${expired > 1 ? 's' : ''} expired`,
+            countLabel: String(expired),
+            tone: 'violet',
+            icon: Users,
+          });
+        }
 
         setNotifData({
           pending: pendingCount,
           lowStock,
           expiredCerts: expired,
+          adminActions: [...pendingActions, ...systemActions],
           updates: [],
           approvedCount: 0,
         });
@@ -200,36 +263,6 @@ export default function Navbar() {
     }
   };
 
-  const adminActions = [
-    {
-      href: '/admin/approvals',
-      count: notifData.pending || 0,
-      title: 'Pending approvals waiting',
-      detail: 'Review new PPE requests from crew',
-      icon: Clock,
-      tone: 'amber',
-      cta: 'Review now',
-    },
-    {
-      href: '/admin/inventory?filter=low',
-      count: notifData.lowStock || 0,
-      title: 'Low stock needs restock',
-      detail: 'Critical inventory lines are below threshold',
-      icon: AlertTriangle,
-      tone: 'red',
-      cta: 'Open inventory',
-    },
-    {
-      href: '/admin/settings?tab=crews',
-      count: notifData.expiredCerts || 0,
-      title: 'Crew certificates expired',
-      detail: 'Compliance follow-up is required',
-      icon: Users,
-      tone: 'violet',
-      cta: 'Check crew',
-    },
-  ].filter((item) => item.count > 0);
-
   const totalAdminActions = (notifData.pending || 0) + (notifData.lowStock || 0) + (notifData.expiredCerts || 0);
 
   if (!mounted || ['/login', '/register'].includes(pathname)) return null;
@@ -302,7 +335,7 @@ export default function Navbar() {
                         </p>
                       </div>
 
-                      {adminActions.map((item) => {
+                      {(notifData.adminActions || []).map((item: AdminActionItem) => {
                         const Icon = item.icon;
                         const toneClassName =
                           item.tone === 'amber'
@@ -320,7 +353,7 @@ export default function Navbar() {
 
                         return (
                           <Link
-                            key={item.href}
+                            key={item.id}
                             href={item.href}
                             onClick={() => setShowNotif(false)}
                             className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-white/5"
@@ -331,14 +364,16 @@ export default function Navbar() {
                               </div>
                               <div className="min-w-0">
                                 <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                <p className="text-[9px] text-zinc-500 mt-1 normal-case">{item.detail}</p>
-                                <p className="text-[9px] text-orange-400 mt-2 uppercase font-black tracking-wider">{item.cta}</p>
+                                <p className="text-[9px] text-zinc-500 mt-1 normal-case">{item.description}</p>
+                                <p className="text-[9px] text-orange-400 mt-2 normal-case font-black">{item.meta}</p>
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-2 shrink-0">
-                              <span className={`px-2 py-1 rounded-md text-[9px] font-black ${badgeClassName}`}>
-                                {item.count}
-                              </span>
+                              {item.countLabel && (
+                                <span className={`px-2 py-1 rounded-md text-[9px] font-black ${badgeClassName}`}>
+                                  {item.countLabel}
+                                </span>
+                              )}
                               <ArrowRight size={14} className="text-zinc-600 group-hover:text-orange-400" />
                             </div>
                           </Link>
