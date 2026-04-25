@@ -25,6 +25,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests';
 import { isAdminRole } from '@/lib/roles';
+import { ensurePushSubscription } from '@/lib/pushClient';
 import { toast } from 'sonner';
 
 type CrewActionItem = {
@@ -462,8 +463,8 @@ export default function Navbar() {
     setShowNotif(isOpening);
     setShowProfile(false);
 
-    if (isOpening && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => undefined);
+    if (isOpening && user?.id) {
+      ensurePushSubscription(user).catch(() => undefined);
     }
 
     if (isOpening) {

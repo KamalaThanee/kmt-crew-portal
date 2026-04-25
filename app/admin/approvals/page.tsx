@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getPpeRequestIdentity } from '@/lib/ppeRequests'
 import { isAdminRole } from '@/lib/roles'
+import { sendPushEvent } from '@/lib/pushClient'
 import { toast } from 'sonner'
 import { Check, X, User, Package, ShieldCheck, Loader2, MessageSquare, History, CheckCircle2, Clock } from 'lucide-react'
 
@@ -189,6 +190,13 @@ export default function ApprovalsPage() {
       setPastHistory((prev) => [{ ...req, ...data }, ...prev])
       setActionMessage(`Approved request ${String(req.id).slice(0, 8)} successfully`)
       toast.success('Request Approved!')
+      await sendPushEvent({
+        type: 'request_approved',
+        requestId: req.id,
+        targetCrewId: req.crew_id || req.requester_id || req.user_id,
+        targetCrewName: req.crew_name || req.requester_name || req.full_name,
+        body: `${req.items?.[0]?.item_name || 'Your PPE request'} is approved and ready to receive.`,
+      })
       setApprovingReq(null)
       fetchData()
     } catch (error: any) {
@@ -232,6 +240,13 @@ export default function ApprovalsPage() {
       setPastHistory((prev) => [{ ...rejectingReq, ...data, admin_remark: rejectReason.trim() }, ...prev])
       setActionMessage(`Rejected request ${String(rejectingReq.id).slice(0, 8)} successfully`)
       toast.success('Request Rejected')
+      await sendPushEvent({
+        type: 'request_rejected',
+        requestId: rejectingReq.id,
+        targetCrewId: rejectingReq.crew_id || rejectingReq.requester_id || rejectingReq.user_id,
+        targetCrewName: rejectingReq.crew_name || rejectingReq.requester_name || rejectingReq.full_name,
+        body: `${rejectingReq.items?.[0]?.item_name || 'Your PPE request'} was rejected. Check My Requests for details.`,
+      })
       setRejectingReq(null)
       setRejectReason('')
       fetchData()

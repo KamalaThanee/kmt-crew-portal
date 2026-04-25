@@ -4,6 +4,7 @@ import { ShoppingCart, X, Trash2, PackageCheck, Save, Users, ShieldAlert, AlertT
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter, insertPpeRequest } from '@/lib/ppeRequests';
+import { sendPushEvent } from '@/lib/pushClient';
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 
@@ -141,6 +142,13 @@ export default function CartDrawer() {
           const { data: inv } = await supabase.from('ppe_inventory').select('quantity').eq('id', item.id).single();
           if (inv) await supabase.from('ppe_inventory').update({ quantity: Math.max(0, inv.quantity - 1) }).eq('id', item.id);
         }
+      } else {
+        await sendPushEvent({
+          type: 'new_ppe_request',
+          title: 'New PPE Request',
+          body: `${selectedCrew.full_name || 'Crew'} requested ${cartItems[0]?.item_name || 'PPE'}.`,
+          url: '/admin/approvals',
+        });
       }
 
       localStorage.setItem('kmt_cart', '[]');
