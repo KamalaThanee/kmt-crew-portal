@@ -371,6 +371,9 @@ export default function Navbar() {
                 <div className="p-6 bg-black/40 border-b border-white/5">
                   <p className="text-white font-bold text-sm truncate">{user?.full_name}</p>
                   <p className="text-orange-500 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p>
+                  <p className="mt-2 text-[9px] text-cyan-400 normal-case">
+                    role-debug: {String(user?.position || '')} | admin={String(isAdmin)}
+                  </p>
                 </div>
                 <div className="p-2 space-y-1">
                   {isAdmin && (
