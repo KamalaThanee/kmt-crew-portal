@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- พื้นหลังท้องฟ้าสีฟ้าอ่อน -->
+  <rect width="512" height="512" rx="110" fill="#e0f2fe"/>
+  <!-- พระอาทิตย์ -->
+  <circle cx="400" cy="120" r="45" fill="#fbbf24"/>
+  <!-- ตัวเรือด้านล่าง (สีแดง) -->
+  <path d="M 100 350 Q 150 420 256 420 Q 362 420 412 350 Z" fill="#ef4444"/>
+  <!-- ตัวเรือด้านบน (สีน้ำเงิน) -->
+  <path d="M 80 350 L 432 350 L 410 270 L 102 270 Z" fill="#0284c7"/>
+  <!-- ห้องบังคับการเรือ (สีขาว) -->
+  <rect x="180" y="190" width="152" height="80" rx="16" fill="#ffffff"/>
+  <!-- หน้าต่างเรือน่ารักๆ -->
+  <circle cx="215" cy="230" r="16" fill="#7dd3fc"/>
+  <circle cx="256" cy="230" r="16" fill="#7dd3fc"/>
+  <circle cx="297" cy="230" r="16" fill="#7dd3fc"/>
+  <!-- ปล่องควัน -->
+  <path d="M 236 190 L 236 130 L 276 130 L 276 190 Z" fill="#94a3b8"/>
+  <rect x="236" y="130" width="40" height="15" fill="#ef4444"/>
+  <!-- ควันปุ๋ยๆ -->
+  <circle cx="265" cy="95" r="18" fill="#ffffff" opacity="0.9"/>
+  <circle cx="290" cy="65" r="24" fill="#ffffff" opacity="0.8"/>
+  <circle cx="230" cy="70" r="14" fill="#ffffff" opacity="0.7"/>
+  <!-- คลื่นทะเล -->
+  <path d="M 40 370 Q 90 330 150 370 T 256 370 T 362 370 T 472 370" fill="none" stroke="#38bdf8" stroke-width="20" stroke-linecap="round"/>
+  <path d="M 40 420 Q 90 380 150 420 T 256 420 T 362 420 T 472 420" fill="none" stroke="#0ea5e9" stroke-width="20" stroke-linecap="round"/>
+</svg>
