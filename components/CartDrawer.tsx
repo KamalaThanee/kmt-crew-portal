@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ShoppingCart, X, Trash2, PackageCheck, Save, Users, ShieldAlert, AlertTriangle, Loader2, Lock, History as HistoryIcon, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
-import { applyPpeRequestUserFilter, buildPpeRequestInsert } from '@/lib/ppeRequests';
+import { applyPpeRequestUserFilter, insertPpeRequest } from '@/lib/ppeRequests';
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 
@@ -126,7 +126,7 @@ export default function CartDrawer() {
       const selectedCrew = onBehalf ? crews.find(c => c.id === targetCrewId) : user;
       const isDirect = onBehalf && selectedCrew.id !== user.id;
 
-      const insertPayload = await buildPpeRequestInsert({
+      const { error } = await insertPpeRequest({
         crew: selectedCrew,
         extra: {
           items: cartItems,
@@ -134,8 +134,6 @@ export default function CartDrawer() {
           status: isDirect ? 'received' : 'pending',
         },
       });
-
-      const { error } = await supabase.from('ppe_requests').insert(insertPayload);
 
       if (error) throw error;
       if (isDirect) {

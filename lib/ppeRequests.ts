@@ -9,10 +9,16 @@ const ID_COLUMN_CANDIDATES = ['crew_id', 'requester_id', 'user_id']
 const NAME_COLUMN_CANDIDATES = ['crew_name', 'requester_name', 'full_name']
 
 let cachedColumns: Promise<PpeRequestColumns> | null = null
+let cachedInsertColumns: { idColumn: string | null; nameColumn: string | null } | null = null
 
 function isMissingColumnError(error: unknown, column: string) {
   const message = String((error as { message?: string })?.message || '').toLowerCase()
   return message.includes(column.toLowerCase()) && message.includes('schema cache')
+}
+
+function isSchemaCacheColumnError(error: unknown) {
+  const message = String((error as { message?: string })?.message || '').toLowerCase()
+  return message.includes('schema cache') || message.includes('column')
 }
 
 async function findFirstExistingColumn(candidates: string[]) {
@@ -71,6 +77,55 @@ export async function buildPpeRequestInsert(payload: {
   }
 
   return row
+}
+
+export async function insertPpeRequest(payload: {
+  crew: { id?: string; full_name?: string }
+  extra?: Record<string, unknown>
+}) {
+  const baseRow = { ...(payload.extra || {}) }
+  const variants: Array<{ idColumn: string | null; nameColumn: string | null }> = []
+
+  if (cachedInsertColumns) {
+    variants.push(cachedInsertColumns)
+  }
+
+  variants.push(
+    { idColumn: 'crew_id', nameColumn: 'crew_name' },
+    { idColumn: 'requester_id', nameColumn: 'requester_name' },
+    { idColumn: 'user_id', nameColumn: 'full_name' },
+    { idColumn: null, nameColumn: 'crew_name' },
+    { idColumn: null, nameColumn: 'requester_name' },
+    { idColumn: null, nameColumn: 'full_name' },
+    { idColumn: null, nameColumn: null },
+  )
+
+  const seen = new Set<string>()
+  let lastError: any = null
+
+  for (const variant of variants) {
+    const key = `${variant.idColumn || '-'}|${variant.nameColumn || '-'}`
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    const row: Record<string, unknown> = { ...baseRow }
+    if (variant.idColumn && payload.crew?.id) row[variant.idColumn] = payload.crew.id
+    if (variant.nameColumn && payload.crew?.full_name) row[variant.nameColumn] = payload.crew.full_name
+
+    const result = await supabase.from('ppe_requests').insert(row)
+    if (!result.error) {
+      cachedInsertColumns = variant
+      cachedColumns = Promise.resolve(variant)
+      return result
+    }
+
+    lastError = result.error
+    if (!isSchemaCacheColumnError(result.error)) {
+      return result
+    }
+  }
+
+  return { error: lastError }
 }
 
 export async function matchesPpeRequestUser(row: Record<string, any>, user: { id?: string; full_name?: string }) {
