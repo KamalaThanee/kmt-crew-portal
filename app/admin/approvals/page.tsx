@@ -13,6 +13,7 @@ export default function ApprovalsPage() {
   const [rejectingReq, setRejectingReq] = useState<any>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [pastHistory, setPastHistory] = useState<any[]>([])
 
   const fetchData = async () => {
@@ -103,29 +104,49 @@ export default function ApprovalsPage() {
     const requestCrewName = req.crew_name || req.requester_name || req.full_name || 'this crew member'
     if (!confirm(`Approve request for ${requestCrewName}?`)) return;
     setIsSubmitting(true)
-    const { error } = await updateRequestStatus(req.id, 'approved')
-    if (!error) {
+    setActiveRequestId(req.id)
+    try {
+      const { error } = await updateRequestStatus(req.id, 'approved')
+      if (error) {
+        toast.error(`Approve failed: ${error.message}`)
+        return
+      }
+
+      setRequests((prev) => prev.filter((item) => item.id !== req.id))
+      setPastHistory((prev) => [{ ...req, status: 'approved' }, ...prev])
       toast.success('Request Approved!')
       fetchData()
-    } else {
-      toast.error(`Approve failed: ${error.message}`)
+    } catch (error: any) {
+      toast.error(`Approve failed: ${error?.message || 'Unknown error'}`)
+    } finally {
+      setIsSubmitting(false)
+      setActiveRequestId(null)
     }
-    setIsSubmitting(false)
   }
 
   const handleRejectSubmit = async () => {
     if (!rejectReason.trim()) return toast.error('Please provide a reason');
     setIsSubmitting(true)
-    const { error } = await updateRequestStatus(rejectingReq.id, 'rejected', { admin_remark: rejectReason.trim() })
-    if (!error) {
+    setActiveRequestId(rejectingReq.id)
+    try {
+      const { error } = await updateRequestStatus(rejectingReq.id, 'rejected', { admin_remark: rejectReason.trim() })
+      if (error) {
+        toast.error(`Reject failed: ${error.message}`)
+        return
+      }
+
+      setRequests((prev) => prev.filter((item) => item.id !== rejectingReq.id))
+      setPastHistory((prev) => [{ ...rejectingReq, status: 'rejected', admin_remark: rejectReason.trim() }, ...prev])
       toast.success('Request Rejected')
       setRejectingReq(null)
       setRejectReason('')
       fetchData()
-    } else {
-      toast.error(`Reject failed: ${error.message}`)
+    } catch (error: any) {
+      toast.error(`Reject failed: ${error?.message || 'Unknown error'}`)
+    } finally {
+      setIsSubmitting(false)
+      setActiveRequestId(null)
     }
-    setIsSubmitting(false)
   }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse">LOADING...</div>
@@ -145,8 +166,10 @@ export default function ApprovalsPage() {
                 <div><h3 className="text-white font-black text-sm">{req.crew_name || req.requester_name || req.full_name || 'Unknown Crew'}</h3><p className="text-zinc-500 flex items-center gap-1 mt-1"><Clock size={12}/> {new Date(req.created_at).toLocaleString()}</p></div>
               </div>
               <div className="flex gap-2 w-full md:w-auto">
-                <button onClick={() => setRejectingReq(req)} className="flex-1 md:flex-none p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><X size={20}/></button>
-                <button onClick={() => handleApprove(req)} className="flex-1 md:flex-none p-3 bg-emerald-500/10 text-emerald-500 rounded-xl hover:bg-emerald-500 hover:text-white transition-all"><Check size={20}/></button>
+                <button disabled={isSubmitting} onClick={() => setRejectingReq(req)} className="flex-1 md:flex-none p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"><X size={20}/></button>
+                <button disabled={isSubmitting} onClick={() => handleApprove(req)} className="flex-1 md:flex-none p-3 bg-emerald-500/10 text-emerald-500 rounded-xl hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  {isSubmitting && activeRequestId === req.id ? <Loader2 size={20} className="animate-spin"/> : <Check size={20}/>}
+                </button>
               </div>
             </div>
             {req.reason && req.reason !== 'No reason provided' && <div className="bg-blue-500/5 border border-blue-500/10 p-4 rounded-xl text-blue-400 italic font-medium">{req.reason}</div>}
@@ -166,7 +189,7 @@ export default function ApprovalsPage() {
           <div className="bg-zinc-900 border border-red-500/20 rounded-[40px] w-full max-w-md p-10 space-y-6">
             <h2 className="text-2xl font-black italic text-red-500">Reject Request</h2>
             <textarea rows={4} placeholder="Reason for rejection..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} className="w-full bg-black border border-white/10 p-4 rounded-2xl text-white outline-none focus:border-red-500 text-sm font-bold"/>
-            <div className="flex gap-3"><button onClick={() => setRejectingReq(null)} className="flex-1 py-4 bg-zinc-800 rounded-2xl">Cancel</button><button onClick={handleRejectSubmit} className="flex-1 py-4 bg-red-600 rounded-2xl">Confirm Reject</button></div>
+            <div className="flex gap-3"><button onClick={() => setRejectingReq(null)} className="flex-1 py-4 bg-zinc-800 rounded-2xl">Cancel</button><button onClick={handleRejectSubmit} disabled={isSubmitting} className="flex-1 py-4 bg-red-600 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed">{isSubmitting && activeRequestId === rejectingReq.id ? 'Processing...' : 'Confirm Reject'}</button></div>
           </div>
         </div>
       )}
