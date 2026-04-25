@@ -48,6 +48,11 @@ export default function ApprovalsPage() {
 
   const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
 
+  const isMissingColumnError = (error: unknown, column: string) => {
+    const message = String((error as { message?: string })?.message || '').toLowerCase()
+    return message.includes(column.toLowerCase()) && (message.includes('schema cache') || message.includes('column'))
+  }
+
   const updateRequestStatus = async (
     requestId: string,
     status: 'approved' | 'rejected',
@@ -56,17 +61,48 @@ export default function ApprovalsPage() {
     const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
     const payload = { status, ...extra } as Record<string, any>
     if (isUuid(admin.id)) payload.approved_by = admin.id
+    if (admin.full_name) payload.approved_by_name = admin.full_name
 
-    let result = await supabase.from('ppe_requests').update(payload).eq('id', requestId).select('id, status, approved_by').maybeSingle()
-    if (!result.error) return result
-
+    const variants: Record<string, any>[] = [payload]
+    if ('approved_by_name' in payload) {
+      const { approved_by_name: _approvedByName, ...withoutApprovedByName } = payload
+      variants.push(withoutApprovedByName)
+    }
     if ('approved_by' in payload) {
-      const { approved_by: _approvedBy, ...fallbackPayload } = payload
-      result = await supabase.from('ppe_requests').update(fallbackPayload).eq('id', requestId).select('id, status, approved_by').maybeSingle()
-      if (!result.error) return result
+      const { approved_by: _approvedBy, ...withoutApprovedBy } = payload
+      variants.push(withoutApprovedBy)
+    }
+    if ('approved_by' in payload && 'approved_by_name' in payload) {
+      const { approved_by: _approvedBy, approved_by_name: _approvedByName, ...statusOnly } = payload
+      variants.push(statusOnly)
     }
 
-    return result
+    let lastResult: any = null
+    const seen = new Set<string>()
+    for (const variant of variants) {
+      const key = JSON.stringify(Object.keys(variant).sort())
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      const result = await supabase
+        .from('ppe_requests')
+        .update(variant)
+        .eq('id', requestId)
+        .select('id, status, approved_by, approved_by_name')
+        .maybeSingle()
+
+      if (!result.error) return result
+      lastResult = result
+
+      if (
+        !isMissingColumnError(result.error, 'approved_by') &&
+        !isMissingColumnError(result.error, 'approved_by_name')
+      ) {
+        return result
+      }
+    }
+
+    return lastResult
   }
 
   const getSmartContext = async (req: any, itemName: string) => {

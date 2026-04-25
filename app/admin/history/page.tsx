@@ -66,11 +66,14 @@ const getStatusMeta = (row: HistoryRow, adminNameMap: Record<string, string>) =>
   const status = normalize(row.status || 'pending')
   const actorName =
     row.approved_by_name ||
-    (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Admin' : 'Admin')
+    (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : 'Unknown approver')
 
   if (status === 'approved') return `Approved by ${actorName}`
   if (status === 'rejected') return `Rejected by ${actorName}`
-  if (status === 'received') return row.received_at ? `Received on ${formatDateTime(row.received_at)}` : 'Received'
+  if (status === 'received') {
+    if (row.received_at) return `Approved by ${actorName} • Received on ${formatDateTime(row.received_at)}`
+    return `Approved by ${actorName} • Received`
+  }
   return 'Waiting for approval'
 }
 
