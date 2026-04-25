@@ -49,7 +49,7 @@ function PPEContent() {
       )
       const { data: reqs } = await reqQuery
       let sc = 0; let bc = 0;
-      reqs?.forEach(r => {
+      reqs?.forEach((r: any) => {
         r.items?.forEach((i:any) => {
           if (i.item_name.toLowerCase().includes('suit')) sc++;
           if (i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')) bc++;
