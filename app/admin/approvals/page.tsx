@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getPpeRequestIdentity } from '@/lib/ppeRequests'
 import { isAdminRole } from '@/lib/roles'
@@ -10,7 +10,6 @@ import { Check, X, User, Package, ShieldCheck, Loader2, MessageSquare, History, 
 export default function ApprovalsPage() {
   const debugBuild = 'approvals-debug-2026-04-25-codex-1'
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [requests, setRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [approvingReq, setApprovingReq] = useState<any>(null)
@@ -20,7 +19,7 @@ export default function ApprovalsPage() {
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
   const [pastHistory, setPastHistory] = useState<any[]>([])
-  const focusRequestId = searchParams.get('request')
+  const [focusRequestId, setFocusRequestId] = useState<string | null>(null)
 
   const fetchData = async () => {
     const { data: reqs } = await supabase.from('ppe_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false })
@@ -40,6 +39,12 @@ export default function ApprovalsPage() {
     }
     checkAuth()
   }, [router])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    setFocusRequestId(params.get('request'))
+  }, [])
 
   const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
 
