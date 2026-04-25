@@ -32,7 +32,7 @@ type CrewActionItem = {
   description: string;
 };
 
-const adminRoles = ["safety officer", "chief officer", "barge master", "storekeeper", "storekeeper admin"];
+const adminRoles = ["safety officer", "chief officer", "barge master"];
 
 export default function Navbar() {
   const pathname = usePathname();

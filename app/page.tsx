@@ -13,7 +13,7 @@ export default function RootPage() {
     }
 
     const user = JSON.parse(userStr);
-    const isAdmin = ["safety officer", "chief officer", "barge master", "storekeeper", "storekeeper admin"].includes(
+    const isAdmin = ["safety officer", "chief officer", "barge master"].includes(
       String(user.position || "").toLowerCase().trim(),
     );
 

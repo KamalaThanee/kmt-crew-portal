@@ -55,7 +55,7 @@ function SettingsContent() {
       const userStr = localStorage.getItem('kmt_user');
       if (!userStr) { router.replace('/login'); return; }
       const user = JSON.parse(userStr);
-      const adminRoles = ["safety officer", "chief officer", "barge master", "storekeeper", "storekeeper admin"];
+      const adminRoles = ["safety officer", "chief officer", "barge master"];
       if (!adminRoles.includes((user.position || "").toLowerCase().trim())) { router.replace('/ppe'); return; }
       await fetchData();
     };
