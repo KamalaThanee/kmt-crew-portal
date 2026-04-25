@@ -3,15 +3,77 @@
 @tailwind utilities;
 
 :root {
-  --background: #000000;
-  --foreground: #ffffff;
-  --primary-orange: #f97316; /* Orange-500 */
+  --background: #050816;
+  --foreground: #f8fafc;
+  --primary-orange: #f97316;
+  --surface: rgba(9, 14, 29, 0.86);
+  --surface-strong: rgba(5, 8, 22, 0.9);
+  --surface-soft: rgba(15, 23, 42, 0.66);
+  --border-soft: rgba(148, 163, 184, 0.12);
+  --text-muted: #94a3b8;
+  --text-soft: #cbd5e1;
+  --chip-bg: rgba(255, 255, 255, 0.04);
+  --chip-text: #cbd5e1;
+}
+
+html[data-theme='light'] {
+  --background: #f4f0e8;
+  --foreground: #1f2937;
+  --surface: rgba(255, 252, 247, 0.88);
+  --surface-strong: rgba(255, 255, 255, 0.92);
+  --surface-soft: rgba(255, 247, 237, 0.86);
+  --border-soft: rgba(148, 163, 184, 0.22);
+  --text-muted: #64748b;
+  --text-soft: #334155;
+  --chip-bg: rgba(255, 255, 255, 0.74);
+  --chip-text: #334155;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: Georgia, 'Times New Roman', serif;
+  background-image:
+    radial-gradient(circle at top left, rgba(249, 115, 22, 0.1), transparent 28%),
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 24%);
+}
+
+.app-shell {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.app-main {
+  color: var(--foreground);
+}
+
+.app-surface {
+  background-color: var(--surface);
+  border-color: var(--border-soft);
+}
+
+.app-surface-strong {
+  background-color: var(--surface-strong);
+  border-color: var(--border-soft);
+}
+
+.app-surface-soft {
+  background-color: var(--surface-soft);
+  border-color: var(--border-soft);
+}
+
+.app-text-muted {
+  color: var(--text-muted);
+}
+
+.app-text-soft {
+  color: var(--text-soft);
+}
+
+.theme-chip {
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  border-color: var(--border-soft);
 }
 
 /* เอฟเฟกต์เส้นขอบเรืองแสงสีส้ม */

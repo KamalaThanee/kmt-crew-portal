@@ -5,6 +5,7 @@ import { LayoutDashboard, Package, ShieldCheck, Bell, LogOut, ClipboardCheck, Sh
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests';
+import ThemeToggle from '@/components/ThemeToggle';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -121,66 +122,72 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="fixed top-4 left-1/2 -translate-x-1/2 w-[94%] max-w-6xl h-14 bg-black/80 backdrop-blur-xl border border-orange-500/20 rounded-2xl z-[100] px-4 flex items-center justify-between shadow-2xl">
+      <nav className="app-surface fixed top-4 left-1/2 -translate-x-1/2 w-[94%] max-w-6xl h-14 backdrop-blur-xl border border-orange-500/20 rounded-2xl z-[100] px-4 flex items-center justify-between shadow-2xl">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => router.push(isAdmin ? '/admin/dashboard' : '/dashboard')}>
             <ShieldCheck size={22} className="text-orange-500" />
-            <span className="font-black text-lg tracking-tighter text-white uppercase">KMT</span>
+            <span className="font-black text-lg tracking-tighter uppercase">KMT</span>
           </div>
           <div className="hidden md:flex items-center gap-1">
             {menuItems.map((item) => (
-              <Link key={item.href} href={item.href} className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${pathname === item.href ? 'text-white bg-orange-600 shadow-lg shadow-orange-600/20' : 'text-zinc-500 hover:text-orange-400'}`}>{item.name}</Link>
+              <Link key={item.href} href={item.href} className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${pathname === item.href ? 'text-white bg-orange-600 shadow-lg shadow-orange-600/20' : 'app-text-muted hover:text-orange-400'}`}>{item.name}</Link>
             ))}
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="p-2.5 text-zinc-500 hover:text-orange-500 relative transition-colors"><ShoppingCart size={18} />{cartCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-orange-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black">{cartCount}</span>}</button>
+          <div className="hidden md:block">
+            <ThemeToggle />
+          </div>
+          <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="p-2.5 app-text-muted hover:text-orange-500 relative transition-colors"><ShoppingCart size={18} />{cartCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-orange-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black">{cartCount}</span>}</button>
           
           <div className="relative" ref={notifRef}>
-            <button onClick={handleOpenNotif} className="p-2.5 text-zinc-500 hover:text-orange-500 relative transition-colors">
+            <button onClick={handleOpenNotif} className="p-2.5 app-text-muted hover:text-orange-500 relative transition-colors">
               <Bell size={18} />
               {/* 🎯 แสดงเฉพาะ Unread Count */}
               {unreadCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black animate-pulse">{unreadCount > 99 ? '99+' : unreadCount}</span>}
             </button>
             {showNotif && (
-              <div className="absolute right-0 top-12 w-80 bg-zinc-900 border border-white/10 rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 z-[110]">
-                <div className="p-5 bg-black/40 border-b border-white/5"><h3 className="text-white font-black italic uppercase text-lg">Notifications</h3><p className="text-orange-500 text-[10px] font-bold tracking-widest mt-1">Action Center</p></div>
-                <div className="p-2 space-y-1 bg-black/20">
+              <div className="app-surface-strong absolute right-0 top-12 w-80 border rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 z-[110]">
+                <div className="p-5 bg-black/20 border-b border-white/5"><h3 className="font-black italic uppercase text-lg">Notifications</h3><p className="text-orange-500 text-[10px] font-bold tracking-widest mt-1">Action Center</p></div>
+                <div className="p-2 space-y-1 bg-black/10">
                   {isAdmin ? (
                     <>
                       <Link href="/admin/approvals" onClick={() => setShowNotif(false)} className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group">
-                        <div className="flex items-center gap-4"><div className={`p-2 rounded-xl ${notifData.pending > 0 ? 'bg-amber-500/20 text-amber-500' : 'bg-white/5 text-zinc-500'}`}><Clock size={16}/></div><div><p className="text-xs font-bold text-white uppercase">Pending PPE</p><p className="text-[9px] text-zinc-500 mt-1">Needs Approval</p></div></div>
+                        <div className="flex items-center gap-4"><div className={`p-2 rounded-xl ${notifData.pending > 0 ? 'bg-amber-500/20 text-amber-500' : 'bg-white/5 app-text-muted'}`}><Clock size={16}/></div><div><p className="text-xs font-bold uppercase">Pending PPE</p><p className="text-[9px] app-text-muted mt-1">Needs Approval</p></div></div>
                         {notifData.pending > 0 && <span className="bg-amber-500 text-black px-2 py-1 rounded-md text-[9px] font-black">{notifData.pending}</span>}
                       </Link>
                       <Link href="/admin/inventory?filter=low" onClick={() => setShowNotif(false)} className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group border-t border-white/5">
-                        <div className="flex items-center gap-4"><div className={`p-2 rounded-xl ${notifData.lowStock > 0 ? 'bg-red-500/20 text-red-500' : 'bg-white/5 text-zinc-500'}`}><AlertTriangle size={16}/></div><div><p className="text-xs font-bold text-white uppercase">Low Stock Alerts</p><p className="text-[9px] text-zinc-500 mt-1">Inventory Management</p></div></div>
+                        <div className="flex items-center gap-4"><div className={`p-2 rounded-xl ${notifData.lowStock > 0 ? 'bg-red-500/20 text-red-500' : 'bg-white/5 app-text-muted'}`}><AlertTriangle size={16}/></div><div><p className="text-xs font-bold uppercase">Low Stock Alerts</p><p className="text-[9px] app-text-muted mt-1">Inventory Management</p></div></div>
                         {notifData.lowStock > 0 && <span className="bg-red-500 text-white px-2 py-1 rounded-md text-[9px] font-black animate-pulse">{notifData.lowStock}</span>}
                       </Link>
                       <Link href="/admin/settings?tab=crews" onClick={() => setShowNotif(false)} className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group border-t border-white/5">
-                        <div className="flex items-center gap-4"><div className={`p-2 rounded-xl ${notifData.expiredCerts > 0 ? 'bg-purple-500/20 text-purple-500' : 'bg-white/5 text-zinc-500'}`}><Users size={16}/></div><div><p className="text-xs font-bold text-white uppercase">Expired Certificates</p><p className="text-[9px] text-zinc-500 mt-1">Crew Compliance</p></div></div>
+                        <div className="flex items-center gap-4"><div className={`p-2 rounded-xl ${notifData.expiredCerts > 0 ? 'bg-purple-500/20 text-purple-500' : 'bg-white/5 app-text-muted'}`}><Users size={16}/></div><div><p className="text-xs font-bold uppercase">Expired Certificates</p><p className="text-[9px] app-text-muted mt-1">Crew Compliance</p></div></div>
                         {notifData.expiredCerts > 0 && <span className="bg-purple-500 text-white px-2 py-1 rounded-md text-[9px] font-black">{notifData.expiredCerts}</span>}
                       </Link>
                     </>
                   ) : (
                     <Link href="/my-requests" onClick={() => setShowNotif(false)} className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group">
-                      <div className="flex items-center gap-4"><div className={`p-2 rounded-xl ${notifData.pending > 0 ? 'bg-emerald-500/20 text-emerald-500' : 'bg-white/5 text-zinc-500'}`}><ClipboardCheck size={16}/></div><div><p className="text-xs font-bold text-white uppercase">PPE Updates</p><p className="text-[9px] text-zinc-500 mt-1">Check Your History</p></div></div>
+                      <div className="flex items-center gap-4"><div className={`p-2 rounded-xl ${notifData.pending > 0 ? 'bg-emerald-500/20 text-emerald-500' : 'bg-white/5 app-text-muted'}`}><ClipboardCheck size={16}/></div><div><p className="text-xs font-bold uppercase">PPE Updates</p><p className="text-[9px] app-text-muted mt-1">Check Your History</p></div></div>
                       {notifData.pending > 0 && <span className="bg-emerald-500 text-black px-2 py-1 rounded-md text-[9px] font-black">{notifData.pending} NEW</span>}
                     </Link>
                   )}
-                  {notifData.pending + notifData.lowStock + notifData.expiredCerts === 0 && <div className="text-center p-6 text-zinc-600 text-[10px] uppercase font-black tracking-widest">No Alerts</div>}
+                  {notifData.pending + notifData.lowStock + notifData.expiredCerts === 0 && <div className="text-center p-6 app-text-muted text-[10px] uppercase font-black tracking-widest">No Alerts</div>}
                 </div>
               </div>
             )}
           </div>
 
           <div className="relative" ref={profileRef}>
-            <button onClick={() => { setShowProfile(!showProfile); setShowNotif(false); }} className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-all ${showProfile ? 'bg-orange-600 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]' : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10'}`}><User size={18} /></button>
+            <button onClick={() => { setShowProfile(!showProfile); setShowNotif(false); }} className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-all ${showProfile ? 'bg-orange-600 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]' : 'theme-chip hover:bg-white/10'}`}><User size={18} /></button>
             {showProfile && (
-              <div className="absolute right-0 top-12 w-64 bg-zinc-900 border border-orange-500/20 rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 z-[110]">
-                <div className="p-6 bg-black/40 border-b border-white/5"><p className="text-white font-bold text-sm truncate">{user?.full_name}</p><p className="text-orange-500 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p></div>
+              <div className="app-surface-strong absolute right-0 top-12 w-64 border border-orange-500/20 rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 z-[110]">
+                <div className="p-6 bg-black/10 border-b border-white/5"><p className="font-bold text-sm truncate">{user?.full_name}</p><p className="text-orange-500 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p></div>
                 <div className="p-2 space-y-1">
-                  {isAdmin && (<Link href="/admin/settings" onClick={() => setShowProfile(false)} className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-zinc-400 hover:text-white hover:bg-orange-600/10 rounded-2xl transition-all uppercase tracking-widest"><Settings size={16} /> Admin Panel</Link>)}
+                  <div className="md:hidden px-2 py-2">
+                    <ThemeToggle />
+                  </div>
+                  {isAdmin && (<Link href="/admin/settings" onClick={() => setShowProfile(false)} className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold app-text-muted hover:text-white hover:bg-orange-600/10 rounded-2xl transition-all uppercase tracking-widest"><Settings size={16} /> Admin Panel</Link>)}
                   <button onClick={() => { localStorage.removeItem('kmt_user'); router.push('/login'); }} className="w-full flex items-center gap-3 px-4 py-4 text-xs text-red-400 font-black uppercase tracking-widest hover:bg-red-500/10 rounded-2xl transition-all text-left"><LogOut size={16} /> Logout</button>
                 </div>
               </div>
@@ -190,7 +197,7 @@ export default function Navbar() {
       </nav>
 
       {/* Mobile Nav */}
-      <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] h-16 bg-black/90 backdrop-blur-2xl border border-orange-500/20 rounded-3xl z-[100] px-2 shadow-2xl flex items-center justify-around">
+      <nav className="app-surface md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[94%] max-w-md h-16 backdrop-blur-2xl border border-orange-500/20 rounded-3xl z-[100] px-2 shadow-2xl flex items-center justify-around">
           {menuItems.slice(0, isAdmin ? 5 : 4).map((item) => {
             const Icon = item.icon; const isActive = pathname === item.href;
             return ( <Link key={item.href} href={item.href} className={`flex flex-col items-center justify-center gap-1 w-full h-full relative transition-all ${isActive ? 'text-orange-500' : 'text-zinc-500'}`}><Icon size={20} strokeWidth={isActive ? 2.5 : 2} /><span className="text-[7px] font-black uppercase tracking-tighter">{item.name.replace('REQUEST PPE', 'REQUEST').replace('CERTIFICATE', 'CERT').replace('APPROVALS', 'APPROVE').replace('DASHBOARD', 'HOME')}</span>{isActive && <div className="absolute bottom-1 w-5 h-0.5 bg-orange-500 rounded-full shadow-[0_0_10px_#f97316]"></div>}</Link> );

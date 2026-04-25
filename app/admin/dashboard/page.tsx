@@ -11,7 +11,6 @@ import {
   Archive,
   ArrowRight,
   Clock3,
-  FileBadge,
   LayoutDashboard,
   Package,
   RefreshCw,
@@ -40,6 +39,7 @@ export default function AdminDashboard() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [personal, setPersonal] = useState<any>({ progress: 0, okCount: 0, reqCount: 0, expired: 0, warning: 0, lastStatus: 'None' })
+  const [quota, setQuota] = useState({ suit: 0, boot: 0 })
   const [overview, setOverview] = useState<any>({
     pending: 0,
     stalePending: 0,
@@ -98,6 +98,8 @@ export default function AdminDashboard() {
     let okCount = 0
     let expired = 0
     let warning = 0
+    let suitCount = 0
+    let bootCount = 0
 
     myRequired.forEach((req: any) => {
       const uploaded = myCerts.find((cert: any) => normalize(cert.cert_name) === normalize(req.cert_name))
@@ -146,6 +148,14 @@ export default function AdminDashboard() {
       })
     })
 
+    ;(myReqsRes.data || []).forEach((req: any) => {
+      ;(req.items || []).forEach((item: any) => {
+        const name = String(item.item_name || '').toLowerCase()
+        if (name.includes('suit')) suitCount++
+        if (name.includes('safety boot') && !name.includes('rubber')) bootCount++
+      })
+    })
+
     const topItems = [...itemMap.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
@@ -164,6 +174,7 @@ export default function AdminDashboard() {
       warning,
       lastStatus: myReqsRes.data?.[0]?.status || 'None',
     })
+    setQuota({ suit: suitCount, boot: bootCount })
 
     setOverview({
       pending: funnel.pending,
@@ -184,9 +195,9 @@ export default function AdminDashboard() {
   const metricCards: MetricCard[] = useMemo(
     () => [
       {
-        label: 'Pending Queue',
-        value: overview.pending,
-        note: `${overview.stalePending} older than 24h`,
+        label: 'Queue Pressure',
+        value: overview.stalePending,
+        note: `${overview.pending} total pending requests`,
         color: 'amber',
         href: '/admin/approvals',
         icon: Clock3,
@@ -208,15 +219,15 @@ export default function AdminDashboard() {
         icon: Archive,
       },
       {
-        label: 'Personal Compliance',
-        value: `${personal.progress}%`,
-        note: `${personal.okCount}/${personal.reqCount} certs ready`,
+        label: 'PPE Quota',
+        value: `${quota.suit}/2`,
+        note: `Boots ${quota.boot}/1 this year`,
         color: 'blue',
-        href: '/certificates',
-        icon: FileBadge,
+        href: '/my-requests',
+        icon: Package,
       },
     ],
-    [overview, personal],
+    [overview, quota],
   )
 
   if (loading) {
@@ -228,30 +239,30 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-20 font-sans text-white">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-20 font-sans">
       <div className="mb-10 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
         <div>
           <p className="text-[10px] uppercase tracking-[0.35em] text-orange-500">Operations Desk</p>
-          <h1 className="mt-3 text-4xl md:text-5xl font-black italic tracking-tight text-white flex items-center gap-3">
+          <h1 className="mt-3 text-3xl md:text-5xl font-black italic tracking-tight flex items-center gap-3">
             <LayoutDashboard className="text-orange-500" size={34} />
             Command Center
           </h1>
-          <p className="mt-3 text-zinc-400 normal-case text-sm max-w-2xl">
+          <p className="mt-3 app-text-muted normal-case text-sm max-w-2xl">
             Monitor queue pressure, issue movement, and the people or items demanding attention first.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="rounded-[28px] border border-orange-500/15 bg-gradient-to-r from-orange-500/10 to-transparent px-5 py-4">
-            <p className="text-[8px] uppercase tracking-[0.3em] text-zinc-500">Last Restock</p>
-            <p className="mt-2 text-lg font-black text-white">{overview.lastRestockDate}</p>
+          <div className="app-surface-soft rounded-[28px] border border-orange-500/15 bg-gradient-to-r from-orange-500/10 to-transparent px-5 py-4">
+            <p className="text-[8px] uppercase tracking-[0.3em] app-text-muted">Last Restock</p>
+            <p className="mt-2 text-lg font-black">{overview.lastRestockDate}</p>
           </div>
-          <button onClick={() => fetchAdminData(user)} className="p-4 bg-zinc-900 border border-white/5 rounded-2xl hover:bg-orange-600 transition-all">
+          <button onClick={() => fetchAdminData(user)} className="app-surface rounded-2xl border p-4 hover:bg-orange-600 hover:text-white transition-all">
             <RefreshCw size={18} />
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         {metricCards.map((card) => {
           const Icon = card.icon
           const colorClass =
@@ -264,16 +275,16 @@ export default function AdminDashboard() {
                   : 'text-blue-400 bg-blue-500/10 border-blue-500/20'
 
           const content = (
-            <div className="bg-zinc-900/70 border border-white/5 rounded-[30px] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)] hover:border-orange-500/20 transition-all">
+            <div className="app-surface rounded-[30px] border p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)] hover:border-orange-500/20 transition-all h-full">
               <div className="flex items-start justify-between">
                 <div className={`p-3 rounded-2xl border ${colorClass}`}>
                   <Icon size={18} />
                 </div>
-                <ArrowRight size={16} className="text-zinc-700" />
+                <ArrowRight size={16} className="app-text-muted" />
               </div>
-              <p className="mt-8 text-zinc-500 text-[10px] uppercase tracking-[0.2em]">{card.label}</p>
-              <p className="mt-2 text-3xl font-black text-white">{card.value}</p>
-              <p className="mt-2 text-[11px] normal-case text-zinc-400">{card.note}</p>
+              <p className="mt-8 app-text-muted text-[10px] uppercase tracking-[0.2em]">{card.label}</p>
+              <p className="mt-2 text-3xl font-black">{card.value}</p>
+              <p className="mt-2 text-[11px] normal-case app-text-soft">{card.note}</p>
             </div>
           )
 
@@ -281,12 +292,12 @@ export default function AdminDashboard() {
         })}
       </div>
 
-      <div className="mb-8 grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-6">
-        <div className="rounded-[36px] border border-white/5 bg-zinc-950/75 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
+      <div className="mb-8 grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-6">
+        <div className="app-surface-strong rounded-[36px] border p-5 md:p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
           <div className="flex items-center justify-between gap-4 mb-6">
             <div>
-              <p className="text-[9px] uppercase tracking-[0.3em] text-zinc-500">Workflow Funnel</p>
-              <h2 className="mt-2 text-xl font-black italic text-white">Request Movement</h2>
+              <p className="text-[9px] uppercase tracking-[0.3em] app-text-muted">Workflow Funnel</p>
+              <h2 className="mt-2 text-xl font-black italic">Request Movement</h2>
             </div>
             <Link href="/admin/history" className="text-xs uppercase tracking-[0.2em] text-orange-400 hover:text-orange-300">
               Open History
@@ -299,15 +310,15 @@ export default function AdminDashboard() {
               ['Received', overview.funnel.received, 'emerald'],
               ['Rejected', overview.funnel.rejected, 'red'],
             ].map(([label, value, tone]) => (
-              <div key={String(label)} className="rounded-[24px] border border-white/5 bg-black/30 p-4">
-                <p className="text-[9px] uppercase tracking-[0.2em] text-zinc-500">{label}</p>
+              <div key={String(label)} className="app-surface rounded-[24px] border p-4">
+                <p className="text-[9px] uppercase tracking-[0.2em] app-text-muted">{label}</p>
                 <p className={`mt-3 text-2xl font-black ${tone === 'amber' ? 'text-amber-400' : tone === 'blue' ? 'text-blue-400' : tone === 'emerald' ? 'text-emerald-400' : 'text-red-400'}`}>{value}</p>
               </div>
             ))}
           </div>
           <div className="mt-6 rounded-[26px] border border-orange-500/10 bg-gradient-to-r from-orange-500/8 to-transparent p-5">
-            <p className="text-[9px] uppercase tracking-[0.2em] text-zinc-500">Queue Pressure</p>
-            <p className="mt-2 text-white text-sm font-black normal-case">
+            <p className="text-[9px] uppercase tracking-[0.2em] app-text-muted">Queue Pressure</p>
+            <p className="mt-2 text-sm font-black normal-case">
               {overview.stalePending > 0
                 ? `${overview.stalePending} pending requests have been waiting more than 24 hours.`
                 : 'No pending requests have crossed the 24 hour threshold.'}
@@ -315,9 +326,9 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="rounded-[36px] border border-white/5 bg-zinc-950/75 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
-          <p className="text-[9px] uppercase tracking-[0.3em] text-zinc-500">My Readiness</p>
-          <div className="mt-5 flex items-center gap-5">
+        <div className="app-surface-strong rounded-[36px] border p-5 md:p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
+          <p className="text-[9px] uppercase tracking-[0.3em] app-text-muted">My Readiness & Quota</p>
+          <div className="mt-5 flex flex-col sm:flex-row items-start sm:items-center gap-5">
             <div className="relative w-20 h-20 flex items-center justify-center">
               <svg className="w-full h-full -rotate-90">
                 <circle cx="40" cy="40" r="34" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/5" />
@@ -333,77 +344,85 @@ export default function AdminDashboard() {
                   className="text-blue-500"
                 />
               </svg>
-              <span className="absolute text-xs font-black text-white">{personal.progress}%</span>
+              <span className="absolute text-xs font-black">{personal.progress}%</span>
             </div>
             <div>
-              <p className="text-xl font-black text-white">{personal.okCount}/{personal.reqCount}</p>
-              <p className="text-[11px] normal-case text-zinc-400">Certificates currently compliant for your role</p>
+              <p className="text-xl font-black">{personal.okCount}/{personal.reqCount}</p>
+              <p className="text-[11px] normal-case app-text-soft">Certificates currently compliant for your role</p>
             </div>
           </div>
-          <div className="mt-6 grid grid-cols-3 gap-3">
+          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="rounded-2xl border border-red-500/15 bg-red-500/10 p-4">
               <p className="text-[9px] uppercase tracking-[0.15em] text-red-300">Expired</p>
-              <p className="mt-2 text-2xl font-black text-white">{personal.expired}</p>
+              <p className="mt-2 text-2xl font-black">{personal.expired}</p>
             </div>
             <div className="rounded-2xl border border-amber-500/15 bg-amber-500/10 p-4">
               <p className="text-[9px] uppercase tracking-[0.15em] text-amber-300">90 Days</p>
-              <p className="mt-2 text-2xl font-black text-white">{personal.warning}</p>
+              <p className="mt-2 text-2xl font-black">{personal.warning}</p>
             </div>
             <div className="rounded-2xl border border-emerald-500/15 bg-emerald-500/10 p-4">
-              <p className="text-[9px] uppercase tracking-[0.15em] text-emerald-300">Last PPE</p>
-              <p className="mt-2 text-sm font-black text-white uppercase">{personal.lastStatus}</p>
+              <p className="text-[9px] uppercase tracking-[0.15em] text-emerald-300">Boiler Suit</p>
+              <p className="mt-2 text-2xl font-black">{quota.suit}/2</p>
             </div>
+            <div className="rounded-2xl border border-blue-500/15 bg-blue-500/10 p-4">
+              <p className="text-[9px] uppercase tracking-[0.15em] text-blue-300">Safety Boots</p>
+              <p className="mt-2 text-2xl font-black">{quota.boot}/1</p>
+            </div>
+          </div>
+          <div className="mt-4 rounded-2xl border border-white/5 bg-black/10 px-4 py-3">
+            <p className="text-[9px] uppercase tracking-[0.15em] app-text-muted">Last PPE Request</p>
+            <p className="mt-2 text-sm font-black uppercase">{personal.lastStatus}</p>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="rounded-[36px] border border-white/5 bg-zinc-950/75 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
+      <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
+        <div className="app-surface-strong rounded-[36px] border p-5 md:p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <p className="text-[9px] uppercase tracking-[0.3em] text-zinc-500">Top Items This Month</p>
-              <h2 className="mt-2 text-xl font-black italic text-white">Demand Board</h2>
+              <p className="text-[9px] uppercase tracking-[0.3em] app-text-muted">Demand Board</p>
+              <h2 className="mt-2 text-xl font-black italic">Top Items This Month</h2>
             </div>
             <TrendingUp className="text-orange-500" size={18} />
           </div>
           <div className="space-y-3">
-            {overview.topItems.length === 0 && <div className="rounded-2xl border border-white/5 bg-black/30 p-5 text-zinc-500 text-sm normal-case">No issued items in the current dataset yet.</div>}
+            {overview.topItems.length === 0 && <div className="app-surface rounded-2xl border p-5 app-text-muted text-sm normal-case">No issued items in the current dataset yet.</div>}
             {overview.topItems.map((item: any, index: number) => (
-              <div key={item.name} className="grid grid-cols-[40px_1fr_auto] items-center gap-4 rounded-[24px] border border-white/5 bg-black/25 px-4 py-4">
+              <div key={item.name} className="app-surface rounded-[24px] border px-4 py-4 grid grid-cols-[40px_1fr_auto] items-center gap-4">
                 <div className="w-10 h-10 rounded-2xl bg-orange-500/10 text-orange-400 flex items-center justify-center font-black">{index + 1}</div>
                 <div>
-                  <p className="text-white font-black text-sm">{item.name}</p>
-                  <p className="text-zinc-500 text-[11px] normal-case">Highest request pressure this month</p>
+                  <p className="font-black text-sm">{item.name}</p>
+                  <p className="app-text-muted text-[11px] normal-case">Highest request pressure this month</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-black text-white">{item.count}</p>
-                  <p className="text-[9px] uppercase tracking-[0.15em] text-zinc-500">requests</p>
+                  <p className="text-2xl font-black">{item.count}</p>
+                  <p className="text-[9px] uppercase tracking-[0.15em] app-text-muted">requests</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="rounded-[36px] border border-white/5 bg-zinc-950/75 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
+        <div className="app-surface-strong rounded-[36px] border p-5 md:p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <p className="text-[9px] uppercase tracking-[0.3em] text-zinc-500">Top Crew This Month</p>
-              <h2 className="mt-2 text-xl font-black italic text-white">Activity Board</h2>
+              <p className="text-[9px] uppercase tracking-[0.3em] app-text-muted">Activity Board</p>
+              <h2 className="mt-2 text-xl font-black italic">Top Crew This Month</h2>
             </div>
             <Users className="text-orange-500" size={18} />
           </div>
           <div className="space-y-3">
-            {overview.topCrew.length === 0 && <div className="rounded-2xl border border-white/5 bg-black/30 p-5 text-zinc-500 text-sm normal-case">No crew activity captured yet.</div>}
+            {overview.topCrew.length === 0 && <div className="app-surface rounded-2xl border p-5 app-text-muted text-sm normal-case">No crew activity captured yet.</div>}
             {overview.topCrew.map((crew: any, index: number) => (
-              <div key={crew.name} className="grid grid-cols-[40px_1fr_auto] items-center gap-4 rounded-[24px] border border-white/5 bg-black/25 px-4 py-4">
+              <div key={crew.name} className="app-surface rounded-[24px] border px-4 py-4 grid grid-cols-[40px_1fr_auto] items-center gap-4">
                 <div className="w-10 h-10 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center font-black">{index + 1}</div>
                 <div>
-                  <p className="text-white font-black text-sm">{crew.name}</p>
-                  <p className="text-zinc-500 text-[11px] normal-case">Most request activity in the current view</p>
+                  <p className="font-black text-sm">{crew.name}</p>
+                  <p className="app-text-muted text-[11px] normal-case">Most request activity in the current view</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-black text-white">{crew.count}</p>
-                  <p className="text-[9px] uppercase tracking-[0.15em] text-zinc-500">items</p>
+                  <p className="text-2xl font-black">{crew.count}</p>
+                  <p className="text-[9px] uppercase tracking-[0.15em] app-text-muted">items</p>
                 </div>
               </div>
             ))}
