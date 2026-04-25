@@ -78,8 +78,10 @@ export default function Navbar() {
     const storedUser = localStorage.getItem('kmt_user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
+    } else {
+      setUser(null);
     }
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     if (!user?.id) return;
