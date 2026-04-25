@@ -106,7 +106,7 @@ export default function Navbar() {
           supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
           supabase
             .from('ppe_requests')
-            .select('id, created_at, crew_name, requester_name, full_name, items')
+            .select('*')
             .eq('status', 'pending')
             .order('created_at', { ascending: false })
             .limit(5),
