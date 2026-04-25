@@ -65,8 +65,10 @@ export default function Navbar() {
     lowStock: 0,
     expiredCerts: 0,
     adminActions: [] as AdminActionItem[],
+    personalUpdates: [] as CrewActionItem[],
     updates: [] as CrewActionItem[],
     approvedCount: 0,
+    personalApprovedCount: 0,
   });
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -142,7 +144,22 @@ export default function Navbar() {
       let currentTotal = 0;
 
       if (isAdmin) {
-        const [pendingRes, pendingRowsRes, invRes, certsRes] = await Promise.all([
+        const personalCountQuery = await applyPpeRequestUserFilter(
+          supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).in('status', ['approved', 'rejected']),
+          user,
+        );
+
+        const personalUpdatesQuery = await applyPpeRequestUserFilter(
+          supabase
+            .from('ppe_requests')
+            .select('id, created_at, status, admin_remark, rejection_reason, reason, items')
+            .in('status', ['approved', 'rejected'])
+            .order('created_at', { ascending: false })
+            .limit(6),
+          user,
+        );
+
+        const [pendingRes, pendingRowsRes, invRes, certsRes, personalCountRes, personalUpdatesRes] = await Promise.all([
           supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
           supabase
             .from('ppe_requests')
@@ -152,6 +169,8 @@ export default function Navbar() {
             .limit(5),
           supabase.from('ppe_inventory').select('quantity, threshold'),
           supabase.from('crew_certs').select('expiry_date'),
+          personalCountQuery,
+          personalUpdatesQuery,
         ]);
 
         const lowStock = invRes.data?.filter((item: any) => (item.quantity || 0) <= (item.threshold || 0)).length || 0;
@@ -161,6 +180,7 @@ export default function Navbar() {
           ).length || 0;
         const pendingCount = pendingRes.count || 0;
         const pendingRows = pendingRowsRes.data || [];
+        const personalRows = personalUpdatesRes.data || [];
 
         const pendingActions: AdminActionItem[] = pendingRows.map((req: any) => {
           const crewName = req.crew_name || req.requester_name || req.full_name || 'Unknown crew';
@@ -178,6 +198,21 @@ export default function Navbar() {
             icon: Clock,
           };
         });
+
+        const personalUpdates: CrewActionItem[] = personalRows.map((req: any) => {
+          const itemName = req.items?.[0]?.item_name || 'PPE request';
+          const approved = req.status === 'approved';
+          return {
+            id: req.id,
+            status: req.status,
+            title: approved ? 'Approved and ready to receive' : 'Request rejected',
+            description: approved
+              ? `${itemName} is waiting for your confirmation`
+              : req.admin_remark || req.rejection_reason || `${itemName} needs your attention`,
+          };
+        });
+        const personalApprovedCount = personalRows.filter((req: any) => req.status === 'approved').length;
+        const personalUpdateCount = personalCountRes.count || 0;
 
         const systemActions: AdminActionItem[] = [];
         if (lowStock > 0) {
@@ -211,10 +246,12 @@ export default function Navbar() {
           expiredCerts: expired,
           pendingActions,
           adminActions: systemActions,
+          personalUpdates,
           updates: [],
           approvedCount: 0,
+          personalApprovedCount,
         });
-        currentTotal = pendingCount + lowStock + expired;
+        currentTotal = pendingCount + lowStock + expired + personalUpdateCount;
       } else {
         const countQuery = await applyPpeRequestUserFilter(
           supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).in('status', ['approved', 'rejected']),
@@ -366,6 +403,7 @@ export default function Navbar() {
   };
 
   const totalAdminActions = (notifData.pending || 0) + (notifData.lowStock || 0) + (notifData.expiredCerts || 0);
+  const totalPersonalAdminUpdates = (notifData.personalUpdates || []).length;
 
   if (!mounted || ['/login', '/register'].includes(pathname)) return null;
 
@@ -478,6 +516,56 @@ export default function Navbar() {
                           </div>
                         )}
                       </div>
+
+                      {totalPersonalAdminUpdates > 0 && (
+                        <div className="px-1 pt-3">
+                          <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-emerald-300">
+                            Your Request Updates
+                          </p>
+                          <div className="space-y-2">
+                            {(notifData.personalUpdates || []).map((item: CrewActionItem) => {
+                              const approved = item.status === 'approved';
+                              return (
+                                <Link
+                                  key={`personal-${item.id}`}
+                                  href="/my-requests"
+                                  onClick={() => setShowNotif(false)}
+                                  className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-emerald-500/10 bg-emerald-500/[0.04]"
+                                >
+                                  <div className="flex items-center gap-4 min-w-0">
+                                    <div className={`p-2 rounded-xl ${approved ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                                      {approved ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
+                                      <p className="text-[9px] text-zinc-400 mt-1 normal-case line-clamp-2">{item.description}</p>
+                                    </div>
+                                  </div>
+                                  <ArrowRight size={14} className="text-zinc-600 group-hover:text-emerald-400 shrink-0" />
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {(notifData.personalApprovedCount || 0) > 0 && (
+                        <Link
+                          href="/my-requests"
+                          onClick={() => setShowNotif(false)}
+                          className="mx-1 flex items-center justify-between rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3"
+                        >
+                          <div>
+                            <p className="text-[10px] font-black uppercase text-emerald-300">Ready to receive</p>
+                            <p className="text-[9px] text-emerald-100/80 mt-1 normal-case">
+                              {notifData.personalApprovedCount} approved request{notifData.personalApprovedCount > 1 ? 's are' : ' is'} waiting for your confirmation
+                            </p>
+                          </div>
+                          <span className="bg-emerald-400 text-black px-2 py-1 rounded-md text-[9px] font-black">
+                            ACTION
+                          </span>
+                        </Link>
+                      )}
 
                       {(notifData.adminActions || []).length > 0 && (
                         <div className="px-1 pt-3">
