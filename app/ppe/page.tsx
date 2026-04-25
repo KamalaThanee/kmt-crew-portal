@@ -32,7 +32,7 @@ function PPEContent() {
     const u = JSON.parse(uStr)
     setUser(u)
     const pos = (u.position || "").toLowerCase().trim()
-    setIsAdmin(["safety officer", "chief officer", "barge master"].includes(pos))
+    setIsAdmin(["safety officer", "chief officer", "barge master", "storekeeper", "storekeeper admin"].includes(pos))
     loadCart()
 
     supabase.from('ppe_inventory').select('*').order('item_name').then(({data}) => data && setInventory(data))

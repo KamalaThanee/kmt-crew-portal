@@ -51,7 +51,7 @@ type SearchableSelectProps = {
   toneClassName: string
 }
 
-const adminRoles = ['safety officer', 'chief officer', 'barge master']
+const adminRoles = ['safety officer', 'chief officer', 'barge master', 'storekeeper', 'storekeeper admin']
 
 const normalize = (value: string) => String(value || '').toLowerCase().trim()
 

@@ -32,7 +32,7 @@ type CrewActionItem = {
   description: string;
 };
 
-const adminRoles = ["safety officer", "chief officer", "barge master"];
+const adminRoles = ["safety officer", "chief officer", "barge master", "storekeeper", "storekeeper admin"];
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -54,7 +54,7 @@ export default function Navbar() {
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  const role = (user?.position || "").toLowerCase();
+  const role = (user?.position || "").toLowerCase().trim();
   const isAdmin = adminRoles.includes(role);
 
   const menuItems = useMemo(

@@ -32,7 +32,7 @@ function CertificatesContent() {
   const [expandedCrews, setExpandedCrews] = useState<string[]>([])
 
   const isAdmin = useMemo(() => 
-    ["safety officer", "chief officer", "barge master"].includes((currentUser?.position || "").toLowerCase())
+    ["safety officer", "chief officer", "barge master", "storekeeper", "storekeeper admin"].includes((currentUser?.position || "").toLowerCase().trim())
   , [currentUser]);
 
   const fetchData = async () => {
