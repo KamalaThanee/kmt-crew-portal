@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getPpeRequestIdentity } from '@/lib/ppeRequests'
+import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { Check, X, User, Package, ShieldCheck, Loader2, MessageSquare, History, CheckCircle2, Clock } from 'lucide-react'
 
@@ -18,6 +19,7 @@ export default function ApprovalsPage() {
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
   const [pastHistory, setPastHistory] = useState<any[]>([])
+  const [focusRequestId, setFocusRequestId] = useState<string | null>(null)
 
   const fetchData = async () => {
     const { data: reqs } = await supabase.from('ppe_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false })
@@ -32,14 +34,29 @@ export default function ApprovalsPage() {
       const userStr = localStorage.getItem('kmt_user')
       if (!userStr) { router.replace('/login'); return; }
       const user = JSON.parse(userStr)
-      const adminRoles = ["safety officer", "chief officer", "barge master"]
-      if (!adminRoles.includes((user.position || "").toLowerCase())) { router.replace('/ppe'); return; }
+      if (!isAdminRole(user.position)) { router.replace('/ppe'); return; }
       fetchData();
     }
     checkAuth()
   }, [router])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    setFocusRequestId(params.get('request'))
+  }, [])
+
   const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
+
+  const isMissingColumnError = (error: unknown, column: string) => {
+    const message = String((error as { message?: string })?.message || '').toLowerCase()
+    return message.includes(column.toLowerCase()) && (message.includes('schema cache') || message.includes('column'))
+  }
+
+  const isApprovedByForeignKeyError = (error: unknown) => {
+    const message = String((error as { message?: string })?.message || '').toLowerCase()
+    return message.includes('approved_by_fkey') || (message.includes('approved_by') && message.includes('foreign key'))
+  }
 
   const updateRequestStatus = async (
     requestId: string,
@@ -49,17 +66,49 @@ export default function ApprovalsPage() {
     const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
     const payload = { status, ...extra } as Record<string, any>
     if (isUuid(admin.id)) payload.approved_by = admin.id
+    if (admin.full_name) payload.approved_by_name = admin.full_name
 
-    let result = await supabase.from('ppe_requests').update(payload).eq('id', requestId).select('id, status, approved_by').maybeSingle()
-    if (!result.error) return result
-
+    const variants: Record<string, any>[] = [payload]
     if ('approved_by' in payload) {
-      const { approved_by: _approvedBy, ...fallbackPayload } = payload
-      result = await supabase.from('ppe_requests').update(fallbackPayload).eq('id', requestId).select('id, status, approved_by').maybeSingle()
-      if (!result.error) return result
+      const { approved_by: _approvedBy, ...withoutApprovedBy } = payload
+      variants.push(withoutApprovedBy)
+    }
+    if ('approved_by_name' in payload) {
+      const { approved_by_name: _approvedByName, ...withoutApprovedByName } = payload
+      variants.push(withoutApprovedByName)
+    }
+    if ('approved_by' in payload && 'approved_by_name' in payload) {
+      const { approved_by: _approvedBy, approved_by_name: _approvedByName, ...statusOnly } = payload
+      variants.push(statusOnly)
     }
 
-    return result
+    let lastResult: any = null
+    const seen = new Set<string>()
+    for (const variant of variants) {
+      const key = JSON.stringify(Object.keys(variant).sort())
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      const result = await supabase
+        .from('ppe_requests')
+        .update(variant)
+        .eq('id', requestId)
+        .select('id, status, approved_by, approved_by_name')
+        .maybeSingle()
+
+      if (!result.error) return result
+      lastResult = result
+
+      if (
+        !isMissingColumnError(result.error, 'approved_by') &&
+        !isMissingColumnError(result.error, 'approved_by_name') &&
+        !isApprovedByForeignKeyError(result.error)
+      ) {
+        return result
+      }
+    }
+
+    return lastResult
   }
 
   const getSmartContext = async (req: any, itemName: string) => {
@@ -102,6 +151,13 @@ export default function ApprovalsPage() {
       active = false
     }
   }, [requests, pastHistory])
+
+  useEffect(() => {
+    if (!focusRequestId || !requests.length) return
+    const target = document.getElementById(`approval-card-${focusRequestId}`)
+    if (!target) return
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusRequestId, requests])
 
   const handleApprove = async (req: any) => {
     setIsSubmitting(true)
@@ -204,7 +260,13 @@ export default function ApprovalsPage() {
       <div className="space-y-6">
         {requests.length === 0 && <div className="py-20 text-center bg-zinc-900/50 rounded-[40px] border border-dashed border-white/5 text-zinc-500 font-black">NO PENDING REQUESTS</div>}
         {requests.map(req => (
-          <div key={req.id} className="bg-zinc-900/50 border border-white/5 p-6 md:p-8 rounded-[40px] space-y-6 shadow-xl hover:border-orange-500/20 transition-all">
+          <div
+            id={`approval-card-${req.id}`}
+            key={req.id}
+            className={`bg-zinc-900/50 border p-6 md:p-8 rounded-[40px] space-y-6 shadow-xl hover:border-orange-500/20 transition-all ${
+              focusRequestId === String(req.id) ? 'border-orange-500 shadow-[0_0_0_1px_rgba(249,115,22,0.45)]' : 'border-white/5'
+            }`}
+          >
             <div className="flex flex-col md:flex-row justify-between items-start gap-4">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-orange-500/10 rounded-2xl flex items-center justify-center text-orange-500"><User size={24}/></div>

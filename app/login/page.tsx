@@ -1,12 +1,16 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
-import { ShieldCheck, Lock, User, Search, ChevronDown, Loader2, UserPlus } from 'lucide-react'
+import { ChevronDown, Loader2, Lock, Search, ShieldCheck, User, UserPlus } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [crews, setCrews] = useState<any[]>([])
@@ -14,36 +18,41 @@ export default function LoginPage() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [selectedCrew, setSelectedCrew] = useState<any>(null)
   const [pin, setPin] = useState('')
-  const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setMounted(true)
-    // 🎯 ดึงรายชื่อลูกเรือที่ลงทะเบียนแล้ว (มี PIN แล้ว)
+
     const fetchRegisteredCrews = async () => {
       const { data } = await supabase.from('crews').select('*').not('pin', 'is', null).order('full_name')
       if (data) setCrews(data)
     }
+
     fetchRegisteredCrews()
 
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setIsDropdownOpen(false)
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!dropdownRef.current?.contains(event.target as Node)) {
+        setIsDropdownOpen(false)
+      }
     }
+
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const filteredCrews = crews.filter(c => 
-    c.full_name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredCrews = crews.filter((crew) =>
+    String(crew.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault()
+
     if (!selectedCrew || pin.length !== 6) {
-      toast.error('โปรดเลือกชื่อและใส่ PIN 6 หลัก')
+      toast.error('Please select your name and enter a 6-digit PIN')
       return
     }
 
     setLoading(true)
+
     try {
       const { data: crew, error } = await supabase
         .from('crews')
@@ -53,15 +62,21 @@ export default function LoginPage() {
         .single()
 
       if (error || !crew) {
-        toast.error('PIN ไม่ถูกต้อง')
-      } else {
-        localStorage.setItem('kmt_user', JSON.stringify(crew))
-        toast.success(`สวัสดีคุณ ${crew.full_name}`)
-        const isAdmin = ["safety officer", "chief officer", "barge master"].includes((crew.position || "").toLowerCase())
-        router.push(isAdmin ? '/admin/dashboard' : '/dashboard')
+        toast.error('Incorrect PIN')
+        return
       }
-    } catch (err) {
-      toast.error('เกิดข้อผิดพลาดในการเชื่อมต่อ')
+
+      const resolvedCrew = {
+        ...selectedCrew,
+        ...crew,
+        position: crew.position || selectedCrew.position || '',
+      }
+
+      localStorage.setItem('kmt_user', JSON.stringify(resolvedCrew))
+      toast.success(`Welcome ${resolvedCrew.full_name}`)
+      router.push(isAdminRole(resolvedCrew.position) ? '/admin/dashboard' : '/dashboard')
+    } catch {
+      toast.error('Unable to sign in right now')
     } finally {
       setLoading(false)
     }
@@ -72,8 +87,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-6 font-sans">
       <div className="w-full max-w-sm space-y-10 animate-in fade-in zoom-in duration-500">
-        
-        {/* Logo Section */}
         <div className="text-center space-y-3">
           <div className="flex justify-center">
             <div className="p-5 bg-orange-600/10 rounded-[32px] border border-orange-500/20 shadow-[0_0_50px_rgba(249,115,22,0.15)]">
@@ -86,13 +99,12 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="space-y-6">
-          {/* 🎯 Searchable Name Dropdown */}
+        <form className="space-y-6" onSubmit={handleLogin}>
           <div className="relative" ref={dropdownRef}>
             <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 mb-2 block">Personnel Name</label>
-            <div 
+            <div
               className={`w-full bg-zinc-900 border ${isDropdownOpen ? 'border-orange-500' : 'border-white/5'} p-4 rounded-2xl flex items-center justify-between cursor-pointer transition-all`}
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              onClick={() => setIsDropdownOpen((prev) => !prev)}
             >
               <div className="flex items-center gap-3 overflow-hidden">
                 <User className="text-zinc-600 shrink-0" size={18} />
@@ -108,8 +120,8 @@ export default function LoginPage() {
                 <div className="p-2 border-b border-white/5 bg-black/20">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       autoFocus
                       placeholder="Search name..."
                       className="w-full bg-zinc-800 border-none p-2 pl-9 rounded-xl text-xs text-white outline-none"
@@ -121,15 +133,20 @@ export default function LoginPage() {
                 </div>
                 <div className="max-h-60 overflow-y-auto">
                   {filteredCrews.length > 0 ? (
-                    filteredCrews.map(c => (
-                      <div 
-                        key={c.id} 
-                        className="p-4 hover:bg-orange-600 text-white cursor-pointer transition-colors border-b border-white/5 last:border-0"
-                        onClick={() => { setSelectedCrew(c); setIsDropdownOpen(false); setSearchTerm(''); }}
+                    filteredCrews.map((crew) => (
+                      <button
+                        key={crew.id}
+                        type="button"
+                        className="w-full p-4 hover:bg-orange-600 text-white cursor-pointer transition-colors border-b border-white/5 last:border-0 text-left"
+                        onClick={() => {
+                          setSelectedCrew(crew)
+                          setIsDropdownOpen(false)
+                          setSearchTerm('')
+                        }}
                       >
-                        <p className="text-sm font-bold leading-none">{c.full_name}</p>
-                        <p className="text-[10px] opacity-60 uppercase mt-1">{c.position}</p>
-                      </div>
+                        <p className="text-sm font-bold leading-none">{crew.full_name}</p>
+                        <p className="text-[10px] opacity-60 uppercase mt-1">{crew.position}</p>
+                      </button>
                     ))
                   ) : (
                     <div className="p-8 text-center text-zinc-600 text-[10px] uppercase font-bold">No registered crew found</div>
@@ -139,36 +156,34 @@ export default function LoginPage() {
             )}
           </div>
 
-          {/* 🎯 PIN Input */}
           <div className="space-y-2">
             <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 block">Security PIN</label>
             <div className="relative group">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-orange-500 transition-colors" size={18} />
-              <input 
-                type="password" 
+              <input
+                type="password"
                 inputMode="numeric"
                 maxLength={6}
-                placeholder="******" 
-                value={pin} 
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} 
-                className="w-full bg-zinc-900 border border-white/5 p-4 pl-12 rounded-2xl text-white outline-none focus:border-orange-500 text-center tracking-[0.8em] text-2xl font-black transition-all" 
+                placeholder="******"
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                className="w-full bg-zinc-900 border border-white/5 p-4 pl-12 rounded-2xl text-white outline-none focus:border-orange-500 text-center tracking-[0.8em] text-2xl font-black transition-all"
               />
             </div>
           </div>
-          
-          <button 
-            onClick={handleLogin}
-            disabled={loading || !selectedCrew} 
+
+          <button
+            type="submit"
+            disabled={loading || !selectedCrew}
             className="w-full py-5 bg-orange-600 hover:bg-orange-500 text-white rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-orange-600/20 active:scale-[0.98] transition-all disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-2"
           >
             {loading ? <Loader2 className="animate-spin" size={20} /> : 'Sign In'}
           </button>
-        </div>
+        </form>
 
-        {/* 🎯 Register Area */}
         <div className="pt-6 border-t border-white/5 text-center space-y-4">
           <p className="text-[10px] text-zinc-500 uppercase font-bold">New to the portal?</p>
-          <button 
+          <button
             onClick={() => router.push('/register')}
             className="inline-flex items-center gap-2 text-xs font-black text-orange-500 hover:text-orange-400 transition-colors uppercase tracking-widest"
           >

@@ -10,6 +10,7 @@ export default function MyRequests() {
   const [loading, setLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [readyToReceiveCount, setReadyToReceiveCount] = useState(0)
 
   const fetchRequests = async () => {
     const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
@@ -17,12 +18,38 @@ export default function MyRequests() {
       supabase.from('ppe_requests').select('*').order('created_at', { ascending: false }),
       user,
     )
-    const { data } = await query
-    if (data) setRequests(data)
+    const { data, error } = await query
+    if (error) {
+      toast.error(error.message || 'Unable to load your request history')
+    }
+    if (data) {
+      setRequests(data)
+      setReadyToReceiveCount(data.filter((req: any) => req.status === 'approved').length)
+    }
     setLoading(false)
   }
 
   useEffect(() => { fetchRequests() }, [])
+  useEffect(() => {
+    const handleRefresh = () => fetchRequests()
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchRequests()
+      }
+    }
+
+    const interval = window.setInterval(fetchRequests, 15000)
+    window.addEventListener('new-notification', handleRefresh)
+    window.addEventListener('focus', handleRefresh)
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('new-notification', handleRefresh)
+      window.removeEventListener('focus', handleRefresh)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [])
 
   const handleReceive = async (req: any) => {
     if (!confirm("คุณได้รับอุปกรณ์ถูกต้องครบถ้วนแล้วใช่หรือไม่? ระบบจะทำการอัปเดตสต๊อกทันที")) return;
@@ -57,6 +84,18 @@ export default function MyRequests() {
   return (
     <div className="p-4 md:p-8 max-w-2xl mx-auto pb-32 pt-24 font-sans text-white uppercase font-bold text-[10px]">
       <h1 className="text-3xl font-black italic flex items-center gap-3 mb-10"><PackageCheck className="text-orange-500" size={32}/> My PPE History</h1>
+
+      {readyToReceiveCount > 0 && (
+        <div className="mb-6 rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-5 text-left">
+          <p className="text-[9px] text-emerald-300 tracking-[0.24em] uppercase">Action Needed</p>
+          <p className="mt-2 text-sm text-white normal-case font-black">
+            {readyToReceiveCount} approved request{readyToReceiveCount > 1 ? 's are' : ' is'} waiting for you to confirm receipt.
+          </p>
+          <p className="mt-1 text-[11px] text-emerald-100/80 normal-case">
+            Open an approved card below, then tap <span className="font-black">Confirm Received</span>.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-4">
         {requests.map(req => (
