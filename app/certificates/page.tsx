@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo, Suspense } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { formatExpiryLabel, isNoExpiryDate } from '@/lib/certificates'
 import { isAdminRole } from '@/lib/roles'
@@ -14,6 +14,7 @@ const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-
 
 function CertificatesContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [activeTab, setActiveTab] = useState('personal')
   const [loading, setLoading] = useState(true)
@@ -55,6 +56,24 @@ function CertificatesContent() {
     if (!u) { router.push('/login'); return; }
     setCurrentUser(u);
   }, [router]);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    const crewFilter = searchParams.get('filter')
+    const personal = searchParams.get('personal')
+
+    if (tab === 'crew' && isAdmin) setActiveTab('crew')
+    if (tab === 'personal') setActiveTab('personal')
+    if (tab === 'ship' && isAdmin) setActiveTab('ship')
+
+    if (crewFilter && ['all', 'ready', 'warning', 'expired', 'action'].includes(crewFilter)) {
+      setFilterMode(crewFilter)
+    }
+
+    if (personal && ['all', 'ok', 'warning', 'expired', 'missing'].includes(personal)) {
+      setPersonalFilter(personal)
+    }
+  }, [isAdmin, searchParams])
 
   useEffect(() => {
     if (currentUser) fetchData();

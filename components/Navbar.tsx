@@ -32,6 +32,7 @@ type CrewActionItem = {
   status: string;
   title: string;
   description: string;
+  href?: string;
 };
 
 type AdminActionItem = {
@@ -66,9 +67,11 @@ export default function Navbar() {
     expiredCerts: 0,
     adminActions: [] as AdminActionItem[],
     personalUpdates: [] as CrewActionItem[],
+    personalCertActions: [] as CrewActionItem[],
     updates: [] as CrewActionItem[],
     approvedCount: 0,
     personalApprovedCount: 0,
+    personalCertAlertCount: 0,
   });
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -214,6 +217,37 @@ export default function Navbar() {
         const personalApprovedCount = personalRows.filter((req: any) => req.status === 'approved').length;
         const personalUpdateCount = personalCountRes.count || 0;
 
+        const myUploadedCerts = (certsRes.data || []).filter((cert: any) => String(cert.crew_id || '') === String(user.id || ''));
+        const now = new Date();
+        const personalCertActions: CrewActionItem[] = myUploadedCerts
+          .map((cert: any) => {
+            const expiry = cert.expiry_date ? new Date(cert.expiry_date) : null;
+            if (!expiry || cert.expiry_date === '2099-12-31') return null;
+            const daysLeft = Math.floor((expiry.getTime() - now.getTime()) / 86400000);
+            if (daysLeft < 0) {
+              return {
+                id: `my-cert-expired-${cert.id}`,
+                status: 'expired-cert',
+                title: 'My certificate expired',
+                description: `${cert.cert_name || 'Certificate'} expired and needs renewal`,
+                href: '/certificates?tab=personal&personal=expired',
+              };
+            }
+            if (daysLeft <= 90) {
+              return {
+                id: `my-cert-warning-${cert.id}`,
+                status: 'warning-cert',
+                title: 'My certificate expires soon',
+                description: `${cert.cert_name || 'Certificate'} expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`,
+                href: '/certificates?tab=personal&personal=warning',
+              };
+            }
+            return null;
+          })
+          .filter(Boolean)
+          .slice(0, 4) as CrewActionItem[];
+        const personalCertAlertCount = personalCertActions.length;
+
         const systemActions: AdminActionItem[] = [];
         if (lowStock > 0) {
           systemActions.push({
@@ -230,7 +264,7 @@ export default function Navbar() {
         if (expired > 0) {
           systemActions.push({
             id: 'expired-certs',
-            href: '/admin/settings?tab=crews',
+            href: '/certificates?tab=crew&filter=action',
             title: 'Expired certificates need follow-up',
             description: 'Crew compliance issues require review',
             meta: `${expired} certificate${expired > 1 ? 's' : ''} expired`,
@@ -247,11 +281,13 @@ export default function Navbar() {
           pendingActions,
           adminActions: systemActions,
           personalUpdates,
+          personalCertActions,
           updates: [],
           approvedCount: 0,
           personalApprovedCount,
+          personalCertAlertCount,
         });
-        currentTotal = pendingCount + lowStock + expired + personalUpdateCount;
+        currentTotal = pendingCount + lowStock + expired + personalUpdateCount + personalCertAlertCount;
       } else {
         const countQuery = await applyPpeRequestUserFilter(
           supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).in('status', ['approved', 'rejected']),
@@ -268,7 +304,11 @@ export default function Navbar() {
           user,
         );
 
-        const [{ count }, { data: updates }] = await Promise.all([countQuery, updatesQuery]);
+        const [myCertsRes, { count }, { data: updates }] = await Promise.all([
+          supabase.from('crew_certs').select('id, cert_name, expiry_date').eq('crew_id', user.id),
+          countQuery,
+          updatesQuery,
+        ]);
         const rows = updates || [];
         const statusStorageKey = getCrewNotificationStorageKey(user);
         const previousStatuses = JSON.parse(
@@ -291,6 +331,35 @@ export default function Navbar() {
         });
 
         const approvedCount = rows.filter((req: any) => req.status === 'approved').length;
+        const now = new Date();
+        const personalCertActions: CrewActionItem[] = (myCertsRes.data || [])
+          .map((cert: any) => {
+            const expiry = cert.expiry_date ? new Date(cert.expiry_date) : null;
+            if (!expiry || cert.expiry_date === '2099-12-31') return null;
+            const daysLeft = Math.floor((expiry.getTime() - now.getTime()) / 86400000);
+            if (daysLeft < 0) {
+              return {
+                id: `my-cert-expired-${cert.id}`,
+                status: 'expired-cert',
+                title: 'My certificate expired',
+                description: `${cert.cert_name || 'Certificate'} expired and needs renewal`,
+                href: '/certificates?tab=personal&personal=expired',
+              };
+            }
+            if (daysLeft <= 90) {
+              return {
+                id: `my-cert-warning-${cert.id}`,
+                status: 'warning-cert',
+                title: 'My certificate expires soon',
+                description: `${cert.cert_name || 'Certificate'} expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`,
+                href: '/certificates?tab=personal&personal=warning',
+              };
+            }
+            return null;
+          })
+          .filter(Boolean)
+          .slice(0, 4) as CrewActionItem[];
+        const personalCertAlertCount = personalCertActions.length;
 
         if (Object.keys(previousStatuses).length > 0) {
           const newlyApproved = rows.filter(
@@ -338,10 +407,12 @@ export default function Navbar() {
           pending: count || 0,
           lowStock: 0,
           expiredCerts: 0,
+          personalCertActions,
           updates: actionItems,
           approvedCount,
+          personalCertAlertCount,
         });
-        currentTotal = count || 0;
+        currentTotal = (count || 0) + personalCertAlertCount;
       }
 
       const lastSeenTotal = parseInt(localStorage.getItem('kmt_notif_seen') || '0');
@@ -396,13 +467,13 @@ export default function Navbar() {
     }
 
     if (isOpening) {
-      const total = notifData.pending + notifData.lowStock + notifData.expiredCerts;
+      const total =
+        notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0);
       localStorage.setItem('kmt_notif_seen', total.toString());
       setUnreadCount(0);
     }
   };
 
-  const totalAdminActions = (notifData.pending || 0) + (notifData.lowStock || 0) + (notifData.expiredCerts || 0);
   const totalPersonalAdminUpdates = (notifData.personalUpdates || []).length;
 
   if (!mounted || ['/login', '/register'].includes(pathname)) return null;
@@ -464,17 +535,6 @@ export default function Navbar() {
                 <div className="p-2 space-y-1 bg-black/20">
                   {isAdmin ? (
                     <>
-                      <div className="rounded-2xl border border-orange-500/15 bg-orange-500/10 px-4 py-3">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-orange-300">
-                          {totalAdminActions > 0 ? `${totalAdminActions} actions need attention` : 'No urgent admin actions'}
-                        </p>
-                        <p className="mt-1 text-[9px] text-orange-100/70 normal-case">
-                          {totalAdminActions > 0
-                            ? 'Open each item below to review, restock, or follow up.'
-                            : 'Your approval queue, stock alerts, and compliance alerts are all clear.'}
-                        </p>
-                      </div>
-
                       <div className="px-1 pt-2">
                         <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-amber-300">
                           PPE Request Feed
@@ -567,6 +627,35 @@ export default function Navbar() {
                         </Link>
                       )}
 
+                      {(notifData.personalCertActions || []).length > 0 && (
+                        <div className="px-1 pt-3">
+                          <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-sky-300">
+                            My Certificates
+                          </p>
+                          <div className="space-y-2">
+                            {(notifData.personalCertActions || []).map((item: CrewActionItem) => (
+                              <Link
+                                key={item.id}
+                                href={item.href || '/certificates?tab=personal'}
+                                onClick={() => setShowNotif(false)}
+                                className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-sky-500/10 bg-sky-500/[0.04]"
+                              >
+                                <div className="flex items-center gap-4 min-w-0">
+                                  <div className="p-2 rounded-xl bg-sky-500/20 text-sky-400">
+                                    <FileBadge size={16}/>
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
+                                    <p className="text-[9px] text-zinc-400 mt-1 normal-case line-clamp-2">{item.description}</p>
+                                  </div>
+                                </div>
+                                <ArrowRight size={14} className="text-zinc-600 group-hover:text-sky-400 shrink-0" />
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {(notifData.adminActions || []).length > 0 && (
                         <div className="px-1 pt-3">
                           <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-zinc-500">
@@ -645,6 +734,35 @@ export default function Navbar() {
                         );
                       })}
 
+                      {(notifData.personalCertActions || []).length > 0 && (
+                        <div className="pt-2">
+                          <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-sky-300">
+                            My Certificates
+                          </p>
+                          <div className="space-y-2">
+                            {(notifData.personalCertActions || []).map((item: CrewActionItem) => (
+                              <Link
+                                key={item.id}
+                                href={item.href || '/certificates?tab=personal'}
+                                onClick={() => setShowNotif(false)}
+                                className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-sky-500/10 bg-sky-500/[0.04]"
+                              >
+                                <div className="flex items-center gap-4 min-w-0">
+                                  <div className="p-2 rounded-xl bg-sky-500/20 text-sky-400">
+                                    <FileBadge size={16}/>
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
+                                    <p className="text-[9px] text-zinc-400 mt-1 normal-case line-clamp-2">{item.description}</p>
+                                  </div>
+                                </div>
+                                <ArrowRight size={14} className="text-zinc-600 group-hover:text-sky-400 shrink-0" />
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {notifData.approvedCount > 0 && (
                         <Link
                           href="/my-requests"
@@ -665,7 +783,7 @@ export default function Navbar() {
                     </>
                   )}
 
-                  {notifData.pending + notifData.lowStock + notifData.expiredCerts === 0 && (notifData.updates || []).length === 0 && (
+                  {notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) === 0 && (notifData.updates || []).length === 0 && (
                     <div className="text-center p-6 text-zinc-600 text-[10px] uppercase font-black tracking-widest">
                       No Alerts
                     </div>
