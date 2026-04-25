@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Search, Key, ChevronRight, ChevronLeft, User, ShieldCheck } from 'lucide-react'
 

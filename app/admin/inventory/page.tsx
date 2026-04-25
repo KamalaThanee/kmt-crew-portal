@@ -3,14 +3,12 @@ import { useState, useEffect, useMemo, Suspense, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import * as XLSX from 'xlsx'
 import { 
   Package, Search, AlertTriangle, Download, Plus, Edit, X, Save, 
   Box, ChevronDown, ChevronRight, Archive, FileText, Loader2, 
   CheckCircle2, Trash2, Upload, Clock, User,
   HardHat, Headphones, Eye, Wind, Shirt, Hand, Footprints, MoreHorizontal
 } from 'lucide-react'
-import imageCompression from 'browser-image-compression'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
@@ -218,6 +216,7 @@ function InventoryContent() {
     if (validEntries.length === 0 || !doFile) return toast.error('Check items and DO file')
     setIsProcessingRestock(true)
     try {
+      const { default: imageCompression } = await import('browser-image-compression')
       const compressedFile = await imageCompression(doFile, { maxSizeMB: 0.3, maxWidthOrHeight: 1024 })
       const fileName = `DO_${Date.now()}_${doFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
       await supabase.storage.from('do-files').upload(fileName, compressedFile)

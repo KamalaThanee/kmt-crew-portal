@@ -4,10 +4,9 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { 
-  Settings, Users, Package, SlidersHorizontal, Search, UserPlus,
+  Settings, Users, Package, SlidersHorizontal, Search, UserPlus, 
   Loader2, Upload, Edit, RefreshCw, X, Save, Box, ChevronRight, User
 } from 'lucide-react'
-import imageCompression from 'browser-image-compression'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 
@@ -109,6 +108,7 @@ function SettingsContent() {
   const handleUpload = async (type: 'suit' | 'boot', file: File) => {
     setUploading(prev => ({ ...prev, [type]: true }));
     try {
+      const { default: imageCompression } = await import('browser-image-compression');
       const compressedFile = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1280 });
       const fileName = `${type}_chart_${Date.now()}.jpg`;
       await supabase.storage.from('size-charts').upload(fileName, compressedFile);

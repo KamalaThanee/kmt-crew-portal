@@ -7,7 +7,6 @@ import { toast } from 'sonner'
 import { Check, X, User, Package, ShieldCheck, Loader2, MessageSquare, History, CheckCircle2, Clock } from 'lucide-react'
 
 export default function ApprovalsPage() {
-  const debugBuild = 'approvals-debug-2026-04-25-codex-1'
   const router = useRouter()
   const [requests, setRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -22,7 +21,12 @@ export default function ApprovalsPage() {
   const fetchData = async () => {
     const { data: reqs } = await supabase.from('ppe_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false })
     if (reqs) setRequests(reqs)
-    const { data: past } = await supabase.from('ppe_requests').select('*').neq('status', 'pending').order('created_at', { ascending: false })
+    const { data: past } = await supabase
+      .from('ppe_requests')
+      .select('id, items, status, created_at, crew_id, crew_name')
+      .neq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(500)
     if (past) setPastHistory(past)
     setLoading(false)
   }
@@ -118,14 +122,12 @@ export default function ApprovalsPage() {
       if (error) {
         setActionMessage(`Approve failed: ${error.message}`)
         toast.error(`Approve failed: ${error.message}`)
-        alert(`Approve failed: ${error.message}`)
         return
       }
       if (!data) {
         const message = 'Approve failed: no rows updated'
         setActionMessage(message)
         toast.error(message)
-        alert(message)
         return
       }
 
@@ -138,7 +140,6 @@ export default function ApprovalsPage() {
     } catch (error: any) {
       setActionMessage(`Approve failed: ${error?.message || 'Unknown error'}`)
       toast.error(`Approve failed: ${error?.message || 'Unknown error'}`)
-      alert(`Approve failed: ${error?.message || 'Unknown error'}`)
     } finally {
       setIsSubmitting(false)
       setActiveRequestId(null)
@@ -161,14 +162,12 @@ export default function ApprovalsPage() {
       if (error) {
         setActionMessage(`Reject failed: ${error.message}`)
         toast.error(`Reject failed: ${error.message}`)
-        alert(`Reject failed: ${error.message}`)
         return
       }
       if (!data) {
         const message = 'Reject failed: no rows updated'
         setActionMessage(message)
         toast.error(message)
-        alert(message)
         return
       }
 
@@ -182,7 +181,6 @@ export default function ApprovalsPage() {
     } catch (error: any) {
       setActionMessage(`Reject failed: ${error?.message || 'Unknown error'}`)
       toast.error(`Reject failed: ${error?.message || 'Unknown error'}`)
-      alert(`Reject failed: ${error?.message || 'Unknown error'}`)
     } finally {
       setIsSubmitting(false)
       setActiveRequestId(null)
@@ -194,7 +192,7 @@ export default function ApprovalsPage() {
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto pb-32 pt-24 font-sans text-white uppercase font-bold text-[10px]">
       <div className="mb-10 flex justify-between items-center">
-        <div><h1 className="text-3xl font-black italic text-white flex items-center gap-3"><ShieldCheck className="text-orange-500" size={32}/> Approvals</h1><p className="text-zinc-500 mt-1 uppercase">Pending Crew Requests</p><p className="mt-2 text-[9px] text-cyan-400 normal-case">Build marker: {debugBuild}</p></div>
+        <div><h1 className="text-3xl font-black italic text-white flex items-center gap-3"><ShieldCheck className="text-orange-500" size={32}/> Approvals</h1><p className="text-zinc-500 mt-1 uppercase">Pending Crew Requests</p></div>
       </div>
       {actionMessage && (
         <div className="mb-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-[10px] text-orange-300 normal-case">

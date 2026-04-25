@@ -2,7 +2,7 @@
 import { toast } from 'sonner';
 import { useState, useEffect, useMemo, Suspense, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { 
   HardHat, Headphones, Eye, Wind, Hand, Footprints, MoreHorizontal, 

@@ -1,9 +1,9 @@
 "use client";
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Package, ShieldCheck, Bell, LogOut, ClipboardCheck, ShoppingCart, User, Settings, History, PlusCircle, FileBadge, AlertTriangle, Clock, Users } from 'lucide-react';
+import { Package, ShieldCheck, Bell, LogOut, ClipboardCheck, ShoppingCart, User, Settings, History, PlusCircle, FileBadge, AlertTriangle, Clock, Users } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests';
 
 export default function Navbar() {
@@ -44,7 +44,7 @@ export default function Navbar() {
       window.removeEventListener('new-notification', handleNewNotif);
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [pathname]);
+  }, []);
 
   const fetchNotifications = async (u: any) => {
     if (!u?.id) return;
@@ -54,13 +54,18 @@ export default function Navbar() {
     let currentTotal = 0;
 
     if (isAdmin) {
+      const today = new Date().toISOString().slice(0, 10);
       const [pendingRes, invRes, certsRes] = await Promise.all([
-        supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('ppe_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('ppe_inventory').select('quantity, threshold'),
-        supabase.from('crew_certs').select('expiry_date')
+        supabase
+          .from('crew_certs')
+          .select('id', { count: 'exact', head: true })
+          .lt('expiry_date', today)
+          .neq('expiry_date', '2099-12-31')
       ]);
       const lowStock = invRes.data?.filter(i => (i.quantity||0) <= (i.threshold||0)).length || 0;
-      const expired = certsRes.data?.filter(c => new Date(c.expiry_date) < new Date() && c.expiry_date !== '2099-12-31').length || 0;
+      const expired = certsRes.count || 0;
       const pendingCount = pendingRes.count || 0;
       
       setNotifData({ pending: pendingCount, lowStock, expiredCerts: expired });
