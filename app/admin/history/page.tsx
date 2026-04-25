@@ -16,6 +16,7 @@ type HistoryItem = {
   itemName: string
   color: string
   size: string
+  approvedByName: string | null
 }
 
 const STATUS_OPTIONS = ['all', 'pending', 'approved', 'received', 'rejected']
@@ -33,6 +34,22 @@ const getMonthKey = (date: Date) =>
 const formatDateTime = (value: string | null) => {
   if (!value) return 'Not received yet'
   return new Date(value).toLocaleString('en-GB')
+}
+
+const getStatusMeta = (row: HistoryItem) => {
+  if (row.status === 'approved') {
+    return row.approvedByName ? `Approved by ${row.approvedByName}` : 'Approved by admin'
+  }
+
+  if (row.status === 'rejected') {
+    return row.approvedByName ? `Rejected by ${row.approvedByName}` : 'Rejected by admin'
+  }
+
+  if (row.status === 'received') {
+    return row.receivedAt ? `Received on ${formatDateTime(row.receivedAt)}` : 'Marked as received'
+  }
+
+  return 'Waiting for approval'
 }
 
 export default function AdminHistoryPage() {
@@ -59,10 +76,17 @@ export default function AdminHistoryPage() {
 
     const fetchHistory = async () => {
       setLoading(true)
-      const { data } = await supabase
-        .from('ppe_requests')
-        .select('*')
-        .order('created_at', { ascending: false })
+      const [{ data }, { data: crews }] = await Promise.all([
+        supabase
+          .from('ppe_requests')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        supabase.from('crews').select('id, full_name'),
+      ])
+
+      const crewMap = new Map<string, string>(
+        (crews || []).map((crew: any) => [String(crew.id), crew.full_name || 'Unknown Admin']),
+      )
 
       const flattened = (data || []).flatMap((request: any) => {
         const crewName =
@@ -83,6 +107,7 @@ export default function AdminHistoryPage() {
           itemName: item.item_name || 'Unknown Item',
           color: item.color || '-',
           size: item.size || '-',
+          approvedByName: request.approved_by ? crewMap.get(String(request.approved_by)) || 'Unknown Admin' : null,
         }))
       })
 
@@ -109,6 +134,7 @@ export default function AdminHistoryPage() {
     const requestIds = new Set(filteredRows.map((row) => row.requestId))
     const itemCounts = new Map<string, number>()
     const crewCounts = new Map<string, number>()
+    const receivedCount = filteredRows.filter((row) => row.status === 'received').length
 
     filteredRows.forEach((row) => {
       itemCounts.set(row.itemName, (itemCounts.get(row.itemName) || 0) + 1)
@@ -123,6 +149,7 @@ export default function AdminHistoryPage() {
       totalItems: filteredRows.length,
       topItem: topItemEntry ? `${topItemEntry[0]} (${topItemEntry[1]})` : 'No data',
       topCrew: topCrewEntry ? `${topCrewEntry[0]} (${topCrewEntry[1]})` : 'No data',
+      receivedCount,
     }
   }, [filteredRows])
 
@@ -144,10 +171,16 @@ export default function AdminHistoryPage() {
           </h1>
           <p className="text-zinc-500 mt-2 uppercase">Crew PPE request timeline and monthly activity</p>
         </div>
+        <div className="rounded-[28px] border border-orange-500/15 bg-gradient-to-r from-orange-500/10 to-transparent px-5 py-4">
+          <p className="text-zinc-500 text-[8px] tracking-[0.25em]">ACTIVE WINDOW</p>
+          <p className="mt-2 text-sm font-black text-white normal-case">
+            {monthFilter ? `${monthFilter} activity log` : 'All history'}
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-        <div className="bg-zinc-900/60 border border-white/5 rounded-[28px] p-5">
+        <div className="bg-zinc-900/60 border border-white/5 rounded-[28px] p-5 shadow-[0_15px_40px_rgba(0,0,0,0.2)]">
           <div className="flex items-center justify-between mb-5">
             <div className="p-2.5 rounded-2xl bg-orange-500/10 text-orange-500"><ShieldCheck size={18} /></div>
             <p className="text-zinc-600 text-[8px]">Requests</p>
@@ -155,7 +188,7 @@ export default function AdminHistoryPage() {
           <p className="text-3xl font-black text-white">{summary.totalRequests}</p>
           <p className="text-orange-400 mt-2 text-[9px]">Unique requests in current view</p>
         </div>
-        <div className="bg-zinc-900/60 border border-white/5 rounded-[28px] p-5">
+        <div className="bg-zinc-900/60 border border-white/5 rounded-[28px] p-5 shadow-[0_15px_40px_rgba(0,0,0,0.2)]">
           <div className="flex items-center justify-between mb-5">
             <div className="p-2.5 rounded-2xl bg-blue-500/10 text-blue-500"><Package size={18} /></div>
             <p className="text-zinc-600 text-[8px]">Items</p>
@@ -163,7 +196,7 @@ export default function AdminHistoryPage() {
           <p className="text-3xl font-black text-white">{summary.totalItems}</p>
           <p className="text-blue-400 mt-2 text-[9px]">Total item lines in current view</p>
         </div>
-        <div className="bg-zinc-900/60 border border-white/5 rounded-[28px] p-5">
+        <div className="bg-zinc-900/60 border border-white/5 rounded-[28px] p-5 shadow-[0_15px_40px_rgba(0,0,0,0.2)]">
           <div className="flex items-center justify-between mb-5">
             <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-500"><Users size={18} /></div>
             <p className="text-zinc-600 text-[8px]">Top Crew</p>
@@ -171,13 +204,26 @@ export default function AdminHistoryPage() {
           <p className="text-sm font-black text-white leading-tight">{summary.topCrew}</p>
           <p className="text-emerald-400 mt-2 text-[9px]">Most active requester</p>
         </div>
-        <div className="bg-zinc-900/60 border border-white/5 rounded-[28px] p-5">
+        <div className="bg-zinc-900/60 border border-white/5 rounded-[28px] p-5 shadow-[0_15px_40px_rgba(0,0,0,0.2)]">
           <div className="flex items-center justify-between mb-5">
             <div className="p-2.5 rounded-2xl bg-purple-500/10 text-purple-500"><Clock3 size={18} /></div>
             <p className="text-zinc-600 text-[8px]">Top Item</p>
           </div>
           <p className="text-sm font-black text-white leading-tight">{summary.topItem}</p>
           <p className="text-purple-400 mt-2 text-[9px]">Most requested item</p>
+        </div>
+      </div>
+
+      <div className="mb-6 rounded-[30px] border border-white/5 bg-zinc-950/70 px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div>
+          <p className="text-zinc-500 text-[8px] tracking-[0.2em]">OPERATIONS SNAPSHOT</p>
+          <p className="text-sm text-white font-black normal-case mt-2">Track approved actors, received flow, and monthly issue movement in one place.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
+            <p className="text-[8px] text-emerald-300 tracking-[0.15em]">RECEIVED</p>
+            <p className="mt-1 text-lg text-white font-black">{summary.receivedCount}</p>
+          </div>
         </div>
       </div>
 
@@ -216,7 +262,7 @@ export default function AdminHistoryPage() {
         </div>
       </div>
 
-      <div className="bg-zinc-900/50 border border-white/5 rounded-[36px] overflow-hidden">
+      <div className="bg-zinc-900/50 border border-white/5 rounded-[36px] overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
         <div className="grid grid-cols-[1.2fr_1fr_0.8fr_0.8fr_1fr_1fr] gap-4 px-6 py-4 border-b border-white/5 text-zinc-500 text-[8px] tracking-[0.2em] hidden lg:grid">
           <div>Crew / Request</div>
           <div>Item</div>
@@ -255,6 +301,7 @@ export default function AdminHistoryPage() {
                   <span className={`inline-flex px-3 py-2 rounded-xl border text-[8px] ${statusStyles[row.status] || 'bg-white/5 text-zinc-400 border-white/10'}`}>
                     {row.status.toUpperCase()}
                   </span>
+                  <p className="mt-2 text-[8px] text-zinc-500 normal-case">{getStatusMeta(row)}</p>
                 </div>
                 <div className="text-zinc-300 text-[9px] normal-case">{formatDateTime(row.createdAt)}</div>
                 <div className="text-zinc-300 text-[9px] normal-case">{formatDateTime(row.receivedAt)}</div>
