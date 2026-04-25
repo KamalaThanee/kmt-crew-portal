@@ -35,6 +35,29 @@ export default function ApprovalsPage() {
     checkAuth()
   }, [router])
 
+  const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
+
+  const updateRequestStatus = async (
+    requestId: string,
+    status: 'approved' | 'rejected',
+    extra: Record<string, any> = {},
+  ) => {
+    const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
+    const payload = { status, ...extra } as Record<string, any>
+    if (isUuid(admin.id)) payload.approved_by = admin.id
+
+    let result = await supabase.from('ppe_requests').update(payload).eq('id', requestId)
+    if (!result.error) return result
+
+    if ('approved_by' in payload) {
+      const { approved_by: _approvedBy, ...fallbackPayload } = payload
+      result = await supabase.from('ppe_requests').update(fallbackPayload).eq('id', requestId)
+      if (!result.error) return result
+    }
+
+    return result
+  }
+
   const getSmartContext = async (req: any, itemName: string) => {
     const requestIdentity = await getPpeRequestIdentity(req)
 
@@ -80,13 +103,12 @@ export default function ApprovalsPage() {
     const requestCrewName = req.crew_name || req.requester_name || req.full_name || 'this crew member'
     if (!confirm(`Approve request for ${requestCrewName}?`)) return;
     setIsSubmitting(true)
-    const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
-    const { error } = await supabase.from('ppe_requests').update({ status: 'approved', approved_by: admin.id }).eq('id', req.id)
+    const { error } = await updateRequestStatus(req.id, 'approved')
     if (!error) {
       toast.success('Request Approved!')
       fetchData()
     } else {
-      toast.error(error.message)
+      toast.error(`Approve failed: ${error.message}`)
     }
     setIsSubmitting(false)
   }
@@ -94,15 +116,14 @@ export default function ApprovalsPage() {
   const handleRejectSubmit = async () => {
     if (!rejectReason.trim()) return toast.error('Please provide a reason');
     setIsSubmitting(true)
-    const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
-    const { error } = await supabase.from('ppe_requests').update({ status: 'rejected', approved_by: admin.id, admin_remark: rejectReason.trim() }).eq('id', rejectingReq.id)
+    const { error } = await updateRequestStatus(rejectingReq.id, 'rejected', { admin_remark: rejectReason.trim() })
     if (!error) {
       toast.success('Request Rejected')
       setRejectingReq(null)
       setRejectReason('')
       fetchData()
     } else {
-      toast.error(error.message)
+      toast.error(`Reject failed: ${error.message}`)
     }
     setIsSubmitting(false)
   }
