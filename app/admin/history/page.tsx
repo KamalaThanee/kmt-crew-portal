@@ -13,9 +13,11 @@ import {
   Clock,
   FileSpreadsheet,
   History,
+  Medal,
   Package,
   Search,
   User,
+  Users,
   XCircle,
 } from 'lucide-react'
 
@@ -57,6 +59,12 @@ const normalize = (value: string) => String(value || '').toLowerCase().trim()
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-'
   return new Date(value).toLocaleString('en-GB')
+}
+
+const formatMonthOption = (value: string) => {
+  const monthIndex = Number(value) - 1
+  if (monthIndex < 0 || monthIndex > 11) return value
+  return new Date(2000, monthIndex, 1).toLocaleString('en-US', { month: 'long' })
 }
 
 const getCrewName = (row: HistoryRow) =>
@@ -190,6 +198,7 @@ export default function AdminHistoryPage() {
   const [searchItem, setSearchItem] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [monthFilter, setMonthFilter] = useState('all')
+  const [yearFilter, setYearFilter] = useState('all')
 
   useEffect(() => {
     const userStr = localStorage.getItem('kmt_user')
@@ -239,19 +248,27 @@ export default function AdminHistoryPage() {
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
       const createdAt = row.created_at ? new Date(row.created_at) : null
-      const rowMonth = row.created_at ? row.created_at.slice(0, 7) : ''
+      const rowMonth = row.created_at ? row.created_at.slice(5, 7) : ''
+      const rowYear = row.created_at ? row.created_at.slice(0, 4) : ''
       const crewName = getCrewName(row)
       const itemSummary = getItemSummary(row)
       const matchesCrew = !searchCrew || normalize(crewName).includes(normalize(searchCrew))
       const matchesItem = !searchItem || normalize(itemSummary).includes(normalize(searchItem))
       const matchesStatus = statusFilter === 'all' || normalize(row.status || 'pending') === statusFilter
       const matchesMonth = monthFilter === 'all' || rowMonth === monthFilter
-      return !!createdAt && matchesCrew && matchesItem && matchesStatus && matchesMonth
+      const matchesYear = yearFilter === 'all' || rowYear === yearFilter
+      return !!createdAt && matchesCrew && matchesItem && matchesStatus && matchesMonth && matchesYear
     })
-  }, [rows, searchCrew, searchItem, statusFilter, monthFilter])
+  }, [rows, searchCrew, searchItem, statusFilter, monthFilter, yearFilter])
 
   const monthOptions = useMemo(() => {
-    return ['all', ...new Set(rows.map((row) => (row.created_at ? row.created_at.slice(0, 7) : '')).filter(Boolean))]
+    return [...new Set(rows.map((row) => (row.created_at ? row.created_at.slice(5, 7) : '')).filter(Boolean))].sort()
+  }, [rows])
+
+  const yearOptions = useMemo(() => {
+    return [...new Set(rows.map((row) => (row.created_at ? row.created_at.slice(0, 4) : '')).filter(Boolean))].sort(
+      (a, b) => Number(b) - Number(a),
+    )
   }, [rows])
 
   const crewOptions = useMemo(() => {
@@ -271,6 +288,8 @@ export default function AdminHistoryPage() {
     let approvedCount = 0
     let rejectedCount = 0
     let receivedCount = 0
+    const crewCounts = new Map<string, number>()
+    const itemCounts = new Map<string, number>()
 
     filteredRows.forEach((row) => {
       const status = normalize(row.status || 'pending')
@@ -278,7 +297,18 @@ export default function AdminHistoryPage() {
       else if (status === 'rejected') rejectedCount += 1
       else if (status === 'received') receivedCount += 1
       else pendingCount += 1
+
+      const crewName = getCrewName(row)
+      crewCounts.set(crewName, (crewCounts.get(crewName) || 0) + 1)
+
+      ;(row.items || []).forEach((item) => {
+        const itemName = item.item_name || 'Unknown Item'
+        itemCounts.set(itemName, (itemCounts.get(itemName) || 0) + 1)
+      })
     })
+
+    const topCrewEntry = [...crewCounts.entries()].sort((a, b) => b[1] - a[1])[0]
+    const topItemEntry = [...itemCounts.entries()].sort((a, b) => b[1] - a[1])[0]
 
     return {
       requestCount: filteredRows.length,
@@ -286,6 +316,10 @@ export default function AdminHistoryPage() {
       approvedCount,
       rejectedCount,
       receivedCount,
+      topCrew: topCrewEntry ? topCrewEntry[0] : '-',
+      topCrewCount: topCrewEntry ? topCrewEntry[1] : 0,
+      topItem: topItemEntry ? topItemEntry[0] : '-',
+      topItemCount: topItemEntry ? topItemEntry[1] : 0,
     }
   }, [filteredRows])
 
@@ -371,13 +405,37 @@ export default function AdminHistoryPage() {
         </div>
       </div>
 
+      <div className="mb-8 grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="rounded-[28px] border border-violet-400/20 bg-gradient-to-br from-violet-500/14 to-zinc-950 p-5 shadow-xl shadow-violet-950/20">
+          <div className="flex items-center gap-2 text-violet-200">
+            <Medal size={16} />
+            <p className="text-[9px] uppercase tracking-widest">Top Item</p>
+          </div>
+          <p className="mt-3 text-lg font-black text-white normal-case">{summary.topItem}</p>
+          <p className="mt-2 text-xs font-semibold text-violet-100/70">
+            {summary.topItemCount > 0 ? `${summary.topItemCount} issues in the selected period` : 'No item data in this view'}
+          </p>
+        </div>
+
+        <div className="rounded-[28px] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/14 to-zinc-950 p-5 shadow-xl shadow-cyan-950/20">
+          <div className="flex items-center gap-2 text-cyan-200">
+            <Users size={16} />
+            <p className="text-[9px] uppercase tracking-widest">Top Crew</p>
+          </div>
+          <p className="mt-3 text-lg font-black text-white normal-case">{summary.topCrew}</p>
+          <p className="mt-2 text-xs font-semibold text-cyan-100/70">
+            {summary.topCrewCount > 0 ? `${summary.topCrewCount} requests in the selected period` : 'No crew activity in this view'}
+          </p>
+        </div>
+      </div>
+
       <div className="mb-8 rounded-[32px] border border-white/6 bg-zinc-950/45 p-4 shadow-xl shadow-black/20">
         <div className="mb-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.24em] text-zinc-500">
           <Search size={14} className="text-orange-400" />
           Filter History
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1fr_0.8fr_0.8fr]">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1.1fr_1fr_0.8fr_0.8fr_0.8fr]">
           <SearchableSelect
             icon={<User size={16} />}
             label="Crew"
@@ -416,13 +474,24 @@ export default function AdminHistoryPage() {
             className="rounded-2xl border border-amber-500/25 bg-zinc-950/70 px-4 py-3 text-sm font-semibold text-white outline-none transition focus:border-amber-400"
           >
             <option value="all">All Months</option>
-            {monthOptions
-              .filter((option) => option !== 'all')
-              .map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
+            {monthOptions.map((option) => (
+              <option key={option} value={option}>
+                {formatMonthOption(option)}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={yearFilter}
+            onChange={(e) => setYearFilter(e.target.value)}
+            className="rounded-2xl border border-violet-500/25 bg-zinc-950/70 px-4 py-3 text-sm font-semibold text-white outline-none transition focus:border-violet-400"
+          >
+            <option value="all">All Years</option>
+            {yearOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
           </select>
         </div>
       </div>
