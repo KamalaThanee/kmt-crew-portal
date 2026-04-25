@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getPpeRequestIdentity } from '@/lib/ppeRequests'
+import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { Check, X, User, Package, ShieldCheck, Loader2, MessageSquare, History, CheckCircle2, Clock } from 'lucide-react'
 
@@ -32,8 +33,7 @@ export default function ApprovalsPage() {
       const userStr = localStorage.getItem('kmt_user')
       if (!userStr) { router.replace('/login'); return; }
       const user = JSON.parse(userStr)
-      const adminRoles = ["safety officer", "chief officer", "barge master"]
-      if (!adminRoles.includes((user.position || "").toLowerCase().trim())) { router.replace('/ppe'); return; }
+      if (!isAdminRole(user.position)) { router.replace('/ppe'); return; }
       fetchData();
     }
     checkAuth()

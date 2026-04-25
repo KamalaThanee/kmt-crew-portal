@@ -24,6 +24,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests';
+import { isAdminRole } from '@/lib/roles';
 
 type CrewActionItem = {
   id: string;
@@ -31,8 +32,6 @@ type CrewActionItem = {
   title: string;
   description: string;
 };
-
-const adminRoles = ["safety officer", "chief officer", "barge master"];
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -54,8 +53,7 @@ export default function Navbar() {
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  const role = (user?.position || "").toLowerCase().trim();
-  const isAdmin = adminRoles.includes(role);
+  const isAdmin = isAdminRole(user?.position);
 
   const menuItems = useMemo(
     () =>

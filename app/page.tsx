@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { isAdminRole } from "@/lib/roles";
 
 export default function RootPage() {
   const router = useRouter();
@@ -13,9 +14,7 @@ export default function RootPage() {
     }
 
     const user = JSON.parse(userStr);
-    const isAdmin = ["safety officer", "chief officer", "barge master"].includes(
-      String(user.position || "").toLowerCase().trim(),
-    );
+    const isAdmin = isAdminRole(user.position);
 
     if (isAdmin) {
       router.replace("/admin/dashboard");

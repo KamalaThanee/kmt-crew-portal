@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { ShieldCheck, Lock, User, Search, ChevronDown, Loader2, UserPlus } from 'lucide-react'
 
@@ -57,8 +58,7 @@ export default function LoginPage() {
       } else {
         localStorage.setItem('kmt_user', JSON.stringify(crew))
         toast.success(`สวัสดีคุณ ${crew.full_name}`)
-        const isAdmin = ["safety officer", "chief officer", "barge master"].includes(((crew.position || "").toLowerCase()).trim())
-        router.push(isAdmin ? '/admin/dashboard' : '/dashboard')
+        router.push(isAdminRole(crew.position) ? '/admin/dashboard' : '/dashboard')
       }
     } catch (err) {
       toast.error('เกิดข้อผิดพลาดในการเชื่อมต่อ')
@@ -86,7 +86,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="space-y-6">
+        <form className="space-y-6" onSubmit={handleLogin}>
           {/* 🎯 Searchable Name Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 mb-2 block">Personnel Name</label>
@@ -157,13 +157,13 @@ export default function LoginPage() {
           </div>
           
           <button 
-            onClick={handleLogin}
+            type="submit"
             disabled={loading || !selectedCrew} 
             className="w-full py-5 bg-orange-600 hover:bg-orange-500 text-white rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-orange-600/20 active:scale-[0.98] transition-all disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-2"
           >
             {loading ? <Loader2 className="animate-spin" size={20} /> : 'Sign In'}
           </button>
-        </div>
+        </form>
 
         {/* 🎯 Register Area */}
         <div className="pt-6 border-t border-white/5 text-center space-y-4">

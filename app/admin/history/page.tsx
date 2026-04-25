@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { isAdminRole } from '@/lib/roles'
 import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 import {
@@ -50,8 +51,6 @@ type SearchableSelectProps = {
   options: string[]
   toneClassName: string
 }
-
-const adminRoles = ['safety officer', 'chief officer', 'barge master']
 
 const normalize = (value: string) => String(value || '').toLowerCase().trim()
 
@@ -197,7 +196,7 @@ export default function AdminHistoryPage() {
     }
 
     const user = JSON.parse(userStr)
-    if (!adminRoles.includes(normalize(user.position))) {
+    if (!isAdminRole(user.position)) {
       router.replace('/ppe')
       return
     }

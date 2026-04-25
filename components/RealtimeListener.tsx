@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { matchesPpeRequestUser } from '@/lib/ppeRequests'
+import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { BellRing, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
 
@@ -50,7 +51,7 @@ export function RealtimeListener() {
     const userStr = localStorage.getItem('kmt_user')
     if (!userStr) return;
     const user = JSON.parse(userStr)
-    const isAdmin = ["safety officer", "chief officer", "barge master"].includes((user.position || "").toLowerCase());
+    const isAdmin = isAdminRole(user.position)
 
     const requestChannel = supabase.channel('ppe-requests')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ppe_requests' }, (payload) => {

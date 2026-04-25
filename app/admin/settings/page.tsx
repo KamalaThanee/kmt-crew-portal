@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { 
   Settings, Users, Package, SlidersHorizontal, Search, UserPlus,
@@ -55,8 +56,7 @@ function SettingsContent() {
       const userStr = localStorage.getItem('kmt_user');
       if (!userStr) { router.replace('/login'); return; }
       const user = JSON.parse(userStr);
-      const adminRoles = ["safety officer", "chief officer", "barge master"];
-      if (!adminRoles.includes((user.position || "").toLowerCase().trim())) { router.replace('/ppe'); return; }
+      if (!isAdminRole(user.position)) { router.replace('/ppe'); return; }
       await fetchData();
     };
     checkAuth();

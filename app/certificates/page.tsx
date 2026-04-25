@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { formatExpiryLabel, isNoExpiryDate } from '@/lib/certificates'
+import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { 
   ShieldCheck, FileBadge, User, Ship, ChevronRight, ChevronDown, Eye, RefreshCcw, 
@@ -31,9 +32,7 @@ function CertificatesContent() {
   const [personalFilter, setPersonalFilter] = useState('all') 
   const [expandedCrews, setExpandedCrews] = useState<string[]>([])
 
-  const isAdmin = useMemo(() => 
-    ["safety officer", "chief officer", "barge master"].includes((currentUser?.position || "").toLowerCase().trim())
-  , [currentUser]);
+  const isAdmin = useMemo(() => isAdminRole(currentUser?.position), [currentUser]);
 
   const fetchData = async () => {
     const [m, c, crewsRes, allC, r] = await Promise.all([

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, Suspense, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
+import { isAdminRole } from '@/lib/roles'
 import { 
   HardHat, Headphones, Eye, Wind, Hand, Footprints, MoreHorizontal, 
   Plus, AlertTriangle, Lock, Shirt, ShoppingBag, User, ShieldAlert, ChevronDown, Package
@@ -31,8 +32,7 @@ function PPEContent() {
     if (!uStr) { router.push('/login'); return; }
     const u = JSON.parse(uStr)
     setUser(u)
-    const pos = (u.position || "").toLowerCase().trim()
-    setIsAdmin(["safety officer", "chief officer", "barge master"].includes(pos))
+    setIsAdmin(isAdminRole(u.position))
     loadCart()
 
     supabase.from('ppe_inventory').select('*').order('item_name').then(({data}) => data && setInventory(data))
