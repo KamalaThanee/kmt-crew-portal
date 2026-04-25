@@ -25,6 +25,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests';
 import { isAdminRole } from '@/lib/roles';
+import { toast } from 'sonner';
 
 type CrewActionItem = {
   id: string;
@@ -43,6 +44,13 @@ type AdminActionItem = {
   tone: 'amber' | 'red' | 'violet';
   icon: typeof Clock;
 };
+
+type SeenCrewRequestStatuses = Record<string, string>;
+
+function getCrewNotificationStorageKey(user: { id?: string; full_name?: string } | null) {
+  const identity = user?.id || user?.full_name || 'anonymous';
+  return `kmt_crew_request_statuses_${identity}`;
+}
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -66,6 +74,38 @@ export default function Navbar() {
   const notifRef = useRef<HTMLDivElement>(null);
 
   const isAdmin = isAdminRole(user?.position);
+
+  const playNotificationSound = () => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const audioContext = new AudioContextClass();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+      gainNode.gain.setValueAtTime(0.001, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.06, audioContext.currentTime + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.3);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.3);
+    } catch {
+      // Ignore browsers that block autoplay audio.
+    }
+  };
+
+  const showBrowserNotification = (title: string, body: string) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+
+    new Notification(title, {
+      body,
+      silent: false,
+    });
+  };
 
   const menuItems = useMemo(
     () =>
@@ -193,9 +233,16 @@ export default function Navbar() {
 
         const [{ count }, { data: updates }] = await Promise.all([countQuery, updatesQuery]);
         const rows = updates || [];
+        const statusStorageKey = getCrewNotificationStorageKey(user);
+        const previousStatuses = JSON.parse(
+          localStorage.getItem(statusStorageKey) || '{}',
+        ) as SeenCrewRequestStatuses;
+        const nextStatuses: SeenCrewRequestStatuses = {};
+        let hasNewCrewAction = false;
         const actionItems: CrewActionItem[] = rows.map((req: any) => {
           const itemName = req.items?.[0]?.item_name || 'PPE request';
           const approved = req.status === 'approved';
+          nextStatuses[String(req.id)] = String(req.status || '');
           return {
             id: req.id,
             status: req.status,
@@ -207,6 +254,48 @@ export default function Navbar() {
         });
 
         const approvedCount = rows.filter((req: any) => req.status === 'approved').length;
+
+        if (Object.keys(previousStatuses).length > 0) {
+          const newlyApproved = rows.filter(
+            (req: any) => req.status === 'approved' && previousStatuses[String(req.id)] !== 'approved',
+          );
+          const newlyRejected = rows.filter(
+            (req: any) => req.status === 'rejected' && previousStatuses[String(req.id)] !== 'rejected',
+          );
+
+          if (newlyApproved.length > 0) {
+            hasNewCrewAction = true;
+            const firstItem = newlyApproved[0]?.items?.[0]?.item_name || 'PPE request';
+            const moreLabel = newlyApproved.length > 1 ? ` and ${newlyApproved.length - 1} more` : '';
+            toast.success('Request Approved!', {
+              icon: <CheckCircle2 className="text-emerald-500" />,
+              description: `${firstItem}${moreLabel} is ready for you to receive in My Requests.`,
+              duration: 10000,
+            });
+            playNotificationSound();
+            showBrowserNotification(
+              'Request Approved',
+              `${firstItem}${moreLabel} is ready for you to confirm receipt in My Requests.`,
+            );
+          }
+
+          if (newlyRejected.length > 0) {
+            hasNewCrewAction = true;
+            const firstItem = newlyRejected[0]?.items?.[0]?.item_name || 'PPE request';
+            toast.error('Request Rejected', {
+              icon: <XCircle className="text-red-500" />,
+              description: `${firstItem} needs your attention. Check My Requests for details.`,
+              duration: 10000,
+            });
+            playNotificationSound();
+            showBrowserNotification('Request Rejected', `${firstItem} needs your attention in My Requests.`);
+          }
+        }
+
+        localStorage.setItem(statusStorageKey, JSON.stringify(nextStatuses));
+        if (hasNewCrewAction) {
+          window.dispatchEvent(new Event('new-notification'));
+        }
 
         setNotifData({
           pending: count || 0,
@@ -225,10 +314,22 @@ export default function Navbar() {
 
     fetchNotifications();
     const handleNewNotif = () => fetchNotifications();
+    const handleFocus = () => fetchNotifications();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchNotifications();
+      }
+    };
+    const interval = window.setInterval(fetchNotifications, 15000);
     window.addEventListener('new-notification', handleNewNotif);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
+      window.clearInterval(interval);
       window.removeEventListener('new-notification', handleNewNotif);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [user, isAdmin, pathname]);
 

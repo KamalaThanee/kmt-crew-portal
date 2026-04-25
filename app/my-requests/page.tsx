@@ -30,6 +30,26 @@ export default function MyRequests() {
   }
 
   useEffect(() => { fetchRequests() }, [])
+  useEffect(() => {
+    const handleRefresh = () => fetchRequests()
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchRequests()
+      }
+    }
+
+    const interval = window.setInterval(fetchRequests, 15000)
+    window.addEventListener('new-notification', handleRefresh)
+    window.addEventListener('focus', handleRefresh)
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('new-notification', handleRefresh)
+      window.removeEventListener('focus', handleRefresh)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [])
 
   const handleReceive = async (req: any) => {
     if (!confirm("คุณได้รับอุปกรณ์ถูกต้องครบถ้วนแล้วใช่หรือไม่? ระบบจะทำการอัปเดตสต๊อกทันที")) return;
