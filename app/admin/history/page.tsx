@@ -4,14 +4,15 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import * as XLSX from 'xlsx'
 import {
-  CalendarRange,
   CheckCircle2,
   Clock,
   Download,
   FileSpreadsheet,
   History,
+  Package,
   Search,
   ShieldAlert,
+  User,
   XCircle,
 } from 'lucide-react'
 
@@ -65,8 +66,7 @@ export default function AdminHistoryPage() {
   const [searchCrew, setSearchCrew] = useState('')
   const [searchItem, setSearchItem] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [monthFilter, setMonthFilter] = useState('all')
 
   useEffect(() => {
     const userStr = localStorage.getItem('kmt_user')
@@ -104,16 +104,48 @@ export default function AdminHistoryPage() {
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
       const createdAt = row.created_at ? new Date(row.created_at) : null
+      const rowMonth = row.created_at ? row.created_at.slice(0, 7) : ''
       const crewName = getCrewName(row)
       const itemSummary = getItemSummary(row)
       const matchesCrew = !searchCrew || normalize(crewName).includes(normalize(searchCrew))
       const matchesItem = !searchItem || normalize(itemSummary).includes(normalize(searchItem))
       const matchesStatus = statusFilter === 'all' || normalize(row.status || 'pending') === statusFilter
-      const matchesFrom = !dateFrom || (createdAt && createdAt >= new Date(`${dateFrom}T00:00:00`))
-      const matchesTo = !dateTo || (createdAt && createdAt <= new Date(`${dateTo}T23:59:59`))
-      return matchesCrew && matchesItem && matchesStatus && matchesFrom && matchesTo
+      const matchesMonth = monthFilter === 'all' || rowMonth === monthFilter
+      return !!createdAt && matchesCrew && matchesItem && matchesStatus && matchesMonth
     })
-  }, [rows, searchCrew, searchItem, statusFilter, dateFrom, dateTo])
+  }, [rows, searchCrew, searchItem, statusFilter, monthFilter])
+
+  const monthOptions = useMemo(() => {
+    return ['all', ...new Set(rows.map((row) => (row.created_at ? row.created_at.slice(0, 7) : '')).filter(Boolean))]
+  }, [rows])
+
+  const summary = useMemo(() => {
+    const crewCounts = new Map<string, number>()
+    const itemCounts = new Map<string, number>()
+    let itemTotal = 0
+
+    filteredRows.forEach((row) => {
+      const crewName = getCrewName(row)
+      const items = row.items || []
+      crewCounts.set(crewName, (crewCounts.get(crewName) || 0) + 1)
+
+      items.forEach((item) => {
+        const itemName = item.item_name || 'Unknown Item'
+        itemCounts.set(itemName, (itemCounts.get(itemName) || 0) + 1)
+        itemTotal += 1
+      })
+    })
+
+    const topCrew = [...crewCounts.entries()].sort((a, b) => b[1] - a[1])[0]
+    const topItem = [...itemCounts.entries()].sort((a, b) => b[1] - a[1])[0]
+
+    return {
+      requestCount: filteredRows.length,
+      itemCount: itemTotal,
+      topCrew: topCrew ? `${topCrew[0]} (${topCrew[1]})` : '-',
+      topItem: topItem ? `${topItem[0]} (${topItem[1]})` : '-',
+    }
+  }, [filteredRows])
 
   const exportRows = useMemo(
     () =>
@@ -182,9 +214,28 @@ export default function AdminHistoryPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        <div className="bg-zinc-900/50 border border-white/5 rounded-[28px] p-5 shadow-xl">
+          <p className="text-zinc-500 text-[9px] uppercase tracking-widest">Requests</p>
+          <p className="mt-3 text-3xl font-black text-white">{summary.requestCount}</p>
+        </div>
+        <div className="bg-zinc-900/50 border border-white/5 rounded-[28px] p-5 shadow-xl">
+          <p className="text-zinc-500 text-[9px] uppercase tracking-widest">Items</p>
+          <p className="mt-3 text-3xl font-black text-white">{summary.itemCount}</p>
+        </div>
+        <div className="bg-zinc-900/50 border border-white/5 rounded-[28px] p-5 shadow-xl">
+          <p className="text-zinc-500 text-[9px] uppercase tracking-widest">Top Crew</p>
+          <p className="mt-3 text-sm font-black text-white normal-case">{summary.topCrew}</p>
+        </div>
+        <div className="bg-zinc-900/50 border border-white/5 rounded-[28px] p-5 shadow-xl">
+          <p className="text-zinc-500 text-[9px] uppercase tracking-widest">Top Item</p>
+          <p className="mt-3 text-sm font-black text-white normal-case">{summary.topItem}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-8">
         <div className="relative xl:col-span-2">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
+          <User className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
           <input
             type="text"
             value={searchCrew}
@@ -194,7 +245,7 @@ export default function AdminHistoryPage() {
           />
         </div>
         <div className="relative xl:col-span-1">
-          <ShieldAlert className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
+          <Package className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
           <input
             type="text"
             value={searchItem}
@@ -214,19 +265,67 @@ export default function AdminHistoryPage() {
           <option value="rejected">Rejected</option>
           <option value="received">Received</option>
         </select>
-        <div className="flex items-center gap-2 bg-zinc-900 border border-white/10 rounded-2xl px-4 py-3">
-          <CalendarRange size={16} className="text-zinc-600 shrink-0" />
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-transparent text-sm font-bold outline-none w-full" />
-          <span className="text-zinc-600 text-xs">to</span>
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-transparent text-sm font-bold outline-none w-full" />
-        </div>
+        <select
+          value={monthFilter}
+          onChange={(e) => setMonthFilter(e.target.value)}
+          className="bg-zinc-900 border border-white/10 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:border-orange-500"
+        >
+          <option value="all">All Months</option>
+          {monthOptions.filter((option) => option !== 'all').map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="mb-4 text-[11px] text-zinc-500 font-bold uppercase tracking-widest">
         {filteredRows.length} records
       </div>
 
-      <div className="space-y-4">
+      <div className="hidden lg:block overflow-x-auto rounded-[32px] border border-white/5 bg-zinc-900/40 shadow-xl">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-white/5 text-zinc-500 uppercase text-[10px] tracking-widest">
+            <tr>
+              <th className="px-6 py-4">Requested</th>
+              <th className="px-6 py-4">Crew</th>
+              <th className="px-6 py-4">Items</th>
+              <th className="px-6 py-4">Status</th>
+              <th className="px-6 py-4">Detail</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredRows.map((row) => {
+              const status = normalize(row.status || 'pending')
+              const statusTone =
+                status === 'approved'
+                  ? 'text-emerald-400'
+                  : status === 'rejected'
+                    ? 'text-red-400'
+                    : status === 'received'
+                      ? 'text-blue-400'
+                      : 'text-amber-400'
+
+              return (
+                <tr key={row.id} className="border-b border-white/5 last:border-0">
+                  <td className="px-6 py-5 text-zinc-300 font-bold">{formatDateTime(row.created_at)}</td>
+                  <td className="px-6 py-5 text-white font-black uppercase">{getCrewName(row)}</td>
+                  <td className="px-6 py-5 text-white font-bold normal-case">{getItemSummary(row)}</td>
+                  <td className={`px-6 py-5 font-black uppercase ${statusTone}`}>{status}</td>
+                  <td className="px-6 py-5 text-zinc-300 font-bold normal-case">
+                    {getStatusMeta(row, adminNameMap)}
+                    {(row.admin_remark || row.rejection_reason) && (
+                      <div className="mt-1 text-[11px] text-zinc-500">{row.admin_remark || row.rejection_reason}</div>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="space-y-4 lg:hidden">
         {filteredRows.length === 0 && (
           <div className="py-20 text-center bg-zinc-900/40 rounded-[32px] border border-white/5 text-zinc-500 font-black uppercase tracking-widest">
             No history found
@@ -293,6 +392,12 @@ export default function AdminHistoryPage() {
           )
         })}
       </div>
+
+      {filteredRows.length === 0 && (
+        <div className="hidden lg:block py-20 text-center bg-zinc-900/40 rounded-[32px] border border-white/5 text-zinc-500 font-black uppercase tracking-widest mt-4">
+          No history found
+        </div>
+      )}
     </div>
   )
 }
