@@ -1,141 +1,413 @@
 'use client'
-import { useState, useEffect } from 'react'
+
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { isNoExpiryDate } from '@/lib/certificates'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
-import { 
-  FileBadge, Users, User, AlertTriangle, ChevronRight, 
-  CheckCircle2, ShieldCheck, Package, RefreshCw, Clock, Archive, Activity, ArrowUpRight 
+import {
+  AlertTriangle,
+  Archive,
+  ArrowRight,
+  Clock3,
+  FileBadge,
+  LayoutDashboard,
+  Package,
+  RefreshCw,
+  TrendingUp,
+  Users,
 } from 'lucide-react'
-import Link from 'next/link'
 
-const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const normalize = (str: string) => String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+
+const getMonthStart = () => {
+  const now = new Date()
+  return new Date(now.getFullYear(), now.getMonth(), 1)
+}
+
+type MetricCard = {
+  label: string
+  value: string | number
+  note: string
+  color: string
+  href?: string
+  icon: any
+}
 
 export default function AdminDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [personal, setPersonal] = useState<any>({ progress: 0, okCount: 0, reqCount: 0, expired: 0, warning: 0, missing: 0, suit: 0, boot: 0, lastStatus: 'None' })
-  const [vessel, setVessel] = useState<any>({ pending: 0, lowStock: 0, vesselExpired: 0, compliance: 0, totalItems: 0, vesselWarning: 0, lastRestockDate: 'No data' })
+  const [personal, setPersonal] = useState<any>({ progress: 0, okCount: 0, reqCount: 0, expired: 0, warning: 0, lastStatus: 'None' })
+  const [overview, setOverview] = useState<any>({
+    pending: 0,
+    stalePending: 0,
+    lowStock: 0,
+    totalItems: 0,
+    receivedThisMonth: 0,
+    compliance: 0,
+    lastRestockDate: 'N/A',
+    topItems: [],
+    topCrew: [],
+    funnel: { pending: 0, approved: 0, received: 0, rejected: 0 },
+  })
 
   useEffect(() => {
-    const uStr = localStorage.getItem('kmt_user')
-    if (uStr) { const u = JSON.parse(uStr); setUser(u); fetchAdminData(u); }
-  }, [])
+    const userStr = localStorage.getItem('kmt_user')
+    if (!userStr) {
+      router.replace('/login')
+      return
+    }
 
-  async function fetchAdminData(u: any) {
+    const parsed = JSON.parse(userStr)
+    setUser(parsed)
+    fetchAdminData(parsed)
+  }, [router])
+
+  async function fetchAdminData(currentUser: any) {
     setLoading(true)
+
     const myReqsQuery = await applyPpeRequestUserFilter(
-      supabase.from('ppe_requests')
-        .select('*')
-        .neq('status', 'rejected')
-        .order('created_at', { ascending: false }),
-      u,
+      supabase.from('ppe_requests').select('*').neq('status', 'rejected').order('created_at', { ascending: false }),
+      currentUser,
     )
 
-    const [matrixRes, crewsRes, allCertsRes, invRes, restockRes, myReqsRes] = await Promise.all([
+    const monthStart = getMonthStart()
+
+    const [matrixRes, allCertsRes, invRes, restockRes, myReqsRes, reqRes] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
-      supabase.from('crews').select('*'),
       supabase.from('crew_certs').select('*'),
       supabase.from('ppe_inventory').select('quantity, threshold'),
       supabase.from('restock_history').select('created_at').order('created_at', { ascending: false }).limit(1),
       myReqsQuery,
-    ]);
+      supabase.from('ppe_requests').select('*').order('created_at', { ascending: false }),
+    ])
 
-    const matrix = matrixRes.data || []; const allCerts = allCertsRes.data || [];
-    const inventory = invRes.data || []; const lastRestock = restockRes.data || [];
+    const matrix = matrixRes.data || []
+    const allCerts = allCertsRes.data || []
+    const inventory = invRes.data || []
+    const lastRestock = restockRes.data || []
+    const requests = reqRes.data || []
 
-    let okCount = 0; let expired = 0; let warning = 0; let suit = 0; let boot = 0;
-    const userPosNorm = normalize(u.position);
-    let myRequired = matrix.filter(row => normalize(row.position) === userPosNorm && row.requirement_type === 'P');
-    const myCerts = allCerts.filter(cc => cc.crew_id === u.id);
-    const today = new Date();
+    const userPosNorm = normalize(currentUser.position)
+    const myRequired = matrix.filter((row: any) => normalize(row.position) === userPosNorm && row.requirement_type === 'P')
+    const myCerts = allCerts.filter((cert: any) => cert.crew_id === currentUser.id)
+    const today = new Date()
 
-    myRequired.forEach(req => {
-      const uploaded = myCerts.find(c => normalize(c.cert_name) === normalize(req.cert_name))
-      if (uploaded) {
-        if (isNoExpiryDate(uploaded.expiry_date)) okCount++;
-        else {
-          const expDate = new Date(uploaded.expiry_date); const dDiff = (expDate.getTime() - today.getTime()) / 86400000;
-          if (dDiff < 0) expired++; else if (dDiff <= 90) { warning++; okCount++; } else okCount++;
-        }
+    let okCount = 0
+    let expired = 0
+    let warning = 0
+
+    myRequired.forEach((req: any) => {
+      const uploaded = myCerts.find((cert: any) => normalize(cert.cert_name) === normalize(req.cert_name))
+      if (!uploaded) return
+
+      if (isNoExpiryDate(uploaded.expiry_date)) {
+        okCount++
+        return
       }
-    });
 
-    const { count: totalPending } = await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      const expDate = new Date(uploaded.expiry_date)
+      const dayDiff = (expDate.getTime() - today.getTime()) / 86400000
+      if (dayDiff < 0) expired++
+      else if (dayDiff <= 90) {
+        warning++
+        okCount++
+      } else okCount++
+    })
 
-    setPersonal({ progress: myRequired.length > 0 ? Math.round((okCount/myRequired.length)*100) : 0, okCount, reqCount: myRequired.length, expired, warning, missing: myRequired.length - okCount, suit, boot, lastStatus: myReqsRes.data?.[0]?.status || 'None' });
-    
-    setVessel({ 
-      pending: totalPending || 0, 
-      lowStock: inventory.filter(i => (i.quantity||0) <= (i.threshold||0)).length, 
-      totalItems: inventory.reduce((a, b) => a + (b.quantity || 0), 0), 
-      compliance: 85,
-      lastRestockDate: lastRestock.length > 0 ? new Date(lastRestock[0].created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'
-    });
-    setLoading(false);
+    const itemMap = new Map<string, number>()
+    const crewMap = new Map<string, number>()
+    const funnel = { pending: 0, approved: 0, received: 0, rejected: 0 }
+    let stalePending = 0
+    let receivedThisMonth = 0
+
+    requests.forEach((req: any) => {
+      const status = String(req.status || 'pending').toLowerCase()
+      if (status in funnel) funnel[status as keyof typeof funnel]++
+
+      if (status === 'pending') {
+        const ageHours = (Date.now() - new Date(req.created_at).getTime()) / 3600000
+        if (ageHours >= 24) stalePending++
+      }
+
+      if (status === 'received' && req.received_at && new Date(req.received_at) >= monthStart) {
+        receivedThisMonth++
+      }
+
+      const crewName = req.crew_name || req.requester_name || req.full_name || 'Unknown Crew'
+      const items = Array.isArray(req.items) ? req.items : []
+
+      items.forEach((item: any) => {
+        const itemName = item.item_name || 'Unknown Item'
+        itemMap.set(itemName, (itemMap.get(itemName) || 0) + 1)
+        crewMap.set(crewName, (crewMap.get(crewName) || 0) + 1)
+      })
+    })
+
+    const topItems = [...itemMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }))
+
+    const topCrew = [...crewMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }))
+
+    setPersonal({
+      progress: myRequired.length > 0 ? Math.round((okCount / myRequired.length) * 100) : 0,
+      okCount,
+      reqCount: myRequired.length,
+      expired,
+      warning,
+      lastStatus: myReqsRes.data?.[0]?.status || 'None',
+    })
+
+    setOverview({
+      pending: funnel.pending,
+      stalePending,
+      lowStock: inventory.filter((item: any) => (item.quantity || 0) <= (item.threshold || 0)).length,
+      totalItems: inventory.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0),
+      receivedThisMonth,
+      compliance: myRequired.length > 0 ? Math.round((okCount / myRequired.length) * 100) : 0,
+      lastRestockDate: lastRestock.length > 0 ? new Date(lastRestock[0].created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A',
+      topItems,
+      topCrew,
+      funnel,
+    })
+
+    setLoading(false)
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse uppercase tracking-widest text-xs">Command Hub...</div>
+  const metricCards: MetricCard[] = useMemo(
+    () => [
+      {
+        label: 'Pending Queue',
+        value: overview.pending,
+        note: `${overview.stalePending} older than 24h`,
+        color: 'amber',
+        href: '/admin/approvals',
+        icon: Clock3,
+      },
+      {
+        label: 'Low Stock',
+        value: overview.lowStock,
+        note: `${overview.totalItems} units total on hand`,
+        color: 'red',
+        href: '/admin/inventory?filter=low',
+        icon: AlertTriangle,
+      },
+      {
+        label: 'Received This Month',
+        value: overview.receivedThisMonth,
+        note: 'Completed issue flow this month',
+        color: 'emerald',
+        href: '/admin/history',
+        icon: Archive,
+      },
+      {
+        label: 'Personal Compliance',
+        value: `${personal.progress}%`,
+        note: `${personal.okCount}/${personal.reqCount} certs ready`,
+        color: 'blue',
+        href: '/certificates',
+        icon: FileBadge,
+      },
+    ],
+    [overview, personal],
+  )
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse uppercase tracking-widest text-xs">
+        Loading Command Center...
+      </div>
+    )
+  }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-20 font-sans text-white uppercase font-bold text-[10px]">
-      <div className="mb-10 flex justify-between items-center">
-        <div><h1 className="text-3xl font-black italic leading-none text-white">Command Center</h1><p className="text-orange-500 tracking-[0.2em] mt-2 uppercase">Vessel Oversight</p></div>
-        <button onClick={() => fetchAdminData(user)} className="p-3 bg-zinc-900 border border-white/5 rounded-full hover:bg-orange-600 transition-all"><RefreshCw size={20}/></button>
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-20 font-sans text-white">
+      <div className="mb-10 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.35em] text-orange-500">Operations Desk</p>
+          <h1 className="mt-3 text-4xl md:text-5xl font-black italic tracking-tight text-white flex items-center gap-3">
+            <LayoutDashboard className="text-orange-500" size={34} />
+            Command Center
+          </h1>
+          <p className="mt-3 text-zinc-400 normal-case text-sm max-w-2xl">
+            Monitor queue pressure, issue movement, and the people or items demanding attention first.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="rounded-[28px] border border-orange-500/15 bg-gradient-to-r from-orange-500/10 to-transparent px-5 py-4">
+            <p className="text-[8px] uppercase tracking-[0.3em] text-zinc-500">Last Restock</p>
+            <p className="mt-2 text-lg font-black text-white">{overview.lastRestockDate}</p>
+          </div>
+          <button onClick={() => fetchAdminData(user)} className="p-4 bg-zinc-900 border border-white/5 rounded-2xl hover:bg-orange-600 transition-all">
+            <RefreshCw size={18} />
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-1 space-y-6">
-           <h2 className="text-blue-500 tracking-widest flex items-center gap-2 mb-2"><User size={16}/> My Personal</h2>
-           <Link href="/certificates" className="block bg-zinc-900 border border-blue-500/20 p-6 rounded-[32px] shadow-2xl hover:border-blue-500 transition-all">
-              <div className="flex justify-between items-center mb-4">
-                 <div className="relative w-16 h-16 flex items-center justify-center"><svg className="w-full h-full transform -rotate-90"><circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-white/5"/><circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray="176" strokeDashoffset={176 - (personal.progress/100)*176} className="text-blue-500"/></svg><span className="absolute text-[10px] font-black">{personal.progress}%</span></div>
-                 <div className="text-right"><p className="text-blue-400 text-lg">{personal.okCount}/{personal.reqCount}</p><p className="text-[7px]">Certs</p></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        {metricCards.map((card) => {
+          const Icon = card.icon
+          const colorClass =
+            card.color === 'amber'
+              ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+              : card.color === 'red'
+                ? 'text-red-400 bg-red-500/10 border-red-500/20'
+                : card.color === 'emerald'
+                  ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                  : 'text-blue-400 bg-blue-500/10 border-blue-500/20'
+
+          const content = (
+            <div className="bg-zinc-900/70 border border-white/5 rounded-[30px] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)] hover:border-orange-500/20 transition-all">
+              <div className="flex items-start justify-between">
+                <div className={`p-3 rounded-2xl border ${colorClass}`}>
+                  <Icon size={18} />
+                </div>
+                <ArrowRight size={16} className="text-zinc-700" />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                 <div className="bg-red-500/10 p-2 rounded-xl text-center border border-red-500/10"><p className="text-red-500 text-xs">{personal.expired}</p><p className="text-[6px]">EXP</p></div>
-                 <div className="bg-amber-500/10 p-2 rounded-xl text-center border border-amber-500/10"><p className="text-amber-500 text-xs">{personal.warning}</p><p className="text-[6px]">90D</p></div>
+              <p className="mt-8 text-zinc-500 text-[10px] uppercase tracking-[0.2em]">{card.label}</p>
+              <p className="mt-2 text-3xl font-black text-white">{card.value}</p>
+              <p className="mt-2 text-[11px] normal-case text-zinc-400">{card.note}</p>
+            </div>
+          )
+
+          return card.href ? <Link key={card.label} href={card.href}>{content}</Link> : <div key={card.label}>{content}</div>
+        })}
+      </div>
+
+      <div className="mb-8 grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-6">
+        <div className="rounded-[36px] border border-white/5 bg-zinc-950/75 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div>
+              <p className="text-[9px] uppercase tracking-[0.3em] text-zinc-500">Workflow Funnel</p>
+              <h2 className="mt-2 text-xl font-black italic text-white">Request Movement</h2>
+            </div>
+            <Link href="/admin/history" className="text-xs uppercase tracking-[0.2em] text-orange-400 hover:text-orange-300">
+              Open History
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              ['Pending', overview.funnel.pending, 'amber'],
+              ['Approved', overview.funnel.approved, 'blue'],
+              ['Received', overview.funnel.received, 'emerald'],
+              ['Rejected', overview.funnel.rejected, 'red'],
+            ].map(([label, value, tone]) => (
+              <div key={String(label)} className="rounded-[24px] border border-white/5 bg-black/30 p-4">
+                <p className="text-[9px] uppercase tracking-[0.2em] text-zinc-500">{label}</p>
+                <p className={`mt-3 text-2xl font-black ${tone === 'amber' ? 'text-amber-400' : tone === 'blue' ? 'text-blue-400' : tone === 'emerald' ? 'text-emerald-400' : 'text-red-400'}`}>{value}</p>
               </div>
-           </Link>
-           <Link href="/my-requests" className="block bg-zinc-900 border border-white/5 p-6 rounded-[32px] space-y-4 hover:border-emerald-500 transition-all">
-              <div className="flex justify-between items-center"><p className="text-zinc-500 uppercase">My PPE</p><span className="text-blue-400 font-black">{personal.lastStatus}</span></div>
-              <div className="flex gap-4">
-                 <div className="flex-1 text-center"><p className="text-[7px] text-zinc-600 uppercase">Suit</p><p className="text-sm font-black">{personal.suit}/2</p></div>
-                 <div className="flex-1 text-center"><p className="text-[7px] text-zinc-600 uppercase">Boots</p><p className="text-sm font-black">{personal.boot}/1</p></div>
-              </div>
-           </Link>
+            ))}
+          </div>
+          <div className="mt-6 rounded-[26px] border border-orange-500/10 bg-gradient-to-r from-orange-500/8 to-transparent p-5">
+            <p className="text-[9px] uppercase tracking-[0.2em] text-zinc-500">Queue Pressure</p>
+            <p className="mt-2 text-white text-sm font-black normal-case">
+              {overview.stalePending > 0
+                ? `${overview.stalePending} pending requests have been waiting more than 24 hours.`
+                : 'No pending requests have crossed the 24 hour threshold.'}
+            </p>
+          </div>
         </div>
 
-        <div className="lg:col-span-3 space-y-6">
-           <h2 className="text-purple-500 tracking-widest flex items-center gap-2 mb-2"><ShieldCheck size={16}/> Vessel Oversight</h2>
-           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Link href="/admin/approvals" className="bg-zinc-900/40 border border-amber-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-amber-500 transition-all group">
-                 <div className="flex justify-between items-start"><div className="bg-amber-500/20 p-2.5 rounded-xl text-amber-500 w-fit"><Clock size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-amber-500"/></div>
-                 <div><p className="text-2xl font-black">{vessel.pending}</p><p className="text-amber-500 uppercase text-[8px]">Pending Requests</p></div>
-              </Link>
-              <Link href="/admin/inventory?filter=low" className="bg-zinc-900/40 border border-red-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-red-500 transition-all group">
-                 <div className="flex justify-between items-start"><div className="bg-red-500/20 p-2.5 rounded-xl text-red-500 w-fit"><AlertTriangle size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-red-500"/></div>
-                 <div><p className="text-2xl font-black">{vessel.lowStock}</p><p className="text-red-500 uppercase text-[8px]">Low Stock Alert</p></div>
-              </Link>
-              <Link href="/admin/inventory" className="bg-zinc-900/40 border border-blue-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-blue-500 transition-all group">
-                 <div className="flex justify-between items-start"><div className="bg-blue-500/20 p-2.5 rounded-xl text-blue-500 w-fit"><Package size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-blue-500"/></div>
-                 <div><p className="text-2xl font-black">{vessel.totalItems}</p><p className="text-blue-500 uppercase text-[8px]">Total Stock</p></div>
-              </Link>
-              {/* 🎯 แก้ไขลิงก์: ให้ไปที่แท็บ History ในหน้า Inventory */}
-              <Link href="/admin/inventory?action=restock&tab=history" className="bg-zinc-900/40 border border-emerald-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-emerald-500 transition-all group">
-                 <div className="flex justify-between items-start"><div className="bg-emerald-500/20 p-2.5 rounded-xl text-emerald-500 w-fit"><Archive size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-emerald-500"/></div>
-                 <div><p className="text-sm font-black uppercase text-white truncate">{vessel.lastRestockDate}</p><p className="text-emerald-500 uppercase text-[8px]">Last Intake History</p></div>
-              </Link>
+        <div className="rounded-[36px] border border-white/5 bg-zinc-950/75 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
+          <p className="text-[9px] uppercase tracking-[0.3em] text-zinc-500">My Readiness</p>
+          <div className="mt-5 flex items-center gap-5">
+            <div className="relative w-20 h-20 flex items-center justify-center">
+              <svg className="w-full h-full -rotate-90">
+                <circle cx="40" cy="40" r="34" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/5" />
+                <circle
+                  cx="40"
+                  cy="40"
+                  r="34"
+                  stroke="currentColor"
+                  strokeWidth="6"
+                  fill="transparent"
+                  strokeDasharray="214"
+                  strokeDashoffset={214 - (personal.progress / 100) * 214}
+                  className="text-blue-500"
+                />
+              </svg>
+              <span className="absolute text-xs font-black text-white">{personal.progress}%</span>
+            </div>
+            <div>
+              <p className="text-xl font-black text-white">{personal.okCount}/{personal.reqCount}</p>
+              <p className="text-[11px] normal-case text-zinc-400">Certificates currently compliant for your role</p>
+            </div>
+          </div>
+          <div className="mt-6 grid grid-cols-3 gap-3">
+            <div className="rounded-2xl border border-red-500/15 bg-red-500/10 p-4">
+              <p className="text-[9px] uppercase tracking-[0.15em] text-red-300">Expired</p>
+              <p className="mt-2 text-2xl font-black text-white">{personal.expired}</p>
+            </div>
+            <div className="rounded-2xl border border-amber-500/15 bg-amber-500/10 p-4">
+              <p className="text-[9px] uppercase tracking-[0.15em] text-amber-300">90 Days</p>
+              <p className="mt-2 text-2xl font-black text-white">{personal.warning}</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-500/15 bg-emerald-500/10 p-4">
+              <p className="text-[9px] uppercase tracking-[0.15em] text-emerald-300">Last PPE</p>
+              <p className="mt-2 text-sm font-black text-white uppercase">{personal.lastStatus}</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
-              <Link href="/admin/settings?tab=crews" className="col-span-2 md:col-span-4 bg-zinc-900/40 border border-purple-500/20 p-8 rounded-[40px] flex flex-col md:flex-row items-center justify-between shadow-2xl hover:border-purple-500 transition-all gap-6">
-                 <div className="flex items-center gap-6">
-                    <div className="w-20 h-20 bg-purple-500/10 rounded-[32px] flex items-center justify-center text-purple-500 font-black text-2xl border border-purple-500/20 shadow-inner">{vessel.compliance}%</div>
-                    <div><p className="text-xl font-black text-white italic uppercase">Fleet Readiness</p><p className="text-zinc-500 mt-1 uppercase text-[8px]">Overall Certificate Compliance</p></div>
-                 </div>
-              </Link>
-           </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="rounded-[36px] border border-white/5 bg-zinc-950/75 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <p className="text-[9px] uppercase tracking-[0.3em] text-zinc-500">Top Items This Month</p>
+              <h2 className="mt-2 text-xl font-black italic text-white">Demand Board</h2>
+            </div>
+            <TrendingUp className="text-orange-500" size={18} />
+          </div>
+          <div className="space-y-3">
+            {overview.topItems.length === 0 && <div className="rounded-2xl border border-white/5 bg-black/30 p-5 text-zinc-500 text-sm normal-case">No issued items in the current dataset yet.</div>}
+            {overview.topItems.map((item: any, index: number) => (
+              <div key={item.name} className="grid grid-cols-[40px_1fr_auto] items-center gap-4 rounded-[24px] border border-white/5 bg-black/25 px-4 py-4">
+                <div className="w-10 h-10 rounded-2xl bg-orange-500/10 text-orange-400 flex items-center justify-center font-black">{index + 1}</div>
+                <div>
+                  <p className="text-white font-black text-sm">{item.name}</p>
+                  <p className="text-zinc-500 text-[11px] normal-case">Highest request pressure this month</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-black text-white">{item.count}</p>
+                  <p className="text-[9px] uppercase tracking-[0.15em] text-zinc-500">requests</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-[36px] border border-white/5 bg-zinc-950/75 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)]">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <p className="text-[9px] uppercase tracking-[0.3em] text-zinc-500">Top Crew This Month</p>
+              <h2 className="mt-2 text-xl font-black italic text-white">Activity Board</h2>
+            </div>
+            <Users className="text-orange-500" size={18} />
+          </div>
+          <div className="space-y-3">
+            {overview.topCrew.length === 0 && <div className="rounded-2xl border border-white/5 bg-black/30 p-5 text-zinc-500 text-sm normal-case">No crew activity captured yet.</div>}
+            {overview.topCrew.map((crew: any, index: number) => (
+              <div key={crew.name} className="grid grid-cols-[40px_1fr_auto] items-center gap-4 rounded-[24px] border border-white/5 bg-black/25 px-4 py-4">
+                <div className="w-10 h-10 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center font-black">{index + 1}</div>
+                <div>
+                  <p className="text-white font-black text-sm">{crew.name}</p>
+                  <p className="text-zinc-500 text-[11px] normal-case">Most request activity in the current view</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-black text-white">{crew.count}</p>
+                  <p className="text-[9px] uppercase tracking-[0.15em] text-zinc-500">items</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

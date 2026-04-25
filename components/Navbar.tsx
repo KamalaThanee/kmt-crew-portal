@@ -107,9 +107,10 @@ export default function Navbar() {
   const isAdmin = ["safety officer", "chief officer", "barge master"].includes(role);
   
   const menuItems = isAdmin ? [
+    { name: 'DASHBOARD', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'APPROVALS', href: '/admin/approvals', icon: ClipboardCheck },
-    { name: 'INVENTORY', href: '/admin/inventory', icon: Package },
     { name: 'HISTORY', href: '/admin/history', icon: History },
+    { name: 'INVENTORY', href: '/admin/inventory', icon: Package },
     { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
     { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
   ] : [
@@ -192,7 +193,7 @@ export default function Navbar() {
       <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] h-16 bg-black/90 backdrop-blur-2xl border border-orange-500/20 rounded-3xl z-[100] px-2 shadow-2xl flex items-center justify-around">
           {menuItems.slice(0, isAdmin ? 5 : 4).map((item) => {
             const Icon = item.icon; const isActive = pathname === item.href;
-            return ( <Link key={item.href} href={item.href} className={`flex flex-col items-center justify-center gap-1 w-full h-full relative transition-all ${isActive ? 'text-orange-500' : 'text-zinc-500'}`}><Icon size={20} strokeWidth={isActive ? 2.5 : 2} /><span className="text-[7px] font-black uppercase tracking-tighter">{item.name.replace('REQUEST PPE', 'REQUEST').replace('CERTIFICATE', 'CERT').replace('APPROVALS', 'APPROVE')}</span>{isActive && <div className="absolute bottom-1 w-5 h-0.5 bg-orange-500 rounded-full shadow-[0_0_10px_#f97316]"></div>}</Link> );
+            return ( <Link key={item.href} href={item.href} className={`flex flex-col items-center justify-center gap-1 w-full h-full relative transition-all ${isActive ? 'text-orange-500' : 'text-zinc-500'}`}><Icon size={20} strokeWidth={isActive ? 2.5 : 2} /><span className="text-[7px] font-black uppercase tracking-tighter">{item.name.replace('REQUEST PPE', 'REQUEST').replace('CERTIFICATE', 'CERT').replace('APPROVALS', 'APPROVE').replace('DASHBOARD', 'HOME')}</span>{isActive && <div className="absolute bottom-1 w-5 h-0.5 bg-orange-500 rounded-full shadow-[0_0_10px_#f97316]"></div>}</Link> );
           })}
       </nav>
     </>

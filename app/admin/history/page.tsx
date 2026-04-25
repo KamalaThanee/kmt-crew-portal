@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Clock3, Filter, History, Package, Search, ShieldCheck, User, Users } from 'lucide-react'
+import { Clock3, Download, Filter, History, Package, Search, ShieldCheck, User, Users } from 'lucide-react'
 
 type HistoryItem = {
   id: string
@@ -20,6 +20,7 @@ type HistoryItem = {
 }
 
 const STATUS_OPTIONS = ['all', 'pending', 'approved', 'received', 'rejected']
+const SORT_OPTIONS = ['latest', 'oldest', 'most_requested']
 
 const statusStyles: Record<string, string> = {
   pending: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
@@ -59,6 +60,8 @@ export default function AdminHistoryPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [monthFilter, setMonthFilter] = useState(getMonthKey(new Date()))
+  const [approverFilter, setApproverFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('latest')
 
   useEffect(() => {
     const userStr = localStorage.getItem('kmt_user')
@@ -121,16 +124,69 @@ export default function AdminHistoryPage() {
   }, [router])
 
   const filteredRows = useMemo(() => {
-    return rows.filter((row) => {
+    const filtered = rows.filter((row) => {
       const created = new Date(row.createdAt)
       const rowMonth = getMonthKey(created)
       const matchesMonth = !monthFilter || rowMonth === monthFilter
       const matchesStatus = statusFilter === 'all' || row.status === statusFilter
-      const haystack = `${row.crewName} ${row.itemName} ${row.color} ${row.size} ${row.reason}`.toLowerCase()
+      const matchesApprover =
+        approverFilter === 'all' ||
+        String(row.approvedByName || '').toLowerCase() === approverFilter.toLowerCase()
+      const haystack = `${row.crewName} ${row.itemName} ${row.color} ${row.size} ${row.reason} ${row.approvedByName || ''}`.toLowerCase()
       const matchesSearch = haystack.includes(searchTerm.trim().toLowerCase())
-      return matchesMonth && matchesStatus && matchesSearch
+      return matchesMonth && matchesStatus && matchesApprover && matchesSearch
     })
-  }, [rows, monthFilter, searchTerm, statusFilter])
+
+    if (sortBy === 'oldest') {
+      return [...filtered].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    }
+
+    if (sortBy === 'most_requested') {
+      const counts = new Map<string, number>()
+      filtered.forEach((row) => counts.set(row.itemName, (counts.get(row.itemName) || 0) + 1))
+      return [...filtered].sort((a, b) => (counts.get(b.itemName) || 0) - (counts.get(a.itemName) || 0))
+    }
+
+    return [...filtered].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }, [rows, monthFilter, searchTerm, statusFilter, approverFilter, sortBy])
+
+  const approverOptions = useMemo(() => {
+    return [
+      'all',
+      ...Array.from(new Set(rows.map((row) => row.approvedByName).filter(Boolean) as string[])).sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    ]
+  }, [rows])
+
+  const handleExportCsv = () => {
+    const headers = ['request_id', 'crew_name', 'item_name', 'color', 'size', 'status', 'status_meta', 'requested_at', 'received_at', 'reason']
+    const lines = filteredRows.map((row) =>
+      [
+        row.requestId,
+        row.crewName,
+        row.itemName,
+        row.color,
+        row.size,
+        row.status,
+        getStatusMeta(row),
+        formatDateTime(row.createdAt),
+        formatDateTime(row.receivedAt),
+        row.reason,
+      ]
+        .map((value) => `"${String(value || '').replace(/"/g, '""')}"`)
+        .join(','),
+    )
+
+    const csv = [headers.join(','), ...lines].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `kmt-history-${monthFilter || 'all'}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
 
   const summary = useMemo(() => {
     const requestIds = new Set(filteredRows.map((row) => row.requestId))
@@ -230,11 +286,20 @@ export default function AdminHistoryPage() {
       </div>
 
       <div className="bg-zinc-900/50 border border-white/5 rounded-[36px] p-5 md:p-6 mb-6 space-y-4">
-        <div className="flex items-center gap-2 text-zinc-400">
-          <Filter size={15} />
-          <span className="tracking-[0.15em]">Filters</span>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-zinc-400">
+            <Filter size={15} />
+            <span className="tracking-[0.15em]">Filters</span>
+          </div>
+          <button
+            onClick={handleExportCsv}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[10px] uppercase tracking-[0.15em] text-emerald-300 hover:bg-emerald-500/15 transition-colors"
+          >
+            <Download size={14} />
+            Export CSV
+          </button>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
             <input
@@ -252,6 +317,28 @@ export default function AdminHistoryPage() {
             {STATUS_OPTIONS.map((status) => (
               <option key={status} value={status}>
                 {status === 'all' ? 'ALL STATUS' : status.toUpperCase()}
+              </option>
+            ))}
+          </select>
+          <select
+            value={approverFilter}
+            onChange={(e) => setApproverFilter(e.target.value)}
+            className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 px-4 text-white outline-none focus:border-orange-500 text-sm font-bold"
+          >
+            {approverOptions.map((approver) => (
+              <option key={approver} value={approver}>
+                {approver === 'all' ? 'ALL APPROVERS' : approver.toUpperCase()}
+              </option>
+            ))}
+          </select>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 px-4 text-white outline-none focus:border-orange-500 text-sm font-bold"
+          >
+            {SORT_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option === 'latest' ? 'LATEST FIRST' : option === 'oldest' ? 'OLDEST FIRST' : 'MOST REQUESTED ITEMS'}
               </option>
             ))}
           </select>
