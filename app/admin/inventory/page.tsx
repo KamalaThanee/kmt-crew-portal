@@ -203,6 +203,34 @@ function InventoryContent() {
     return groups;
   }, [inventory, searchTerm, selectedCats, showLowStock])
 
+  const handleExportExcel = () => {
+    const rows = Object.entries(filteredInventoryGrouped).flatMap(([category, items]) =>
+      items.map((item) => ({
+        Category: category,
+        Code: item.item_id_code || '',
+        'Item Name': item.item_name || '',
+        Color: item.color || '',
+        Size: item.size || '',
+        Unit: item.unit || 'Piece',
+        Quantity: Number(item.quantity || 0),
+        Threshold: Number(item.threshold || 0),
+        Status: Number(item.quantity || 0) <= Number(item.threshold || 0) ? 'Low Stock' : 'OK',
+      })),
+    )
+
+    if (rows.length === 0) {
+      toast.error('No inventory data to export')
+      return
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(rows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory')
+    const stamp = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(workbook, `kmt-inventory-${stamp}.xlsx`)
+    toast.success(`Exported ${rows.length} inventory rows`)
+  }
+
   const handleSaveItem = async () => {
     if (!editingItem.item_name || !editingItem.category) return toast.error('Required fields missing')
     await supabase.from('ppe_inventory').upsert({
@@ -240,6 +268,7 @@ function InventoryContent() {
       <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div><h1 className="text-4xl md:text-5xl font-black italic flex items-center gap-4 tracking-tighter text-white"><Package className="text-blue-500" size={40}/> Inventory</h1></div>
         <div className="flex flex-wrap gap-3">
+           <button onClick={handleExportExcel} className="px-8 py-4 bg-blue-600/10 border border-blue-500/30 text-blue-400 rounded-[20px] font-black text-xs flex items-center gap-3 transition-all active:scale-95 shadow-lg shadow-blue-500/5"><Download size={18}/> Export Excel</button>
            <button onClick={() => { setRestockView('entry'); setIsRestockModalOpen(true); }} className="px-8 py-4 bg-emerald-600/10 border border-emerald-500/30 text-emerald-500 rounded-[20px] font-black text-xs flex items-center gap-3 transition-all active:scale-95 shadow-lg shadow-emerald-500/5"><Archive size={18}/> Receive Stock</button>
            <button onClick={() => { setEditingItem({ item_name: '', category: 'Other', quantity: 0, threshold: 1, item_id_code: generateNextCode('Other') }); setIsItemModalOpen(true); }} className="px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white rounded-[20px] font-black text-xs flex items-center gap-3 active:scale-95 transition-all shadow-lg shadow-orange-600/20"><Plus size={18}/> Add Item</button>
         </div>
