@@ -51,7 +51,7 @@ export default function CrewDashboard() {
       })
 
       let sCount = 0, bCount = 0;
-      myReqs?.forEach(r => {
+      myReqs?.forEach((r: any) => {
         r.items?.forEach((i: any) => {
           if (i.item_name.toLowerCase().includes('suit')) sCount++
           if (i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')) bCount++
