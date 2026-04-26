@@ -48,7 +48,6 @@ async function sendOneSignal(externalIds: string[], headings: string, contents: 
       },
       headings: { en: headings },
       contents: { en: contents },
-      url,
       web_url: url,
     }),
   });
