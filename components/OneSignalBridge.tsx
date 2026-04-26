@@ -20,8 +20,6 @@ export default function OneSignalBridge() {
       try {
         await OneSignal.init({
           appId: ONESIGNAL_APP_ID,
-          serviceWorkerPath: "/OneSignalSDKWorker.js",
-          serviceWorkerUpdaterPath: "/OneSignalSDKUpdaterWorker.js",
           notifyButton: {
             enable: false,
           },
