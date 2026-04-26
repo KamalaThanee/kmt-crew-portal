@@ -25,7 +25,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests';
 import { isAdminRole } from '@/lib/roles';
-import { clearOneSignalUser, getOneSignalStatus, requestOneSignalPermission } from '@/lib/onesignalClient';
+import { clearOneSignalUser, getOneSignalBuildInfo, getOneSignalStatus, requestOneSignalPermission } from '@/lib/onesignalClient';
 import { toast } from 'sonner';
 
 type CrewActionItem = {
@@ -841,6 +841,9 @@ export default function Navbar() {
                   </p>
                   <p className="mt-1 text-[9px] text-emerald-400 normal-case break-all">
                     push-debug: ready={oneSignalStatus.initReady || '-'} | supported={oneSignalStatus.supported || '-'} | native={oneSignalStatus.nativePermission || '-'} | permission={oneSignalStatus.permission || '-'} | optedIn={oneSignalStatus.optedIn || '-'} | sub={oneSignalStatus.subscriptionId ? 'yes' : '-'}
+                  </p>
+                  <p className="mt-1 text-[9px] text-cyan-300 normal-case break-all">
+                    push-env: app={oneSignalStatus.appIdTail || getOneSignalBuildInfo().appIdTail || '-'} | origin={oneSignalStatus.origin || getOneSignalBuildInfo().origin || '-'}
                   </p>
                   {oneSignalStatus.initError && (
                     <p className="mt-1 text-[9px] text-red-300 normal-case break-words">

@@ -102,6 +102,13 @@ export function hasOneSignalConfigured() {
   return Boolean(ONESIGNAL_APP_ID);
 }
 
+export function getOneSignalBuildInfo() {
+  return {
+    appIdTail: ONESIGNAL_APP_ID ? ONESIGNAL_APP_ID.slice(-8) : "",
+    origin: typeof window !== "undefined" ? window.location.origin : "",
+  };
+}
+
 export async function requestOneSignalPermission() {
   return runWithOneSignalAsync(async (OneSignal) => {
     const supported = OneSignal.Notifications.isPushSupported();
@@ -212,10 +219,12 @@ export function clearOneSignalUser() {
 }
 
 export function getOneSignalStatus(callback: (status: Record<string, string>) => void) {
+  const buildInfo = getOneSignalBuildInfo();
   runWithOneSignal(async (OneSignal) => {
     try {
       const supported = await OneSignal.Notifications.isPushSupported();
       callback({
+        ...buildInfo,
         supported: String(Boolean(supported)),
         initReady: String(Boolean(window.kmtOneSignalReady)),
         initError: String(window.kmtOneSignalInitError || ""),
@@ -230,6 +239,7 @@ export function getOneSignalStatus(callback: (status: Record<string, string>) =>
       });
     } catch (error: any) {
       callback({
+        ...buildInfo,
         initReady: String(Boolean(window.kmtOneSignalReady)),
         initError: String(window.kmtOneSignalInitError || ""),
         error: error?.message || "Unable to read OneSignal status",
