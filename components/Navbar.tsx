@@ -49,6 +49,7 @@ type SeenCrewRequestStatuses = Record<string, string>;
 type SeenCertTriggers = Record<string, boolean>;
 
 const CERT_TRIGGER_DAYS = [7, 30, 60, 90, 180];
+type CertTrigger = (typeof CERT_TRIGGER_DAYS)[number] | 'expired';
 
 function getCrewNotificationStorageKey(user: { id?: string; full_name?: string } | null) {
   const identity = user?.id || user?.full_name || 'anonymous';
@@ -60,12 +61,12 @@ function getCertTriggerStorageKey(user: { id?: string; full_name?: string } | nu
   return `kmt_cert_triggers_seen_${identity}`;
 }
 
-function getCertTrigger(daysLeft: number) {
+function getCertTrigger(daysLeft: number): CertTrigger | null {
   if (daysLeft < 0) return 'expired';
   return CERT_TRIGGER_DAYS.find((day) => daysLeft <= day) || null;
 }
 
-function getCertTriggerText(certName: string, trigger: string, daysLeft: number) {
+function getCertTriggerText(certName: string, trigger: CertTrigger, daysLeft: number) {
   if (trigger === 'expired') {
     return `${certName} is expired.`;
   }
