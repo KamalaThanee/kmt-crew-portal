@@ -25,7 +25,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests';
 import { isAdminRole } from '@/lib/roles';
-import { clearOneSignalUser, requestOneSignalPermission } from '@/lib/onesignalClient';
+import { clearOneSignalUser, getOneSignalStatus, requestOneSignalPermission } from '@/lib/onesignalClient';
 import { toast } from 'sonner';
 
 type CrewActionItem = {
@@ -75,6 +75,7 @@ export default function Navbar() {
     personalCertAlertCount: 0,
   });
   const [unreadCount, setUnreadCount] = useState(0);
+  const [oneSignalStatus, setOneSignalStatus] = useState<Record<string, string>>({});
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -465,6 +466,9 @@ export default function Navbar() {
 
     if (isOpening) {
       requestOneSignalPermission();
+      window.setTimeout(() => {
+        getOneSignalStatus(setOneSignalStatus);
+      }, 1200);
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission().catch(() => undefined);
       }
@@ -800,8 +804,12 @@ export default function Navbar() {
           <div className="relative" ref={profileRef}>
             <button
               onClick={() => {
-                setShowProfile(!showProfile);
+                const nextProfileState = !showProfile;
+                setShowProfile(nextProfileState);
                 setShowNotif(false);
+                if (nextProfileState) {
+                  getOneSignalStatus(setOneSignalStatus);
+                }
               }}
               className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-all ${
                 showProfile
@@ -819,6 +827,9 @@ export default function Navbar() {
                   <p className="text-orange-500 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p>
                   <p className="mt-2 text-[9px] text-cyan-400 normal-case">
                     role-debug: {String(user?.position || '')} | admin={String(isAdmin)}
+                  </p>
+                  <p className="mt-1 text-[9px] text-emerald-400 normal-case break-all">
+                    push-debug: permission={oneSignalStatus.permission || '-'} | optedIn={oneSignalStatus.optedIn || '-'} | sub={oneSignalStatus.subscriptionId ? 'yes' : '-'}
                   </p>
                 </div>
                 <div className="p-2 space-y-1">

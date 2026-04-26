@@ -26,9 +26,15 @@ export function hasOneSignalConfigured() {
 export function requestOneSignalPermission() {
   runWithOneSignal(async (OneSignal) => {
     try {
-      const permission = await OneSignal.Notifications.permission;
-      if (permission !== "granted") {
+      const supported = await OneSignal.Notifications.isPushSupported();
+      if (!supported) return;
+
+      if (!OneSignal.Notifications.permission) {
         await OneSignal.Notifications.requestPermission();
+      }
+
+      if (OneSignal.Notifications.permission) {
+        await OneSignal.User.PushSubscription.optIn();
       }
     } catch {
       // Ignore blocked or unsupported browsers during preview setup.
@@ -49,6 +55,10 @@ export function syncOneSignalUser(user: { id?: string; full_name?: string; posit
         crew_name: String(user.full_name || ""),
         role: String(user.position || ""),
       });
+
+      if (OneSignal.Notifications.permission) {
+        await OneSignal.User.PushSubscription.optIn();
+      }
     } catch {
       // Keep app usable even if OneSignal login fails in preview.
     }
@@ -61,6 +71,23 @@ export function clearOneSignalUser() {
       await OneSignal.logout();
     } catch {
       // Best-effort cleanup only.
+    }
+  });
+}
+
+export function getOneSignalStatus(callback: (status: Record<string, string>) => void) {
+  runWithOneSignal(async (OneSignal) => {
+    try {
+      callback({
+        permission: String(Boolean(OneSignal.Notifications.permission)),
+        optedIn: String(Boolean(OneSignal.User.PushSubscription.optedIn)),
+        subscriptionId: String(OneSignal.User.PushSubscription.id || ""),
+        externalId: String(OneSignal.User.externalId || ""),
+      });
+    } catch (error: any) {
+      callback({
+        error: error?.message || "Unable to read OneSignal status",
+      });
     }
   });
 }
