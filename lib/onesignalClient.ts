@@ -4,6 +4,8 @@ declare global {
   interface Window {
     OneSignal?: any;
     OneSignalDeferred?: Array<(OneSignal: any) => void>;
+    kmtOneSignalInitError?: string;
+    kmtOneSignalInitStarted?: boolean;
     kmtOneSignalReady?: boolean;
   }
 }
@@ -35,18 +37,33 @@ function waitForOneSignalReady() {
       return;
     }
 
+    if (window.kmtOneSignalInitError) {
+      reject(new Error(window.kmtOneSignalInitError));
+      return;
+    }
+
     const timeout = window.setTimeout(() => {
       window.removeEventListener("kmt-onesignal-ready", handleReady);
-      reject(new Error("OneSignal init timed out"));
+      window.removeEventListener("kmt-onesignal-error", handleError);
+      reject(new Error(window.kmtOneSignalInitError || "OneSignal init timed out"));
     }, 10000);
 
     const handleReady = () => {
       window.clearTimeout(timeout);
       window.removeEventListener("kmt-onesignal-ready", handleReady);
+      window.removeEventListener("kmt-onesignal-error", handleError);
       resolve();
     };
 
+    const handleError = () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("kmt-onesignal-ready", handleReady);
+      window.removeEventListener("kmt-onesignal-error", handleError);
+      reject(new Error(window.kmtOneSignalInitError || "OneSignal init failed"));
+    };
+
     window.addEventListener("kmt-onesignal-ready", handleReady);
+    window.addEventListener("kmt-onesignal-error", handleError);
   });
 }
 
@@ -200,6 +217,8 @@ export function getOneSignalStatus(callback: (status: Record<string, string>) =>
       const supported = await OneSignal.Notifications.isPushSupported();
       callback({
         supported: String(Boolean(supported)),
+        initReady: String(Boolean(window.kmtOneSignalReady)),
+        initError: String(window.kmtOneSignalInitError || ""),
         permission: String(Boolean(OneSignal.Notifications.permission)),
         optedIn: String(Boolean(OneSignal.User.PushSubscription.optedIn)),
         subscriptionId: String(OneSignal.User.PushSubscription.id || ""),
@@ -211,6 +230,8 @@ export function getOneSignalStatus(callback: (status: Record<string, string>) =>
       });
     } catch (error: any) {
       callback({
+        initReady: String(Boolean(window.kmtOneSignalReady)),
+        initError: String(window.kmtOneSignalInitError || ""),
         error: error?.message || "Unable to read OneSignal status",
       });
     }

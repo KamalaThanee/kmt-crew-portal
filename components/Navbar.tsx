@@ -840,8 +840,13 @@ export default function Navbar() {
                     role-debug: {String(user?.position || '')} | admin={String(isAdmin)}
                   </p>
                   <p className="mt-1 text-[9px] text-emerald-400 normal-case break-all">
-                    push-debug: supported={oneSignalStatus.supported || '-'} | native={oneSignalStatus.nativePermission || '-'} | permission={oneSignalStatus.permission || '-'} | optedIn={oneSignalStatus.optedIn || '-'} | sub={oneSignalStatus.subscriptionId ? 'yes' : '-'}
+                    push-debug: ready={oneSignalStatus.initReady || '-'} | supported={oneSignalStatus.supported || '-'} | native={oneSignalStatus.nativePermission || '-'} | permission={oneSignalStatus.permission || '-'} | optedIn={oneSignalStatus.optedIn || '-'} | sub={oneSignalStatus.subscriptionId ? 'yes' : '-'}
                   </p>
+                  {oneSignalStatus.initError && (
+                    <p className="mt-1 text-[9px] text-red-300 normal-case break-words">
+                      push-init: {oneSignalStatus.initError}
+                    </p>
+                  )}
                   {pushActionMessage && (
                     <p className="mt-1 text-[9px] text-red-300 normal-case break-words">
                       push-message: {pushActionMessage}
