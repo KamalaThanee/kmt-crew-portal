@@ -135,7 +135,7 @@ export async function insertPpeRequest(payload: {
     }
   }
 
-  return { error: lastError }
+  return { data: null, error: lastError }
 }
 
 export async function matchesPpeRequestUser(row: Record<string, any>, user: { id?: string; full_name?: string }) {
