@@ -25,6 +25,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests';
 import { isAdminRole } from '@/lib/roles';
+import { clearOneSignalUser, getOneSignalStatus, requestOneSignalPermission } from '@/lib/onesignalClient';
 import { toast } from 'sonner';
 
 type CrewActionItem = {
@@ -74,6 +75,7 @@ export default function Navbar() {
     personalCertAlertCount: 0,
   });
   const [unreadCount, setUnreadCount] = useState(0);
+  const [oneSignalStatus, setOneSignalStatus] = useState<Record<string, string>>({});
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -462,8 +464,14 @@ export default function Navbar() {
     setShowNotif(isOpening);
     setShowProfile(false);
 
-    if (isOpening && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => undefined);
+    if (isOpening) {
+      requestOneSignalPermission();
+      window.setTimeout(() => {
+        getOneSignalStatus(setOneSignalStatus);
+      }, 1200);
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => undefined);
+      }
     }
 
     if (isOpening) {
@@ -796,8 +804,12 @@ export default function Navbar() {
           <div className="relative" ref={profileRef}>
             <button
               onClick={() => {
-                setShowProfile(!showProfile);
+                const nextProfileState = !showProfile;
+                setShowProfile(nextProfileState);
                 setShowNotif(false);
+                if (nextProfileState) {
+                  getOneSignalStatus(setOneSignalStatus);
+                }
               }}
               className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-all ${
                 showProfile
@@ -816,6 +828,9 @@ export default function Navbar() {
                   <p className="mt-2 text-[9px] text-cyan-400 normal-case">
                     role-debug: {String(user?.position || '')} | admin={String(isAdmin)}
                   </p>
+                  <p className="mt-1 text-[9px] text-emerald-400 normal-case break-all">
+                    push-debug: permission={oneSignalStatus.permission || '-'} | optedIn={oneSignalStatus.optedIn || '-'} | sub={oneSignalStatus.subscriptionId ? 'yes' : '-'}
+                  </p>
                 </div>
                 <div className="p-2 space-y-1">
                   {isAdmin && (
@@ -829,6 +844,7 @@ export default function Navbar() {
                   )}
                   <button
                     onClick={() => {
+                      clearOneSignalUser();
                       localStorage.removeItem('kmt_user');
                       router.push('/login');
                     }}
