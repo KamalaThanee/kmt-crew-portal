@@ -830,25 +830,6 @@ export default function Navbar() {
                 <div className="p-6 bg-black/40 border-b border-white/5">
                   <p className="text-white font-bold text-sm truncate">{user?.full_name}</p>
                   <p className="text-orange-500 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p>
-                  <p className="mt-2 text-[9px] text-cyan-400 normal-case">
-                    role-debug: {String(user?.position || '')} | admin={String(isAdmin)}
-                  </p>
-                  <p className="mt-1 text-[9px] text-emerald-400 normal-case break-all">
-                    push-debug: ready={oneSignalStatus.initReady || '-'} | supported={oneSignalStatus.supported || '-'} | native={oneSignalStatus.nativePermission || '-'} | permission={oneSignalStatus.permission || '-'} | optedIn={oneSignalStatus.optedIn || '-'} | sub={oneSignalStatus.subscriptionId ? 'yes' : '-'}
-                  </p>
-                  <p className="mt-1 text-[9px] text-cyan-300 normal-case break-all">
-                    push-env: app={oneSignalStatus.appIdTail || getOneSignalBuildInfo().appIdTail || '-'} | origin={oneSignalStatus.origin || getOneSignalBuildInfo().origin || '-'}
-                  </p>
-                  {oneSignalStatus.initError && (
-                    <p className="mt-1 text-[9px] text-red-300 normal-case break-words">
-                      push-init: {oneSignalStatus.initError}
-                    </p>
-                  )}
-                  {pushActionMessage && (
-                    <p className="mt-1 text-[9px] text-red-300 normal-case break-words">
-                      push-message: {pushActionMessage}
-                    </p>
-                  )}
                 </div>
                 <div className="p-2 space-y-1">
                   {oneSignalStatus.optedIn !== 'true' && (

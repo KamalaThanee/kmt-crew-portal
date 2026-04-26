@@ -9,7 +9,6 @@ import { toast } from 'sonner'
 import { Check, X, User, Package, ShieldCheck, Loader2, MessageSquare, History, CheckCircle2, Clock } from 'lucide-react'
 
 export default function ApprovalsPage() {
-  const debugBuild = 'approvals-debug-2026-04-25-codex-1'
   const router = useRouter()
   const [requests, setRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -274,7 +273,7 @@ export default function ApprovalsPage() {
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto pb-32 pt-24 font-sans text-white uppercase font-bold text-[10px]">
       <div className="mb-10 flex justify-between items-center">
-        <div><h1 className="text-3xl font-black italic text-white flex items-center gap-3"><ShieldCheck className="text-orange-500" size={32}/> Approvals</h1><p className="text-zinc-500 mt-1 uppercase">Pending Crew Requests</p><p className="mt-2 text-[9px] text-cyan-400 normal-case">Build marker: {debugBuild}</p></div>
+        <div><h1 className="text-3xl font-black italic text-white flex items-center gap-3"><ShieldCheck className="text-orange-500" size={32}/> Approvals</h1><p className="text-zinc-500 mt-1 uppercase">Pending Crew Requests</p></div>
       </div>
       {actionMessage && (
         <div className="mb-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-[10px] text-orange-300 normal-case">
