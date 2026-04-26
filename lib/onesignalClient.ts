@@ -57,6 +57,10 @@ export async function requestOneSignalPermission() {
         permission: "false",
         optedIn: "false",
         subscriptionId: "",
+        nativePermission:
+          typeof window !== "undefined" && "Notification" in window
+            ? Notification.permission
+            : "unsupported",
         message: "This browser does not support web push.",
       };
     }
