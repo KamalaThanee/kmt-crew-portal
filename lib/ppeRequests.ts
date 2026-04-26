@@ -122,7 +122,7 @@ export async function insertPpeRequest(payload: {
     if (variant.idColumn && payload.crew?.id) row[variant.idColumn] = payload.crew.id
     if (variant.nameColumn && payload.crew?.full_name) row[variant.nameColumn] = payload.crew.full_name
 
-    const result = await supabase.from('ppe_requests').insert(row)
+    const result = await supabase.from('ppe_requests').insert(row).select('id').single()
     if (!result.error) {
       cachedInsertColumns = variant
       cachedColumns = Promise.resolve(variant)

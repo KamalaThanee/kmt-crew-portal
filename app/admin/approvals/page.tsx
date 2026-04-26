@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getPpeRequestIdentity } from '@/lib/ppeRequests'
 import { isAdminRole } from '@/lib/roles'
+import { notifyOneSignal } from '@/lib/onesignalClient'
 import { toast } from 'sonner'
 import { Check, X, User, Package, ShieldCheck, Loader2, MessageSquare, History, CheckCircle2, Clock } from 'lucide-react'
 
@@ -187,6 +188,14 @@ export default function ApprovalsPage() {
 
       setRequests((prev) => prev.filter((item) => item.id !== req.id))
       setPastHistory((prev) => [{ ...req, ...data }, ...prev])
+      await notifyOneSignal({
+        type: 'approved',
+        requestId: req.id,
+        crewId: req.crew_id,
+        crewName: req.crew_name || req.requester_name || req.full_name,
+        itemName: req.items?.[0]?.item_name || 'PPE request',
+        actorName: JSON.parse(localStorage.getItem('kmt_user') || '{}')?.full_name,
+      })
       setActionMessage(`Approved request ${String(req.id).slice(0, 8)} successfully`)
       toast.success('Request Approved!')
       setApprovingReq(null)
@@ -230,6 +239,15 @@ export default function ApprovalsPage() {
 
       setRequests((prev) => prev.filter((item) => item.id !== rejectingReq.id))
       setPastHistory((prev) => [{ ...rejectingReq, ...data, admin_remark: rejectReason.trim() }, ...prev])
+      await notifyOneSignal({
+        type: 'rejected',
+        requestId: rejectingReq.id,
+        crewId: rejectingReq.crew_id,
+        crewName: rejectingReq.crew_name || rejectingReq.requester_name || rejectingReq.full_name,
+        itemName: rejectingReq.items?.[0]?.item_name || 'PPE request',
+        actorName: JSON.parse(localStorage.getItem('kmt_user') || '{}')?.full_name,
+        reason: rejectReason.trim(),
+      })
       setActionMessage(`Rejected request ${String(rejectingReq.id).slice(0, 8)} successfully`)
       toast.success('Request Rejected')
       setRejectingReq(null)

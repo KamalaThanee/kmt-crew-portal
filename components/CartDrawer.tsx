@@ -4,6 +4,7 @@ import { ShoppingCart, X, Trash2, PackageCheck, Save, Users, ShieldAlert, AlertT
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter, insertPpeRequest } from '@/lib/ppeRequests';
+import { notifyOneSignal } from '@/lib/onesignalClient';
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 
@@ -126,7 +127,7 @@ export default function CartDrawer() {
       const selectedCrew = onBehalf ? crews.find(c => c.id === targetCrewId) : user;
       const isDirect = onBehalf && selectedCrew.id !== user.id;
 
-      const { error } = await insertPpeRequest({
+      const { data, error } = await insertPpeRequest({
         crew: selectedCrew,
         extra: {
           items: cartItems,
@@ -136,6 +137,17 @@ export default function CartDrawer() {
       });
 
       if (error) throw error;
+
+      if (!isDirect) {
+        await notifyOneSignal({
+          type: 'new_request',
+          requestId: data?.id || null,
+          crewId: selectedCrew?.id,
+          crewName: selectedCrew?.full_name,
+          itemName: cartItems?.[0]?.item_name || 'PPE request',
+        });
+      }
+
       if (isDirect) {
         for (const item of cartItems) {
           const { data: inv } = await supabase.from('ppe_inventory').select('quantity').eq('id', item.id).single();
