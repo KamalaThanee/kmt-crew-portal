@@ -466,23 +466,7 @@ export default function Navbar() {
     setShowProfile(false);
 
     if (isOpening) {
-      requestOneSignalPermission()
-        .then((status) => {
-          setOneSignalStatus(status);
-          if (status.permission === 'true' && status.optedIn === 'true') {
-            toast.success('Push notifications enabled');
-          } else if (status.message) {
-            toast.message(status.message);
-          }
-        })
-        .catch((error) => {
-          const message = error?.message || 'Unable to request push permission';
-          setPushActionMessage(message);
-          toast.error(message);
-        });
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().catch(() => undefined);
-      }
+      getOneSignalStatus(setOneSignalStatus);
     }
 
     if (isOpening) {
