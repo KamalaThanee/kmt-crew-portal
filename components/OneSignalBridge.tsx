@@ -34,6 +34,9 @@ export default function OneSignalBridge() {
           role: String(user.position || ""),
         });
       }
+
+      window.kmtOneSignalReady = true;
+      window.dispatchEvent(new Event("kmt-onesignal-ready"));
     });
   }, []);
 

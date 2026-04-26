@@ -4,6 +4,7 @@ declare global {
   interface Window {
     OneSignal?: any;
     OneSignalDeferred?: Array<(OneSignal: any) => void>;
+    kmtOneSignalReady?: boolean;
   }
 }
 
@@ -11,12 +12,42 @@ const ONESIGNAL_APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || "";
 
 function runWithOneSignal(callback: (OneSignal: any) => void) {
   if (typeof window === "undefined" || !ONESIGNAL_APP_ID) return;
-  if (window.OneSignal) {
+  if (window.OneSignal && window.kmtOneSignalReady) {
     callback(window.OneSignal);
     return;
   }
-  window.OneSignalDeferred = window.OneSignalDeferred || [];
-  window.OneSignalDeferred.push(callback);
+  waitForOneSignalReady()
+    .then(() => {
+      if (window.OneSignal) callback(window.OneSignal);
+    })
+    .catch(() => undefined);
+}
+
+function waitForOneSignalReady() {
+  return new Promise<void>((resolve, reject) => {
+    if (typeof window === "undefined") {
+      reject(new Error("OneSignal is not available outside the browser"));
+      return;
+    }
+
+    if (window.kmtOneSignalReady) {
+      resolve();
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      window.removeEventListener("kmt-onesignal-ready", handleReady);
+      reject(new Error("OneSignal init timed out"));
+    }, 10000);
+
+    const handleReady = () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("kmt-onesignal-ready", handleReady);
+      resolve();
+    };
+
+    window.addEventListener("kmt-onesignal-ready", handleReady);
+  });
 }
 
 function runWithOneSignalAsync<T>(callback: (OneSignal: any) => Promise<T>) {
@@ -34,13 +65,19 @@ function runWithOneSignalAsync<T>(callback: (OneSignal: any) => Promise<T>) {
       }
     };
 
-    if (window.OneSignal) {
+    if (window.OneSignal && window.kmtOneSignalReady) {
       void wrapped(window.OneSignal);
       return;
     }
 
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    window.OneSignalDeferred.push(wrapped);
+    waitForOneSignalReady()
+      .then(() => {
+        if (!window.OneSignal) {
+          throw new Error("OneSignal SDK is not loaded");
+        }
+        return wrapped(window.OneSignal);
+      })
+      .catch(reject);
   });
 }
 
