@@ -27,7 +27,11 @@ function getSupabaseAdmin() {
 
 async function sendOneSignal(externalIds: string[], headings: string, contents: string, url: string) {
   if (!oneSignalAppId || !oneSignalApiKey || externalIds.length === 0) {
-    return { skipped: true };
+    return {
+      skipped: true,
+      reason: !oneSignalAppId || !oneSignalApiKey ? "missing_env" : "no_targets",
+      targetCount: externalIds.length,
+    };
   }
 
   const response = await fetch("https://api.onesignal.com/notifications?c=push", {
@@ -51,9 +55,13 @@ async function sendOneSignal(externalIds: string[], headings: string, contents: 
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.errors?.[0] || data.error || "OneSignal request failed");
+    throw new Error(JSON.stringify(data.errors || data.error || data));
   }
-  return data;
+  return {
+    ...data,
+    targetCount: externalIds.length,
+    appIdTail: oneSignalAppId.slice(-8),
+  };
 }
 
 async function resolveCrewId(supabaseAdmin: any, crewId?: string, crewName?: string) {
@@ -122,7 +130,7 @@ export async function POST(request: Request) {
         : `${baseUrl}/admin/approvals`;
 
       const data = await sendOneSignal(externalIds, title, body, url);
-      return NextResponse.json({ ok: true, data });
+      return NextResponse.json({ ok: true, target: "admins", targetCount: externalIds.length, data });
     }
 
     if (payload.type === "approved" || payload.type === "rejected") {
@@ -142,7 +150,7 @@ export async function POST(request: Request) {
         body,
         `${baseUrl}/my-requests`,
       );
-      return NextResponse.json({ ok: true, data });
+      return NextResponse.json({ ok: true, target: "requester", targetCount: 1, data });
     }
 
     return NextResponse.json({ ok: true, skipped: true });

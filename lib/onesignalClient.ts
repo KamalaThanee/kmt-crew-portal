@@ -263,9 +263,14 @@ export async function notifyOneSignal(payload: Record<string, any>) {
       throw new Error(data.error || "OneSignal notify failed");
     }
 
-    return response.json().catch(() => ({}));
+    const data = await response.json().catch(() => ({}));
+    console.info("OneSignal notify response", data);
+    return data;
   } catch (error) {
     console.error("OneSignal notify error", error);
-    return null;
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "OneSignal notify error",
+    };
   }
 }

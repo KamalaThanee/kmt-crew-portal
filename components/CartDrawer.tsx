@@ -139,13 +139,16 @@ export default function CartDrawer() {
       if (error) throw error;
 
       if (!isDirect) {
-        await notifyOneSignal({
+        const pushResult = await notifyOneSignal({
           type: 'new_request',
           requestId: data?.id || null,
           crewId: selectedCrew?.id,
           crewName: selectedCrew?.full_name,
           itemName: cartItems?.[0]?.item_name || 'PPE request',
         });
+        if (!pushResult?.ok || pushResult?.data?.skipped) {
+          toast.warning(`Push not sent: ${pushResult?.error || pushResult?.data?.reason || 'check OneSignal logs'}`);
+        }
       }
 
       if (isDirect) {
