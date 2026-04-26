@@ -61,18 +61,47 @@ export async function requestOneSignalPermission() {
       };
     }
 
-    await OneSignal.User.PushSubscription.optIn();
+    const nativePermission =
+      typeof window !== "undefined" && "Notification" in window
+        ? Notification.permission
+        : "unsupported";
 
-    if (!OneSignal.Notifications.permission && OneSignal.Slidedown?.promptPush) {
-      await OneSignal.Slidedown.promptPush({ force: true });
+    if (nativePermission === "default" && "Notification" in window) {
+      const result = await Notification.requestPermission();
+      if (result !== "granted") {
+        return {
+          supported: String(Boolean(supported)),
+          permission: "false",
+          optedIn: String(Boolean(OneSignal.User.PushSubscription.optedIn)),
+          subscriptionId: String(OneSignal.User.PushSubscription.id || ""),
+          nativePermission: result,
+          message: `Notification permission is ${result}.`,
+        };
+      }
     }
 
-    if (!OneSignal.Notifications.permission) {
-      await OneSignal.Notifications.requestPermission();
+    if (nativePermission === "denied") {
+      return {
+        supported: String(Boolean(supported)),
+        permission: "false",
+        optedIn: "false",
+        subscriptionId: "",
+        nativePermission,
+        message: "Notifications are blocked in browser site settings.",
+      };
     }
+
+    await Promise.race([
+      OneSignal.User.PushSubscription.optIn(),
+      new Promise((_, reject) =>
+        window.setTimeout(() => reject(new Error("OneSignal opt-in timed out")), 7000),
+      ),
+    ]);
 
     if (OneSignal.Notifications.permission) {
       await OneSignal.User.PushSubscription.optIn();
+    } else if (OneSignal.Slidedown?.promptPush) {
+      await OneSignal.Slidedown.promptPush({ force: true });
     }
 
     return {
@@ -80,6 +109,10 @@ export async function requestOneSignalPermission() {
       permission: String(Boolean(OneSignal.Notifications.permission)),
       optedIn: String(Boolean(OneSignal.User.PushSubscription.optedIn)),
       subscriptionId: String(OneSignal.User.PushSubscription.id || ""),
+      nativePermission:
+        typeof window !== "undefined" && "Notification" in window
+          ? Notification.permission
+          : "unsupported",
       message: OneSignal.Notifications.permission
         ? "Push notifications enabled."
         : "Notification permission was not granted.",
@@ -130,6 +163,10 @@ export function getOneSignalStatus(callback: (status: Record<string, string>) =>
         optedIn: String(Boolean(OneSignal.User.PushSubscription.optedIn)),
         subscriptionId: String(OneSignal.User.PushSubscription.id || ""),
         externalId: String(OneSignal.User.externalId || ""),
+        nativePermission:
+          typeof window !== "undefined" && "Notification" in window
+            ? Notification.permission
+            : "unsupported",
       });
     } catch (error: any) {
       callback({
