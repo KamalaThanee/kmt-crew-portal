@@ -29,6 +29,10 @@ export function requestOneSignalPermission() {
       const supported = await OneSignal.Notifications.isPushSupported();
       if (!supported) return;
 
+      if (!OneSignal.Notifications.permission && OneSignal.Slidedown?.promptPush) {
+        await OneSignal.Slidedown.promptPush({ force: true });
+      }
+
       if (!OneSignal.Notifications.permission) {
         await OneSignal.Notifications.requestPermission();
       }
@@ -78,7 +82,9 @@ export function clearOneSignalUser() {
 export function getOneSignalStatus(callback: (status: Record<string, string>) => void) {
   runWithOneSignal(async (OneSignal) => {
     try {
+      const supported = await OneSignal.Notifications.isPushSupported();
       callback({
+        supported: String(Boolean(supported)),
         permission: String(Boolean(OneSignal.Notifications.permission)),
         optedIn: String(Boolean(OneSignal.User.PushSubscription.optedIn)),
         subscriptionId: String(OneSignal.User.PushSubscription.id || ""),

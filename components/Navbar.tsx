@@ -829,10 +829,21 @@ export default function Navbar() {
                     role-debug: {String(user?.position || '')} | admin={String(isAdmin)}
                   </p>
                   <p className="mt-1 text-[9px] text-emerald-400 normal-case break-all">
-                    push-debug: permission={oneSignalStatus.permission || '-'} | optedIn={oneSignalStatus.optedIn || '-'} | sub={oneSignalStatus.subscriptionId ? 'yes' : '-'}
+                    push-debug: supported={oneSignalStatus.supported || '-'} | permission={oneSignalStatus.permission || '-'} | optedIn={oneSignalStatus.optedIn || '-'} | sub={oneSignalStatus.subscriptionId ? 'yes' : '-'}
                   </p>
                 </div>
                 <div className="p-2 space-y-1">
+                  {oneSignalStatus.optedIn !== 'true' && (
+                    <button
+                      onClick={() => {
+                        requestOneSignalPermission();
+                        window.setTimeout(() => getOneSignalStatus(setOneSignalStatus), 1500);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-emerald-300 hover:text-white hover:bg-emerald-600/10 rounded-2xl transition-all uppercase tracking-widest"
+                    >
+                      <Bell size={16} /> Enable Push
+                    </button>
+                  )}
                   {isAdmin && (
                     <Link
                       href="/admin/settings"
