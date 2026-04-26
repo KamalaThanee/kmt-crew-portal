@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  AlertTriangle,
   ArrowRight,
   Bell,
   CheckCircle2,
@@ -18,7 +17,6 @@ import {
   ShieldCheck,
   ShoppingCart,
   User,
-  Users,
   XCircle,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -48,10 +46,30 @@ type AdminActionItem = {
 };
 
 type SeenCrewRequestStatuses = Record<string, string>;
+type SeenCertTriggers = Record<string, boolean>;
+
+const CERT_TRIGGER_DAYS = [7, 30, 60, 90, 180];
 
 function getCrewNotificationStorageKey(user: { id?: string; full_name?: string } | null) {
   const identity = user?.id || user?.full_name || 'anonymous';
   return `kmt_crew_request_statuses_${identity}`;
+}
+
+function getCertTriggerStorageKey(user: { id?: string; full_name?: string } | null) {
+  const identity = user?.id || user?.full_name || 'anonymous';
+  return `kmt_cert_triggers_seen_${identity}`;
+}
+
+function getCertTrigger(daysLeft: number) {
+  if (daysLeft < 0) return 'expired';
+  return CERT_TRIGGER_DAYS.find((day) => daysLeft <= day) || null;
+}
+
+function getCertTriggerText(certName: string, trigger: string, daysLeft: number) {
+  if (trigger === 'expired') {
+    return `${certName} is expired.`;
+  }
+  return `${certName} expires in ${Math.max(0, daysLeft)} day${daysLeft === 1 ? '' : 's'}.`;
 }
 
 export default function Navbar() {
@@ -182,7 +200,7 @@ export default function Navbar() {
           user,
         );
 
-        const [pendingRes, pendingRowsRes, invRes, certsRes, personalCountRes, personalUpdatesRes] = await Promise.all([
+        const [pendingRes, pendingRowsRes, certsRes, personalCountRes, personalUpdatesRes] = await Promise.all([
           supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
           supabase
             .from('ppe_requests')
@@ -190,17 +208,11 @@ export default function Navbar() {
             .eq('status', 'pending')
             .order('created_at', { ascending: false })
             .limit(5),
-          supabase.from('ppe_inventory').select('quantity, threshold'),
-          supabase.from('crew_certs').select('expiry_date'),
+          supabase.from('crew_certs').select('id, crew_id, cert_name, expiry_date'),
           personalCountQuery,
           personalUpdatesQuery,
         ]);
 
-        const lowStock = invRes.data?.filter((item: any) => (item.quantity || 0) <= (item.threshold || 0)).length || 0;
-        const expired =
-          certsRes.data?.filter(
-            (cert: any) => new Date(cert.expiry_date) < new Date() && cert.expiry_date !== '2099-12-31',
-          ).length || 0;
         const pendingCount = pendingRes.count || 0;
         const pendingRows = pendingRowsRes.data || [];
         const personalRows = personalUpdatesRes.data || [];
@@ -239,67 +251,37 @@ export default function Navbar() {
 
         const myUploadedCerts = (certsRes.data || []).filter((cert: any) => String(cert.crew_id || '') === String(user.id || ''));
         const now = new Date();
+        const seenCertTriggers = JSON.parse(
+          localStorage.getItem(getCertTriggerStorageKey(user)) || '{}',
+        ) as SeenCertTriggers;
         const personalCertActions: CrewActionItem[] = myUploadedCerts
           .map((cert: any) => {
             const expiry = cert.expiry_date ? new Date(cert.expiry_date) : null;
             if (!expiry || cert.expiry_date === '2099-12-31') return null;
             const daysLeft = Math.floor((expiry.getTime() - now.getTime()) / 86400000);
-            if (daysLeft < 0) {
-              return {
-                id: `my-cert-expired-${cert.id}`,
-                status: 'expired-cert',
-                title: 'My certificate expired',
-                description: `${cert.cert_name || 'Certificate'} expired and needs renewal`,
-                href: '/certificates?tab=personal&personal=expired',
-              };
-            }
-            if (daysLeft <= 90) {
-              return {
-                id: `my-cert-warning-${cert.id}`,
-                status: 'warning-cert',
-                title: 'My certificate expires soon',
-                description: `${cert.cert_name || 'Certificate'} expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`,
-                href: '/certificates?tab=personal&personal=warning',
-              };
-            }
-            return null;
+            const trigger = getCertTrigger(daysLeft);
+            if (!trigger) return null;
+            const triggerKey = `${cert.id}:${trigger}`;
+            if (seenCertTriggers[triggerKey]) return null;
+            const certName = cert.cert_name || 'Certificate';
+            return {
+              id: triggerKey,
+              status: trigger === 'expired' ? 'expired-cert' : 'warning-cert',
+              title: trigger === 'expired' ? 'My certificate expired' : `My certificate ${trigger}-day alert`,
+              description: getCertTriggerText(certName, trigger, daysLeft),
+              href: `/certificates?tab=personal&personal=${trigger === 'expired' ? 'expired' : 'warning'}`,
+            };
           })
           .filter(Boolean)
           .slice(0, 4) as CrewActionItem[];
         const personalCertAlertCount = personalCertActions.length;
 
-        const systemActions: AdminActionItem[] = [];
-        if (lowStock > 0) {
-          systemActions.push({
-            id: 'low-stock',
-            href: '/admin/inventory?filter=low',
-            title: 'Low stock needs attention',
-            description: 'Critical inventory lines are below threshold',
-            meta: `${lowStock} item${lowStock > 1 ? 's' : ''} affected`,
-            countLabel: String(lowStock),
-            tone: 'red',
-            icon: AlertTriangle,
-          });
-        }
-        if (expired > 0) {
-          systemActions.push({
-            id: 'expired-certs',
-            href: '/certificates?tab=crew&filter=action',
-            title: 'Expired certificates need follow-up',
-            description: 'Crew compliance issues require review',
-            meta: `${expired} certificate${expired > 1 ? 's' : ''} expired`,
-            countLabel: String(expired),
-            tone: 'violet',
-            icon: Users,
-          });
-        }
-
         setNotifData({
           pending: pendingCount,
-          lowStock,
-          expiredCerts: expired,
+          lowStock: 0,
+          expiredCerts: 0,
           pendingActions,
-          adminActions: systemActions,
+          adminActions: [],
           personalUpdates,
           personalCertActions,
           updates: [],
@@ -307,7 +289,7 @@ export default function Navbar() {
           personalApprovedCount,
           personalCertAlertCount,
         });
-        currentTotal = pendingCount + lowStock + expired + personalUpdateCount + personalCertAlertCount;
+        currentTotal = pendingCount + personalUpdateCount + personalCertAlertCount;
       } else {
         const countQuery = await applyPpeRequestUserFilter(
           supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).in('status', ['approved', 'rejected']),
@@ -352,30 +334,26 @@ export default function Navbar() {
 
         const approvedCount = rows.filter((req: any) => req.status === 'approved').length;
         const now = new Date();
+        const seenCertTriggers = JSON.parse(
+          localStorage.getItem(getCertTriggerStorageKey(user)) || '{}',
+        ) as SeenCertTriggers;
         const personalCertActions: CrewActionItem[] = (myCertsRes.data || [])
           .map((cert: any) => {
             const expiry = cert.expiry_date ? new Date(cert.expiry_date) : null;
             if (!expiry || cert.expiry_date === '2099-12-31') return null;
             const daysLeft = Math.floor((expiry.getTime() - now.getTime()) / 86400000);
-            if (daysLeft < 0) {
-              return {
-                id: `my-cert-expired-${cert.id}`,
-                status: 'expired-cert',
-                title: 'My certificate expired',
-                description: `${cert.cert_name || 'Certificate'} expired and needs renewal`,
-                href: '/certificates?tab=personal&personal=expired',
-              };
-            }
-            if (daysLeft <= 90) {
-              return {
-                id: `my-cert-warning-${cert.id}`,
-                status: 'warning-cert',
-                title: 'My certificate expires soon',
-                description: `${cert.cert_name || 'Certificate'} expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`,
-                href: '/certificates?tab=personal&personal=warning',
-              };
-            }
-            return null;
+            const trigger = getCertTrigger(daysLeft);
+            if (!trigger) return null;
+            const triggerKey = `${cert.id}:${trigger}`;
+            if (seenCertTriggers[triggerKey]) return null;
+            const certName = cert.cert_name || 'Certificate';
+            return {
+              id: triggerKey,
+              status: trigger === 'expired' ? 'expired-cert' : 'warning-cert',
+              title: trigger === 'expired' ? 'My certificate expired' : `My certificate ${trigger}-day alert`,
+              description: getCertTriggerText(certName, trigger, daysLeft),
+              href: `/certificates?tab=personal&personal=${trigger === 'expired' ? 'expired' : 'warning'}`,
+            };
           })
           .filter(Boolean)
           .slice(0, 4) as CrewActionItem[];
@@ -397,6 +375,10 @@ export default function Navbar() {
               icon: <CheckCircle2 className="text-emerald-500" />,
               description: `${firstItem}${moreLabel} is ready for you to receive in My Requests.`,
               duration: 10000,
+              action: {
+                label: 'Open',
+                onClick: () => router.push('/my-requests'),
+              },
             });
             playNotificationSound();
             showBrowserNotification(
@@ -412,6 +394,10 @@ export default function Navbar() {
               icon: <XCircle className="text-red-500" />,
               description: `${firstItem} needs your attention. Check My Requests for details.`,
               duration: 10000,
+              action: {
+                label: 'Open',
+                onClick: () => router.push('/my-requests'),
+              },
             });
             playNotificationSound();
             showBrowserNotification('Request Rejected', `${firstItem} needs your attention in My Requests.`);
@@ -490,6 +476,14 @@ export default function Navbar() {
       const total =
         notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0);
       localStorage.setItem('kmt_notif_seen', total.toString());
+      if ((notifData.personalCertActions || []).length > 0) {
+        const storageKey = getCertTriggerStorageKey(user);
+        const seen = JSON.parse(localStorage.getItem(storageKey) || '{}') as SeenCertTriggers;
+        for (const item of notifData.personalCertActions) {
+          seen[item.id] = true;
+        }
+        localStorage.setItem(storageKey, JSON.stringify(seen));
+      }
       setUnreadCount(0);
     }
   };
@@ -726,58 +720,6 @@ export default function Navbar() {
                         </div>
                       )}
 
-                      {(notifData.adminActions || []).length > 0 && (
-                        <div className="px-1 pt-3">
-                          <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                            System Alerts
-                          </p>
-                        </div>
-                      )}
-
-                      {(notifData.adminActions || []).map((item: AdminActionItem) => {
-                        const Icon = item.icon;
-                        const toneClassName =
-                          item.tone === 'amber'
-                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/20'
-                            : item.tone === 'red'
-                              ? 'bg-red-500/15 text-red-300 border-red-500/20'
-                              : 'bg-violet-500/15 text-violet-300 border-violet-500/20';
-
-                        const badgeClassName =
-                          item.tone === 'amber'
-                            ? 'bg-amber-400 text-black'
-                            : item.tone === 'red'
-                              ? 'bg-red-500 text-white'
-                              : 'bg-violet-500 text-white';
-
-                        return (
-                          <Link
-                            key={item.id}
-                            href={item.href}
-                            onClick={() => setShowNotif(false)}
-                            className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-white/5"
-                          >
-                            <div className="flex items-center gap-4 min-w-0">
-                              <div className={`p-2 rounded-xl border ${toneClassName}`}>
-                                <Icon size={16} />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                <p className="text-[9px] text-zinc-500 mt-1 normal-case">{item.description}</p>
-                                <p className="text-[9px] text-orange-400 mt-2 normal-case font-black">{item.meta}</p>
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-2 shrink-0">
-                              {item.countLabel && (
-                                <span className={`px-2 py-1 rounded-md text-[9px] font-black ${badgeClassName}`}>
-                                  {item.countLabel}
-                                </span>
-                              )}
-                              <ArrowRight size={14} className="text-zinc-600 group-hover:text-orange-400" />
-                            </div>
-                          </Link>
-                        );
-                      })}
                     </>
                   ) : (
                     <>

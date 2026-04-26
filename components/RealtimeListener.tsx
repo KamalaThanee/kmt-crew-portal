@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { matchesPpeRequestUser } from '@/lib/ppeRequests'
 import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
-import { BellRing, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
+import { BellRing, CheckCircle2, XCircle } from 'lucide-react'
 
 export function RealtimeListener() {
   useEffect(() => {
@@ -48,65 +48,72 @@ export function RealtimeListener() {
       })
     }
 
+    const goTo = (path: string) => {
+      window.location.href = path
+    }
+
     const userStr = localStorage.getItem('kmt_user')
-    if (!userStr) return;
+    if (!userStr) return
     const user = JSON.parse(userStr)
     const isAdmin = isAdminRole(user.position)
 
     const requestChannel = supabase.channel('ppe-requests')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ppe_requests' }, (payload) => {
-          if (isAdmin) {
-            toast('New Request Arrived!', { icon: <BellRing className="text-amber-500" />, description: 'Check Pending Approvals', duration: 8000 })
-            playNotificationSound()
-            bumpTitleBadge()
-            showBrowserNotification('New PPE Request', 'A new request is waiting for approval.')
-            window.dispatchEvent(new Event('new-notification'))
-          }
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ppe_requests' }, () => {
+        if (!isAdmin) return
+
+        toast('New Request Arrived!', {
+          icon: <BellRing className="text-amber-500" />,
+          description: 'Check Pending Approvals',
+          duration: 8000,
+          action: {
+            label: 'Open',
+            onClick: () => goTo('/admin/approvals'),
+          },
+        })
+        playNotificationSound()
+        bumpTitleBadge()
+        showBrowserNotification('New PPE Request', 'A new request is waiting for approval.')
+        window.dispatchEvent(new Event('new-notification'))
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ppe_requests' }, async (payload) => {
-          const isOwner = await matchesPpeRequestUser(payload.new, user)
-          if (!isOwner) return
+        const isOwner = await matchesPpeRequestUser(payload.new, user)
+        if (!isOwner) return
 
-          const newStatus = payload.new.status; const oldStatus = payload.old.status;
-          if (newStatus === 'approved' && oldStatus !== 'approved') {
-            toast.success('Request Approved!', { icon: <CheckCircle2 className="text-emerald-500"/>, description: 'Please confirm receiving in My Requests', duration: 10000 })
-            playNotificationSound()
-            bumpTitleBadge()
-            showBrowserNotification('Request Approved', 'Please confirm receiving in My Requests.')
-            window.dispatchEvent(new Event('new-notification'))
-          } else if (newStatus === 'rejected' && oldStatus !== 'rejected') {
-            toast.error('Request Rejected', { icon: <XCircle className="text-red-500"/>, description: 'Please contact admin' })
-            playNotificationSound()
-            bumpTitleBadge()
-            showBrowserNotification('Request Rejected', 'Please contact admin for details.')
-            window.dispatchEvent(new Event('new-notification'))
-          }
-      }).subscribe()
-
-    // 🎯 เพิ่มระบบดักฟัง Inventory (เตือนตอนของใกล้หมด)
-    const inventoryChannel = supabase.channel('ppe-inventory')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ppe_inventory' }, (payload) => {
-          if (isAdmin) {
-            const newQty = payload.new.quantity; const threshold = payload.new.threshold;
-            const oldQty = payload.old.quantity;
-            // ถ้าของเพิ่งลดลงจนถึงจุดวิกฤต (รอบก่อนยังไม่ถึง) ให้เด้งเตือน
-            if (newQty <= threshold && oldQty > threshold) {
-              toast.error('Low Stock Alert!', { 
-                icon: <AlertTriangle className="text-red-500 animate-pulse"/>, 
-                description: `${payload.new.item_name} has only ${newQty} left.`,
-                duration: 10000 
-              })
-              playNotificationSound()
-              bumpTitleBadge()
-              showBrowserNotification('Low Stock Alert', `${payload.new.item_name} has only ${newQty} left.`)
-            }
-          }
+        const newStatus = payload.new.status
+        const oldStatus = payload.old.status
+        if (newStatus === 'approved' && oldStatus !== 'approved') {
+          toast.success('Request Approved!', {
+            icon: <CheckCircle2 className="text-emerald-500"/>,
+            description: 'Please confirm receiving in My Requests',
+            duration: 10000,
+            action: {
+              label: 'Open',
+              onClick: () => goTo('/my-requests'),
+            },
+          })
+          playNotificationSound()
+          bumpTitleBadge()
+          showBrowserNotification('Request Approved', 'Please confirm receiving in My Requests.')
+          window.dispatchEvent(new Event('new-notification'))
+        } else if (newStatus === 'rejected' && oldStatus !== 'rejected') {
+          toast.error('Request Rejected', {
+            icon: <XCircle className="text-red-500"/>,
+            description: 'Please contact admin',
+            action: {
+              label: 'Open',
+              onClick: () => goTo('/my-requests'),
+            },
+          })
+          playNotificationSound()
+          bumpTitleBadge()
+          showBrowserNotification('Request Rejected', 'Please contact admin for details.')
+          window.dispatchEvent(new Event('new-notification'))
+        }
       }).subscribe()
 
     return () => {
       document.title = originalTitle
       supabase.removeChannel(requestChannel)
-      supabase.removeChannel(inventoryChannel)
     }
   }, [])
   return null
