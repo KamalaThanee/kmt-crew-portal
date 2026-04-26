@@ -19,30 +19,71 @@ function runWithOneSignal(callback: (OneSignal: any) => void) {
   window.OneSignalDeferred.push(callback);
 }
 
+function runWithOneSignalAsync<T>(callback: (OneSignal: any) => Promise<T>) {
+  return new Promise<T>((resolve, reject) => {
+    if (typeof window === "undefined" || !ONESIGNAL_APP_ID) {
+      reject(new Error("OneSignal is not configured"));
+      return;
+    }
+
+    const wrapped = async (OneSignal: any) => {
+      try {
+        resolve(await callback(OneSignal));
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    if (window.OneSignal) {
+      void wrapped(window.OneSignal);
+      return;
+    }
+
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    window.OneSignalDeferred.push(wrapped);
+  });
+}
+
 export function hasOneSignalConfigured() {
   return Boolean(ONESIGNAL_APP_ID);
 }
 
-export function requestOneSignalPermission() {
-  runWithOneSignal(async (OneSignal) => {
-    try {
-      const supported = await OneSignal.Notifications.isPushSupported();
-      if (!supported) return;
-
-      if (!OneSignal.Notifications.permission && OneSignal.Slidedown?.promptPush) {
-        await OneSignal.Slidedown.promptPush({ force: true });
-      }
-
-      if (!OneSignal.Notifications.permission) {
-        await OneSignal.Notifications.requestPermission();
-      }
-
-      if (OneSignal.Notifications.permission) {
-        await OneSignal.User.PushSubscription.optIn();
-      }
-    } catch {
-      // Ignore blocked or unsupported browsers during preview setup.
+export async function requestOneSignalPermission() {
+  return runWithOneSignalAsync(async (OneSignal) => {
+    const supported = OneSignal.Notifications.isPushSupported();
+    if (!supported) {
+      return {
+        supported: "false",
+        permission: "false",
+        optedIn: "false",
+        subscriptionId: "",
+        message: "This browser does not support web push.",
+      };
     }
+
+    await OneSignal.User.PushSubscription.optIn();
+
+    if (!OneSignal.Notifications.permission && OneSignal.Slidedown?.promptPush) {
+      await OneSignal.Slidedown.promptPush({ force: true });
+    }
+
+    if (!OneSignal.Notifications.permission) {
+      await OneSignal.Notifications.requestPermission();
+    }
+
+    if (OneSignal.Notifications.permission) {
+      await OneSignal.User.PushSubscription.optIn();
+    }
+
+    return {
+      supported: String(Boolean(supported)),
+      permission: String(Boolean(OneSignal.Notifications.permission)),
+      optedIn: String(Boolean(OneSignal.User.PushSubscription.optedIn)),
+      subscriptionId: String(OneSignal.User.PushSubscription.id || ""),
+      message: OneSignal.Notifications.permission
+        ? "Push notifications enabled."
+        : "Notification permission was not granted.",
+    };
   });
 }
 

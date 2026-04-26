@@ -76,6 +76,7 @@ export default function Navbar() {
   });
   const [unreadCount, setUnreadCount] = useState(0);
   const [oneSignalStatus, setOneSignalStatus] = useState<Record<string, string>>({});
+  const [pushActionMessage, setPushActionMessage] = useState('');
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -465,10 +466,20 @@ export default function Navbar() {
     setShowProfile(false);
 
     if (isOpening) {
-      requestOneSignalPermission();
-      window.setTimeout(() => {
-        getOneSignalStatus(setOneSignalStatus);
-      }, 1200);
+      requestOneSignalPermission()
+        .then((status) => {
+          setOneSignalStatus(status);
+          if (status.permission === 'true' && status.optedIn === 'true') {
+            toast.success('Push notifications enabled');
+          } else if (status.message) {
+            toast.message(status.message);
+          }
+        })
+        .catch((error) => {
+          const message = error?.message || 'Unable to request push permission';
+          setPushActionMessage(message);
+          toast.error(message);
+        });
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission().catch(() => undefined);
       }
@@ -831,13 +842,31 @@ export default function Navbar() {
                   <p className="mt-1 text-[9px] text-emerald-400 normal-case break-all">
                     push-debug: supported={oneSignalStatus.supported || '-'} | permission={oneSignalStatus.permission || '-'} | optedIn={oneSignalStatus.optedIn || '-'} | sub={oneSignalStatus.subscriptionId ? 'yes' : '-'}
                   </p>
+                  {pushActionMessage && (
+                    <p className="mt-1 text-[9px] text-red-300 normal-case break-words">
+                      push-message: {pushActionMessage}
+                    </p>
+                  )}
                 </div>
                 <div className="p-2 space-y-1">
                   {oneSignalStatus.optedIn !== 'true' && (
                     <button
-                      onClick={() => {
-                        requestOneSignalPermission();
-                        window.setTimeout(() => getOneSignalStatus(setOneSignalStatus), 1500);
+                      onClick={async () => {
+                        setPushActionMessage('Requesting permission...');
+                        try {
+                          const status = await requestOneSignalPermission();
+                          setOneSignalStatus(status);
+                          setPushActionMessage(status.message || '');
+                          if (status.permission === 'true' && status.optedIn === 'true') {
+                            toast.success('Push notifications enabled');
+                          } else {
+                            toast.message(status.message || 'Notification permission was not granted');
+                          }
+                        } catch (error: any) {
+                          const message = error?.message || 'Unable to request push permission';
+                          setPushActionMessage(message);
+                          toast.error(message);
+                        }
                       }}
                       className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-emerald-300 hover:text-white hover:bg-emerald-600/10 rounded-2xl transition-all uppercase tracking-widest"
                     >
