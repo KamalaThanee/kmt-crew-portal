@@ -56,11 +56,7 @@ async function sendOneSignal(externalIds: string[], headings: string, contents: 
   return data;
 }
 
-async function resolveCrewId(
-  supabaseAdmin: ReturnType<typeof createClient>,
-  crewId?: string,
-  crewName?: string,
-) {
+async function resolveCrewId(supabaseAdmin: any, crewId?: string, crewName?: string) {
   if (crewId) return String(crewId);
   if (!crewName) return null;
 
