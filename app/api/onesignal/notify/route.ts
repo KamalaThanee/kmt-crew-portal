@@ -70,7 +70,8 @@ async function resolveCrewId(
     .eq("full_name", crewName)
     .maybeSingle();
 
-  return data?.id ? String(data.id) : null;
+  const crewRow = data as { id?: string } | null;
+  return crewRow?.id ? String(crewRow.id) : null;
 }
 
 function normalizeRole(value: unknown) {
