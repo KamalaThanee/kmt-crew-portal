@@ -77,6 +77,7 @@ export default function Navbar() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [oneSignalStatus, setOneSignalStatus] = useState<Record<string, string>>({});
   const [pushActionMessage, setPushActionMessage] = useState('');
+  const [showPushNudge, setShowPushNudge] = useState(false);
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -142,6 +143,22 @@ export default function Navbar() {
       setUser(null);
     }
   }, [pathname]);
+
+  useEffect(() => {
+    if (!mounted || !user?.id) return;
+
+    const dismissedKey = `kmt_push_nudge_dismissed_${user.id}`;
+    if (localStorage.getItem(dismissedKey) === 'true') return;
+
+    const timeout = window.setTimeout(() => {
+      getOneSignalStatus((status) => {
+        setOneSignalStatus(status);
+        setShowPushNudge(status.optedIn !== 'true');
+      });
+    }, 2500);
+
+    return () => window.clearTimeout(timeout);
+  }, [mounted, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -483,6 +500,56 @@ export default function Navbar() {
 
   return (
     <>
+      {showPushNudge && (
+        <div className="fixed top-20 left-1/2 z-[120] w-[92%] max-w-md -translate-x-1/2 rounded-2xl border border-emerald-500/20 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-xl">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-emerald-500/10 p-2 text-emerald-300">
+              <Bell size={18} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black uppercase tracking-widest text-white">Enable push notifications</p>
+              <p className="mt-1 text-[10px] leading-relaxed text-zinc-400 normal-case">
+                Get alerts when PPE requests need action or your request is updated.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={async () => {
+                    setPushActionMessage('Requesting permission...');
+                    try {
+                      const status = await requestOneSignalPermission();
+                      setOneSignalStatus(status);
+                      setPushActionMessage(status.message || '');
+                      if (status.optedIn === 'true') {
+                        setShowPushNudge(false);
+                        toast.success('Push notifications enabled');
+                      } else {
+                        toast.message(status.message || 'Notification permission was not granted');
+                      }
+                    } catch (error: any) {
+                      const message = error?.message || 'Unable to request push permission';
+                      setPushActionMessage(message);
+                      toast.error(message);
+                    }
+                  }}
+                  className="rounded-xl bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black"
+                >
+                  Enable
+                </button>
+                <button
+                  onClick={() => {
+                    localStorage.setItem(`kmt_push_nudge_dismissed_${user.id}`, 'true');
+                    setShowPushNudge(false);
+                  }}
+                  className="rounded-xl bg-white/5 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-zinc-400"
+                >
+                  Later
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <nav className="fixed top-4 left-1/2 -translate-x-1/2 w-[94%] max-w-6xl h-14 bg-black/80 backdrop-blur-xl border border-orange-500/20 rounded-2xl z-[100] px-4 flex items-center justify-between shadow-2xl">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => router.push(isAdmin ? '/admin/dashboard' : '/dashboard')}>

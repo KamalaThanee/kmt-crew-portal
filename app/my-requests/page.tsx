@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
+import { notifyOneSignal } from '@/lib/onesignalClient'
 import { toast } from 'sonner'
 import { PackageCheck, CheckCircle2, Clock, XCircle, ChevronDown, MessageCircle, ArrowRight, Loader2 } from 'lucide-react'
 
@@ -70,6 +71,16 @@ export default function MyRequests() {
       }).eq('id', req.id);
 
       if (error) throw error;
+      const pushResult = await notifyOneSignal({
+        type: 'received',
+        requestId: req.id,
+        crewId: req.crew_id,
+        crewName: req.crew_name || req.requester_name || req.full_name,
+        itemName: req.items?.[0]?.item_name || 'PPE request',
+      })
+      if (!pushResult?.ok || pushResult?.data?.skipped) {
+        toast.warning(`Push not sent: ${pushResult?.error || pushResult?.data?.reason || 'check OneSignal logs'}`)
+      }
       toast.success('ยืนยันการรับสำเร็จ สต๊อกถูกตัดแล้ว');
       fetchRequests();
     } catch (e) {

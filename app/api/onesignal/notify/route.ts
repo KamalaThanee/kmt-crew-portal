@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 type NotifyPayload = {
-  type?: "new_request" | "approved" | "rejected";
+  type?: "new_request" | "approved" | "rejected" | "received";
   requestId?: string;
   crewId?: string;
   crewName?: string;
@@ -111,7 +111,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (payload.type === "new_request") {
+    if (payload.type === "new_request" || payload.type === "received") {
       const { data: crews, error } = await supabaseAdmin
         .from("crews")
         .select("id, position");
@@ -122,11 +122,18 @@ export async function POST(request: Request) {
         .filter((crew: any) => adminRoles.includes(normalizeRole(crew.position)))
         .map((crew: any) => String(crew.id))
         .filter(Boolean);
-      const title = "New PPE request";
-      const body = `${payload.crewName || "A crew member"} requested ${payload.itemName || "PPE"}.`;
+      const isReceived = payload.type === "received";
+      const title = isReceived ? "PPE transaction completed" : "New PPE request";
+      const body = isReceived
+        ? `${payload.crewName || "A crew member"} received ${payload.itemName || "PPE"}.`
+        : `${payload.crewName || "A crew member"} requested ${payload.itemName || "PPE"}.`;
       const url = payload.requestId
-        ? `${baseUrl}/admin/approvals?request=${payload.requestId}`
-        : `${baseUrl}/admin/approvals`;
+        ? isReceived
+          ? `${baseUrl}/admin/history?request=${payload.requestId}`
+          : `${baseUrl}/admin/approvals?request=${payload.requestId}`
+        : isReceived
+          ? `${baseUrl}/admin/history`
+          : `${baseUrl}/admin/approvals`;
 
       const data = await sendOneSignal(externalIds, title, body, url);
       return NextResponse.json({ ok: true, target: "admins", targetCount: externalIds.length, data });

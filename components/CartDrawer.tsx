@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter, insertPpeRequest } from '@/lib/ppeRequests';
 import { notifyOneSignal } from '@/lib/onesignalClient';
+import { isAdminRole } from '@/lib/roles';
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 
@@ -27,7 +28,7 @@ export default function CartDrawer() {
     setUser(u);
     setCartItems(JSON.parse(localStorage.getItem('kmt_cart') || '[]'));
 
-    if (["safety officer", "chief officer", "barge master"].includes(u.position.toLowerCase())) {
+    if (isAdminRole(u.position)) {
       const { data } = await supabase.from('crews').select('*').order('full_name');
       if (data) setCrews(data);
     }
@@ -117,6 +118,8 @@ export default function CartDrawer() {
     return { count, lastDate };
   };
 
+  const isAdmin = isAdminRole(user?.position);
+
   const handleCheckout = async () => {
     if (cartItems.length === 0 || personalViolation) return;
     if (onBehalf && !targetCrewId) return toast.error("โปรดเลือกพนักงานที่ต้องการเบิกแทน");
@@ -179,7 +182,7 @@ export default function CartDrawer() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
-          {user && ["safety officer", "chief officer", "barge master"].includes(user.position.toLowerCase()) && (
+          {user && isAdmin && (
              <div className={`p-5 rounded-[32px] border transition-all ${onBehalf ? 'bg-orange-500 border-orange-400' : 'bg-zinc-900 border-white/5 shadow-xl'}`}>
                 <div className="flex items-center justify-between">
                    <div className={`flex items-center gap-2 font-black text-[10px] uppercase tracking-widest ${onBehalf ? 'text-black' : 'text-orange-500'}`}><Users size={16}/> Direct Issue Mode</div>
