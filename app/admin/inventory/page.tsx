@@ -237,13 +237,16 @@ function InventoryContent() {
     if (!receiptUrl) return toast.error('No DO file attached')
 
     const getStorageFileRef = (value: string) => {
-      const directPath = value.match(/^(receipts|do-files)\/(.+)$/)
-      if (directPath) return { bucket: directPath[1], path: directPath[2] }
+      const directPath = value.match(/^receipts\/(.+)$/)
+      if (directPath) return { bucket: DO_BUCKET, path: directPath[1] }
+
+      const legacyDoFilesPath = value.match(/^do-files\/(.+)$/)
+      if (legacyDoFilesPath) return null
 
       try {
         const url = new URL(value)
-        const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/(receipts|do-files)\/(.+)$/)
-        return match?.[1] && match?.[2] ? { bucket: match[1], path: decodeURIComponent(match[2]) } : null
+        const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/receipts\/(.+)$/)
+        return match?.[1] ? { bucket: DO_BUCKET, path: decodeURIComponent(match[1]) } : null
       } catch {
         return null
       }
@@ -264,7 +267,7 @@ function InventoryContent() {
       return
     }
 
-    window.open(receiptUrl, '_blank', 'noopener,noreferrer')
+    return toast.error('This DO file link points to an old bucket. Please upload the DO again into receipts.')
   }
 
   const filteredInventoryGrouped = useMemo(() => {

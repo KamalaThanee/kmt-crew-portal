@@ -8,10 +8,6 @@ insert into storage.buckets (id, name, public)
 values ('receipts', 'receipts', true)
 on conflict (id) do nothing;
 
-insert into storage.buckets (id, name, public)
-values ('do-files', 'do-files', false)
-on conflict (id) do nothing;
-
 alter table public.restock_history enable row level security;
 
 drop policy if exists "Allow read restock history" on public.restock_history;
@@ -39,20 +35,20 @@ drop policy if exists "Allow read DO files" on storage.objects;
 create policy "Allow read DO files"
 on storage.objects
 for select
-using (bucket_id in ('receipts', 'do-files'));
+using (bucket_id = 'receipts');
 
 drop policy if exists "Allow upload DO files" on storage.objects;
 create policy "Allow upload DO files"
 on storage.objects
 for insert
-with check (bucket_id in ('receipts', 'do-files'));
+with check (bucket_id = 'receipts');
 
 drop policy if exists "Allow update DO files" on storage.objects;
 create policy "Allow update DO files"
 on storage.objects
 for update
-using (bucket_id in ('receipts', 'do-files'))
-with check (bucket_id in ('receipts', 'do-files'));
+using (bucket_id = 'receipts')
+with check (bucket_id = 'receipts');
 
 create index if not exists idx_restock_history_batch_id
   on public.restock_history (batch_id);
