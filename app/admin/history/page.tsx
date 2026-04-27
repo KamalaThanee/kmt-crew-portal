@@ -76,6 +76,21 @@ const HISTORY_COLUMNS = [
   'reason',
   'items',
 ].join(',')
+const LEGACY_HISTORY_COLUMNS = [
+  'id',
+  'created_at',
+  'received_at',
+  'status',
+  'approved_by',
+  'crew_id',
+  'crew_name',
+  'requester_name',
+  'full_name',
+  'admin_remark',
+  'rejection_reason',
+  'reason',
+  'items',
+].join(',')
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-'
@@ -297,12 +312,10 @@ export default function AdminHistoryPage() {
 
     let active = true
 
-    const fetchRows = async () => {
-      setIsFetchingRows(true)
-
+    const buildHistoryQuery = (columns: string) => {
       let query = supabase
         .from('ppe_requests')
-        .select(HISTORY_COLUMNS, { count: 'exact' })
+        .select(columns, { count: 'exact' })
         .order('created_at', { ascending: false })
 
       if (statusFilter !== 'all') query = query.eq('status', statusFilter)
@@ -324,7 +337,27 @@ export default function AdminHistoryPage() {
 
       const from = page * PAGE_SIZE
       const to = from + PAGE_SIZE - 1
-      const result = await query.range(from, to)
+      return query.range(from, to)
+    }
+
+    const isMissingHistoryColumn = (error: unknown) => {
+      const message = String((error as { message?: string })?.message || '').toLowerCase()
+      return (
+        message.includes('column') &&
+        (message.includes('approved_at') ||
+          message.includes('rejected_at') ||
+          message.includes('approved_by_name') ||
+          message.includes('schema cache'))
+      )
+    }
+
+    const fetchRows = async () => {
+      setIsFetchingRows(true)
+
+      let result = await buildHistoryQuery(HISTORY_COLUMNS)
+      if (result.error && isMissingHistoryColumn(result.error)) {
+        result = await buildHistoryQuery(LEGACY_HISTORY_COLUMNS)
+      }
 
       if (!active) return
       if (result.error) {
