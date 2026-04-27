@@ -156,7 +156,7 @@ export default function AdminDashboard() {
                  <div><p className="text-sm font-black uppercase text-white truncate">{vessel.lastRestockDate}</p><p className="text-emerald-500 uppercase text-[8px]">Last Intake History</p></div>
               </Link>
 
-              <Link href="/admin/settings?tab=crews" className="col-span-2 md:col-span-4 bg-zinc-900/40 border border-purple-500/20 p-8 rounded-[40px] flex flex-col md:flex-row items-center justify-between shadow-2xl hover:border-purple-500 transition-all gap-6">
+              <Link href="/certificates?tab=crew&filter=action" className="col-span-2 md:col-span-4 bg-zinc-900/40 border border-purple-500/20 p-8 rounded-[40px] flex flex-col md:flex-row items-center justify-between shadow-2xl hover:border-purple-500 transition-all gap-6">
                  <div className="flex items-center gap-6">
                     <div className="w-20 h-20 bg-purple-500/10 rounded-[32px] flex items-center justify-center text-purple-500 font-black text-2xl border border-purple-500/20 shadow-inner">{vessel.compliance}%</div>
                     <div><p className="text-xl font-black text-white italic uppercase">Fleet Readiness</p><p className="text-zinc-500 mt-1 uppercase text-[8px]">Overall Certificate Compliance</p></div>
