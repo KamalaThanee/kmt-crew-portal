@@ -283,6 +283,18 @@ export default function AdminHistoryPage() {
   }, [searchCrew, searchItem, statusFilter, monthFilter, yearFilter])
 
   useEffect(() => {
+    const previousGutter = document.documentElement.style.scrollbarGutter
+    const previousOverflowY = document.body.style.overflowY
+    document.documentElement.style.scrollbarGutter = 'stable'
+    document.body.style.overflowY = 'scroll'
+
+    return () => {
+      document.documentElement.style.scrollbarGutter = previousGutter
+      document.body.style.overflowY = previousOverflowY
+    }
+  }, [])
+
+  useEffect(() => {
     const userStr = localStorage.getItem('kmt_user')
     if (!userStr) {
       router.replace('/login')
@@ -513,7 +525,7 @@ export default function AdminHistoryPage() {
   const cardActiveClass = (targetStatus: string) =>
     statusFilter === targetStatus
       ? 'ring-2 ring-white/30'
-      : 'hover:-translate-y-0.5 hover:border-white/30'
+      : 'hover:border-white/30'
 
   if (loading) {
     return (
