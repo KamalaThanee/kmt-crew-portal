@@ -164,3 +164,46 @@ update public.ppe_requests
 set rejected_at = coalesce(rejected_at, created_at)
 where status = 'rejected'
   and rejected_at is null;
+
+insert into public.ppe_stock_transactions (
+  inventory_id,
+  request_id,
+  item_name,
+  color,
+  size,
+  quantity_delta,
+  movement_type,
+  actor_name,
+  crew_name,
+  note,
+  created_at
+)
+select
+  item_record.value ->> 'id' as inventory_id,
+  pr.id as request_id,
+  coalesce(inv.item_name, item_record.value ->> 'item_name') as item_name,
+  coalesce(inv.color, item_record.value ->> 'color') as color,
+  coalesce(inv.size, item_record.value ->> 'size') as size,
+  -1 as quantity_delta,
+  case
+    when coalesce(pr.received_at, pr.created_at) = pr.created_at and pr.status = 'received' then 'direct_issue'
+    else 'receive'
+  end as movement_type,
+  coalesce(pr.approved_by_name, 'Historical import') as actor_name,
+  coalesce(pr.crew_name, pr.requester_name, pr.full_name) as crew_name,
+  'Backfilled from received PPE request' as note,
+  coalesce(pr.received_at, pr.created_at) as created_at
+from public.ppe_requests pr
+cross join lateral jsonb_array_elements(pr.items) as item_record(value)
+left join public.ppe_inventory inv
+  on inv.id::text = item_record.value ->> 'id'
+where pr.status = 'received'
+  and pr.items is not null
+  and jsonb_typeof(pr.items) = 'array'
+  and not exists (
+    select 1
+    from public.ppe_stock_transactions tx
+    where tx.request_id = pr.id
+      and coalesce(tx.inventory_id, '') = coalesce(item_record.value ->> 'id', '')
+      and tx.quantity_delta = -1
+  );

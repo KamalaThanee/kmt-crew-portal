@@ -419,8 +419,16 @@ function InventoryContent() {
               ) : (
                 <div className="space-y-4 pb-20 max-w-5xl mx-auto animate-in fade-in">
                   <div className="rounded-[32px] border border-blue-500/20 bg-blue-500/10 p-6">
-                    <p className="text-blue-300 text-[10px] tracking-[0.25em] uppercase">Stock Movement Audit</p>
-                    <p className="mt-2 text-sm normal-case text-zinc-300">Latest {stockTransactions.length} stock deductions from received requests and direct issue.</p>
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-blue-300 text-[10px] tracking-[0.25em] uppercase">Stock Movement Audit</p>
+                        <p className="mt-2 text-sm normal-case text-zinc-300">Latest {stockTransactions.length} stock deductions from received requests and direct issue.</p>
+                        <p className="mt-1 text-[11px] normal-case text-zinc-500">If this is empty after deploy, rerun sql/ppe_stock_transactions.sql once to backfill old received requests.</p>
+                      </div>
+                      <button onClick={fetchData} className="rounded-2xl border border-blue-400/30 bg-blue-500/10 px-5 py-3 text-[10px] font-black text-blue-200 transition-all hover:bg-blue-500 hover:text-white">
+                        Refresh Log
+                      </button>
+                    </div>
                   </div>
                   {stockTransactions.length === 0 ? (
                     <div className="rounded-[40px] border border-white/5 bg-black/40 p-12 text-center text-zinc-600 font-black tracking-widest">
