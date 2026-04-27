@@ -300,7 +300,16 @@ function CertificatesContent() {
       view.setUint16(20, 0, true)
     })
 
-    return new Blob([...chunks, ...centralChunks, endHeader], { type: 'application/zip' })
+    const allChunks = [...chunks, ...centralChunks, endHeader]
+    const totalLength = allChunks.reduce((sum, chunk) => sum + chunk.length, 0)
+    const zipBytes = new Uint8Array(totalLength)
+    let cursor = 0
+    allChunks.forEach((chunk) => {
+      zipBytes.set(chunk, cursor)
+      cursor += chunk.length
+    })
+
+    return new Blob([zipBytes.buffer], { type: 'application/zip' })
   }
 
   const handleDownloadFilteredCertificates = async () => {
