@@ -333,7 +333,7 @@ export default function AdminHistoryPage() {
         setRows([])
         setRowCount(0)
       } else {
-        setRows((result.data || []) as HistoryRow[])
+        setRows(((result.data || []) as unknown) as HistoryRow[])
         setRowCount(result.count || 0)
       }
 
