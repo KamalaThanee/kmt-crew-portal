@@ -4,6 +4,7 @@ import { ShoppingCart, X, Trash2, PackageCheck, Save, Users, ShieldAlert, AlertT
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter, insertPpeRequest } from '@/lib/ppeRequests';
+import { deductPpeStock } from '@/lib/ppeStock';
 import { notifyOneSignal } from '@/lib/onesignalClient';
 import { isAdminRole } from '@/lib/roles';
 
@@ -166,10 +167,7 @@ export default function CartDrawer() {
       }
 
       if (isDirect) {
-        for (const item of cartItems) {
-          const { data: inv } = await supabase.from('ppe_inventory').select('quantity').eq('id', item.id).single();
-          if (inv) await supabase.from('ppe_inventory').update({ quantity: Math.max(0, inv.quantity - 1) }).eq('id', item.id);
-        }
+        await deductPpeStock(cartItems);
       }
 
       localStorage.setItem('kmt_cart', '[]');

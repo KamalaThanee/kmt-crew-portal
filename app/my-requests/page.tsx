@@ -1,10 +1,11 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
+import { receivePpeRequest } from '@/lib/ppeStock'
 import { notifyOneSignal } from '@/lib/onesignalClient'
 import { toast } from 'sonner'
-import { PackageCheck, CheckCircle2, Clock, XCircle, ChevronDown, MessageCircle, ArrowRight, Loader2 } from 'lucide-react'
+import { PackageCheck, CheckCircle2, XCircle, ChevronDown, Loader2 } from 'lucide-react'
 
 export default function MyRequests() {
   const [requests, setRequests] = useState<any[]>([])
@@ -34,9 +35,7 @@ export default function MyRequests() {
   useEffect(() => {
     const handleRefresh = () => fetchRequests()
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        fetchRequests()
-      }
+      if (document.visibilityState === 'visible') fetchRequests()
     }
 
     const interval = window.setInterval(fetchRequests, 15000)
@@ -53,24 +52,10 @@ export default function MyRequests() {
   }, [])
 
   const handleReceive = async (req: any) => {
-    if (!confirm("คุณได้รับอุปกรณ์ถูกต้องครบถ้วนแล้วใช่หรือไม่? ระบบจะทำการอัปเดตสต๊อกทันที")) return;
-    setIsProcessing(true);
+    if (!confirm('Confirm this PPE has been received? Stock will be deducted immediately.')) return
+    setIsProcessing(true)
     try {
-      // 🎯 1. วนลูปตัดสต๊อกทีละชิ้นตามรายการใน JSONB
-      for (const item of req.items) {
-        const { data: inv } = await supabase.from('ppe_inventory').select('quantity').eq('id', item.id).single();
-        if (inv) {
-          await supabase.from('ppe_inventory').update({ quantity: Math.max(0, inv.quantity - 1) }).eq('id', item.id);
-        }
-      }
-
-      // 🎯 2. อัปเดตสถานะเป็น 'received'
-      const { error } = await supabase.from('ppe_requests').update({ 
-        status: 'received', 
-        received_at: new Date().toISOString() 
-      }).eq('id', req.id);
-
-      if (error) throw error;
+      await receivePpeRequest(req)
       const pushResult = await notifyOneSignal({
         type: 'received',
         requestId: req.id,
@@ -81,12 +66,12 @@ export default function MyRequests() {
       if (!pushResult?.ok || pushResult?.data?.skipped) {
         toast.warning(`Push not sent: ${pushResult?.error || pushResult?.data?.reason || 'check OneSignal logs'}`)
       }
-      toast.success('ยืนยันการรับสำเร็จ สต๊อกถูกตัดแล้ว');
-      fetchRequests();
-    } catch (e) {
-      toast.error('เกิดข้อผิดพลาดในการอัปเดต');
+      toast.success('Received confirmed. Stock updated.')
+      fetchRequests()
+    } catch (error: any) {
+      toast.error(error?.message || 'Unable to confirm received')
     } finally {
-      setIsProcessing(false);
+      setIsProcessing(false)
     }
   }
 
@@ -132,7 +117,6 @@ export default function MyRequests() {
                    ))}
                 </div>
 
-                {/* 🎯 แสดงเหตุผลถ้าโดน Reject */}
                 {req.status === 'rejected' && req.admin_remark && (
                   <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl text-red-400">
                     <p className="text-[7px] font-black mb-1 flex items-center gap-1"><XCircle size={10}/> ADMIN REMARK:</p>
@@ -140,7 +124,6 @@ export default function MyRequests() {
                   </div>
                 )}
 
-                {/* 🎯 ปุ่ม Confirm Received สำหรับใบที่ Approved */}
                 {req.status === 'approved' && (
                    <button onClick={() => handleReceive(req)} disabled={isProcessing} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all">
                      {isProcessing ? <Loader2 className="animate-spin" size={16}/> : <CheckCircle2 size={16}/>} Confirm Received & Cut Stock
