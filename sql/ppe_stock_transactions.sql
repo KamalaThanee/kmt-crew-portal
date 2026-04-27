@@ -1,9 +1,39 @@
+create extension if not exists pgcrypto;
+
 alter table public.ppe_requests
   add column if not exists approved_at timestamptz,
   add column if not exists rejected_at timestamptz,
   add column if not exists approved_by_name text;
 
-create or replace function public.deduct_ppe_stock(p_items jsonb)
+create table if not exists public.ppe_stock_transactions (
+  id uuid primary key default gen_random_uuid(),
+  inventory_id text,
+  request_id uuid,
+  item_name text,
+  color text,
+  size text,
+  quantity_delta integer not null,
+  movement_type text not null default 'issue',
+  actor_name text,
+  crew_name text,
+  note text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ppe_stock_transactions_created_at
+  on public.ppe_stock_transactions (created_at desc);
+
+create index if not exists idx_ppe_stock_transactions_inventory_id
+  on public.ppe_stock_transactions (inventory_id);
+
+create or replace function public.deduct_ppe_stock(
+  p_items jsonb,
+  p_request_id uuid default null,
+  p_actor_name text default null,
+  p_crew_name text default null,
+  p_movement_type text default 'issue',
+  p_note text default null
+)
 returns void
 language plpgsql
 security definer
@@ -12,6 +42,7 @@ as $$
 declare
   item_record jsonb;
   item_id text;
+  inventory_row public.ppe_inventory%rowtype;
 begin
   if p_items is null or jsonb_typeof(p_items) <> 'array' then
     return;
@@ -24,14 +55,53 @@ begin
       continue;
     end if;
 
+    select *
+    into inventory_row
+    from public.ppe_inventory
+    where id::text = item_id
+    for update;
+
+    if not found then
+      continue;
+    end if;
+
     update public.ppe_inventory
     set quantity = greatest(0, coalesce(quantity, 0) - 1)
     where id::text = item_id;
+
+    insert into public.ppe_stock_transactions (
+      inventory_id,
+      request_id,
+      item_name,
+      color,
+      size,
+      quantity_delta,
+      movement_type,
+      actor_name,
+      crew_name,
+      note
+    )
+    values (
+      item_id,
+      p_request_id,
+      coalesce(inventory_row.item_name, item_record ->> 'item_name'),
+      coalesce(inventory_row.color, item_record ->> 'color'),
+      coalesce(inventory_row.size, item_record ->> 'size'),
+      -1,
+      coalesce(nullif(p_movement_type, ''), 'issue'),
+      p_actor_name,
+      p_crew_name,
+      p_note
+    );
   end loop;
 end;
 $$;
 
-create or replace function public.receive_ppe_request(p_request_id uuid)
+create or replace function public.receive_ppe_request(
+  p_request_id uuid,
+  p_actor_name text default null,
+  p_crew_name text default null
+)
 returns void
 language plpgsql
 security definer
@@ -58,7 +128,14 @@ begin
     raise exception 'Only approved PPE requests can be received. Current status: %', request_row.status;
   end if;
 
-  perform public.deduct_ppe_stock(request_row.items);
+  perform public.deduct_ppe_stock(
+    request_row.items,
+    p_request_id,
+    p_actor_name,
+    p_crew_name,
+    'receive',
+    'Crew confirmed received'
+  );
 
   update public.ppe_requests
   set status = 'received',
@@ -67,8 +144,9 @@ begin
 end;
 $$;
 
-grant execute on function public.deduct_ppe_stock(jsonb) to anon, authenticated;
-grant execute on function public.receive_ppe_request(uuid) to anon, authenticated;
+grant select, insert on public.ppe_stock_transactions to anon, authenticated;
+grant execute on function public.deduct_ppe_stock(jsonb, uuid, text, text, text, text) to anon, authenticated;
+grant execute on function public.receive_ppe_request(uuid, text, text) to anon, authenticated;
 
 update public.ppe_requests as pr
 set approved_by_name = c.full_name

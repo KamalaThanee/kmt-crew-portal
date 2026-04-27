@@ -50,6 +50,7 @@ function InventoryContent() {
   const router = useRouter()
   const [inventory, setInventory] = useState<any[]>([])
   const [history, setHistory] = useState<any[]>([])
+  const [stockTransactions, setStockTransactions] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCats, setSelectedCats] = useState<string[]>([])
   const [showLowStock, setShowLowStock] = useState(false)
@@ -59,7 +60,7 @@ function InventoryContent() {
   const [editingItem, setEditingItem] = useState<any>(null)
   const [isItemModalOpen, setIsItemModalOpen] = useState(false)
   const [isRestockModalOpen, setIsRestockModalOpen] = useState(false)
-  const [restockView, setRestockView] = useState<'entry' | 'history'>('entry')
+  const [restockView, setRestockView] = useState<'entry' | 'history' | 'issue-log'>('entry')
 
   const [restockEntries, setRestockEntries] = useState([{ id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }])
   const [doFile, setDoFile] = useState<File | null>(null)
@@ -75,6 +76,15 @@ function InventoryContent() {
     }
     const { data: hist } = await supabase.from('restock_history').select('*').order('created_at', { ascending: false })
     if (hist) setHistory(hist)
+    const { data: movements, error: movementsError } = await supabase
+      .from('ppe_stock_transactions')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (movements) setStockTransactions(movements)
+    if (movementsError) {
+      console.warn('Stock movement log is not ready yet:', movementsError.message)
+    }
     setLoading(false)
   }
 
@@ -347,7 +357,7 @@ function InventoryContent() {
         <div className="fixed inset-0 z-[2000] bg-black/98 flex items-center justify-center p-4 md:p-6 backdrop-blur-3xl animate-in zoom-in duration-300">
           <div className="bg-zinc-900 border border-emerald-500/30 rounded-[56px] w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
             <div className="flex justify-between items-center border-b border-white/5 p-10 shrink-0">
-               <div><h2 className="text-4xl font-black italic uppercase tracking-tighter text-emerald-500 flex items-center gap-4"><Archive size={36}/> Receive Shipment</h2><div className="flex gap-2 mt-6 bg-black/60 p-1.5 rounded-[20px] w-fit"><button onClick={() => setRestockView('entry')} className={`px-10 py-3 rounded-2xl text-xs font-black uppercase transition-all ${restockView === 'entry' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'text-zinc-600'}`}>New Entry</button><button onClick={() => setRestockView('history')} className={`px-10 py-3 rounded-2xl text-xs font-black uppercase transition-all ${restockView === 'history' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'text-zinc-600'}`}>History</button></div></div>
+               <div><h2 className="text-4xl font-black italic uppercase tracking-tighter text-emerald-500 flex items-center gap-4"><Archive size={36}/> Receive Shipment</h2><div className="flex flex-wrap gap-2 mt-6 bg-black/60 p-1.5 rounded-[20px] w-fit"><button onClick={() => setRestockView('entry')} className={`px-8 py-3 rounded-2xl text-xs font-black uppercase transition-all ${restockView === 'entry' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'text-zinc-600'}`}>New Entry</button><button onClick={() => setRestockView('history')} className={`px-8 py-3 rounded-2xl text-xs font-black uppercase transition-all ${restockView === 'history' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'text-zinc-600'}`}>Restock History</button><button onClick={() => setRestockView('issue-log')} className={`px-8 py-3 rounded-2xl text-xs font-black uppercase transition-all ${restockView === 'issue-log' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-zinc-600'}`}>Issue Log</button></div></div>
                <button onClick={() => { setIsRestockModalOpen(false); router.push('/admin/inventory'); }} className="p-4 bg-white/5 rounded-full hover:bg-red-500 text-white transition-all self-start shadow-xl"><X size={32}/></button>
             </div>
             <div className="overflow-y-auto p-10 flex-1 no-scrollbar pb-20">
@@ -397,12 +407,50 @@ function InventoryContent() {
                     <button onClick={handleRestockSubmit} disabled={isProcessingRestock} className="w-full h-32 bg-emerald-600 hover:bg-emerald-500 text-white rounded-[40px] font-black uppercase shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-4">{isProcessingRestock ? <Loader2 className="animate-spin" size={32}/> : <Save size={32}/>} Confirm Intake</button>
                   </div>
                 </div>
-              ) : (
+              ) : restockView === 'history' ? (
                 <div className="space-y-6 pb-20 max-w-4xl mx-auto">
                   {history.map(h => (
                     <div key={h.id} className="bg-black/40 border border-white/5 p-8 rounded-[40px] flex justify-between items-center group shadow-xl">
                       <div className="flex items-center gap-8"><a href={h.receipt_url} target="_blank" rel="noopener noreferrer" className="p-5 bg-emerald-500/10 text-emerald-500 rounded-[24px] hover:bg-emerald-500 hover:text-white transition-all"><FileText size={32}/></a><div><p className="text-white font-black text-lg uppercase italic">{h.item_name}</p><div className="flex gap-6 mt-2 text-zinc-600 font-bold uppercase text-[10px] tracking-widest"><span>{new Date(h.created_at).toLocaleString()}</span><span>By: {h.added_by}</span></div></div></div>
                       <div className="text-right"><p className="text-emerald-500 font-black text-2xl">+{h.quantity_added}</p></div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4 pb-20 max-w-5xl mx-auto animate-in fade-in">
+                  <div className="rounded-[32px] border border-blue-500/20 bg-blue-500/10 p-6">
+                    <p className="text-blue-300 text-[10px] tracking-[0.25em] uppercase">Stock Movement Audit</p>
+                    <p className="mt-2 text-sm normal-case text-zinc-300">Latest {stockTransactions.length} stock deductions from received requests and direct issue.</p>
+                  </div>
+                  {stockTransactions.length === 0 ? (
+                    <div className="rounded-[40px] border border-white/5 bg-black/40 p-12 text-center text-zinc-600 font-black tracking-widest">
+                      No issue transactions yet
+                    </div>
+                  ) : stockTransactions.map((movement) => (
+                    <div key={movement.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-5 rounded-[32px] border border-white/5 bg-black/40 p-6 shadow-xl">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className={`rounded-full px-3 py-1 text-[8px] font-black tracking-widest ${movement.movement_type === 'direct_issue' ? 'bg-orange-500/20 text-orange-300' : 'bg-blue-500/20 text-blue-300'}`}>
+                            {String(movement.movement_type || 'issue').replace(/_/g, ' ')}
+                          </span>
+                          <span className="text-zinc-600 text-[10px]">{new Date(movement.created_at).toLocaleString()}</span>
+                        </div>
+                        <p className="text-white text-base font-black italic uppercase">
+                          {movement.item_name || 'Unknown Item'}
+                          <span className="ml-2 text-blue-300 text-xs not-italic">{[movement.color, movement.size].filter(Boolean).join(' | ')}</span>
+                        </p>
+                        <p className="text-zinc-400 normal-case text-xs">
+                          Crew: <span className="text-white font-black">{movement.crew_name || '-'}</span>
+                          <span className="mx-2 text-zinc-700">|</span>
+                          By: <span className="text-white font-black">{movement.actor_name || '-'}</span>
+                        </p>
+                        {movement.note && <p className="text-[11px] normal-case text-zinc-600">{movement.note}</p>}
+                      </div>
+                      <div className="flex items-center justify-end">
+                        <span className="rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-3 text-xl font-black text-red-400">
+                          {movement.quantity_delta}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>

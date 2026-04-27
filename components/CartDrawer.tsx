@@ -186,7 +186,13 @@ export default function CartDrawer() {
       }
 
       if (isDirect) {
-        await deductPpeStock(cartItems);
+        await deductPpeStock(cartItems, {
+          requestId: data?.id || null,
+          actorName: user?.full_name || 'Admin',
+          crewName: selectedCrew?.full_name || null,
+          movementType: 'direct_issue',
+          note: reason.trim() || 'Direct issue',
+        });
       }
 
       localStorage.setItem('kmt_cart', '[]');
