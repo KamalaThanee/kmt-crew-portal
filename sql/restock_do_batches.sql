@@ -1,6 +1,8 @@
 alter table public.restock_history
   add column if not exists do_number text,
-  add column if not exists batch_id text;
+  add column if not exists batch_id text,
+  add column if not exists color text,
+  add column if not exists size text;
 
 insert into storage.buckets (id, name, public)
 values ('do-files', 'do-files', false)
@@ -17,3 +19,10 @@ set batch_id = coalesce(receipt_url, to_char(created_at, 'YYYY-MM-DD') || '-' ||
     do_number = 'DO-' || to_char(created_at, 'YYYYMMDD')
 where batch_id is null
   and do_number is null;
+
+update public.restock_history rh
+set color = coalesce(rh.color, inv.color),
+    size = coalesce(rh.size, inv.size)
+from public.ppe_inventory inv
+where inv.id = rh.item_id
+  and (rh.color is null or rh.size is null);

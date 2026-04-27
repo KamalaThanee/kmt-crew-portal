@@ -228,7 +228,7 @@ function InventoryContent() {
     if (!result.error) return result
     if (!isMissingRestockColumn(result.error)) return result
 
-    const { batch_id: _batchId, do_number: _doNumber, ...legacyRow } = row
+    const { batch_id: _batchId, do_number: _doNumber, color: _color, size: _size, ...legacyRow } = row
     return supabase.from('restock_history').insert(legacyRow)
   }
 
@@ -387,6 +387,8 @@ function InventoryContent() {
         const { error } = await insertRestockHistory({
           item_id: item.id,
           item_name: item.item_name,
+          color: item.color,
+          size: item.size,
           quantity_added: Number(entry.qty),
           added_by: admin.full_name || 'Admin',
           receipt_url: storedReceiptPath,
@@ -590,7 +592,12 @@ function InventoryContent() {
                           <div className="border-t border-white/5 p-6 space-y-3">
                             {batch.lines.map((line: any) => (
                               <div key={line.id} className="flex items-center justify-between rounded-2xl bg-white/5 px-5 py-4">
-                                <p className="text-white font-black italic">{line.item_name}</p>
+                                <div>
+                                  <p className="text-white font-black italic">{line.item_name}</p>
+                                  <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                                    {[line.color, line.size].filter(Boolean).join(' | ') || 'No spec'}
+                                  </p>
+                                </div>
                                 <p className="text-emerald-400 font-black">+{line.quantity_added}</p>
                               </div>
                             ))}
