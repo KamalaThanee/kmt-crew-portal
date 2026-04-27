@@ -232,6 +232,30 @@ function InventoryContent() {
     return supabase.from('restock_history').insert(legacyRow)
   }
 
+  const openDoDocument = async (receiptUrl: string) => {
+    if (!receiptUrl) return toast.error('No DO file attached')
+
+    const publicBucketMarker = '/storage/v1/object/public/do-files/'
+    const signedBucketMarker = '/storage/v1/object/sign/do-files/'
+    const isStoragePath = receiptUrl.startsWith('do-files/') || receiptUrl.includes(publicBucketMarker) || receiptUrl.includes(signedBucketMarker)
+
+    if (isStoragePath) {
+      const filePath = decodeURIComponent(
+        receiptUrl
+          .replace(/^do-files\//, '')
+          .split(publicBucketMarker).pop()
+          ?.split(signedBucketMarker).pop()
+          ?.split('?')[0] || '',
+      )
+      const { data, error } = await supabase.storage.from('do-files').createSignedUrl(filePath, 60)
+      if (error) return toast.error(error.message || 'Unable to open DO file')
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    window.open(receiptUrl, '_blank', 'noopener,noreferrer')
+  }
+
   const filteredInventoryGrouped = useMemo(() => {
     const groups: Record<string, any[]> = {}
     const filtered = inventory.filter(item => {
@@ -344,8 +368,9 @@ function InventoryContent() {
       const batchId = `${finalDoNumber}-${Date.now()}`
       const compressedFile = await imageCompression(doFile, { maxSizeMB: 0.3, maxWidthOrHeight: 1024 })
       const fileName = `${finalDoNumber}_${Date.now()}_${doFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-      await supabase.storage.from('do-files').upload(fileName, compressedFile)
-      const { data: { publicUrl } } = supabase.storage.from('do-files').getPublicUrl(fileName)
+      const { error: uploadError } = await supabase.storage.from('do-files').upload(fileName, compressedFile)
+      if (uploadError) throw uploadError
+      const storedReceiptPath = `do-files/${fileName}`
       const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
       for (const entry of validEntries) {
         const item = inventory.find(i => String(i.id) === String(entry.inventory_id))
@@ -356,7 +381,7 @@ function InventoryContent() {
           item_name: item.item_name,
           quantity_added: Number(entry.qty),
           added_by: admin.full_name || 'Admin',
-          receipt_url: publicUrl,
+          receipt_url: storedReceiptPath,
           do_number: finalDoNumber,
           batch_id: batchId,
         })
@@ -545,9 +570,9 @@ function InventoryContent() {
                           </div>
                           <div className="flex items-center gap-3 self-end md:self-auto">
                             {batch.receipt_url && (
-                              <a href={batch.receipt_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[10px] font-black text-emerald-300 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
+                              <button onClick={(e) => { e.stopPropagation(); openDoDocument(batch.receipt_url) }} className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[10px] font-black text-emerald-300 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
                                 <ExternalLink size={14}/> View DO
-                              </a>
+                              </button>
                             )}
                             <p className="text-emerald-500 font-black text-2xl">+{batch.totalQty}</p>
                             <ChevronDown size={22} className={`text-zinc-600 transition-transform ${expanded ? 'rotate-180' : ''}`} />

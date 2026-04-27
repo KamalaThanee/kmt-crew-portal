@@ -2,6 +2,10 @@ alter table public.restock_history
   add column if not exists do_number text,
   add column if not exists batch_id text;
 
+insert into storage.buckets (id, name, public)
+values ('do-files', 'do-files', false)
+on conflict (id) do nothing;
+
 create index if not exists idx_restock_history_batch_id
   on public.restock_history (batch_id);
 
