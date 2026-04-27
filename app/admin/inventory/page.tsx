@@ -51,6 +51,7 @@ function InventoryContent() {
   const [inventory, setInventory] = useState<any[]>([])
   const [history, setHistory] = useState<any[]>([])
   const [stockTransactions, setStockTransactions] = useState<any[]>([])
+  const [stockTransactionError, setStockTransactionError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCats, setSelectedCats] = useState<string[]>([])
   const [showLowStock, setShowLowStock] = useState(false)
@@ -65,6 +66,34 @@ function InventoryContent() {
   const [restockEntries, setRestockEntries] = useState([{ id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }])
   const [doFile, setDoFile] = useState<File | null>(null)
   const [isProcessingRestock, setIsProcessingRestock] = useState(false)
+  const [isRefreshingTransactions, setIsRefreshingTransactions] = useState(false)
+
+  const fetchStockTransactions = async (showToast = false) => {
+    setIsRefreshingTransactions(true)
+    setStockTransactionError('')
+    try {
+      const { data: movements, error: movementsError } = await supabase
+        .from('ppe_stock_transactions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100)
+
+      if (movementsError) {
+        const message = movementsError.message || 'Unable to load stock movement log'
+        setStockTransactionError(message)
+        if (showToast) toast.error(message)
+        return
+      }
+
+      setStockTransactions(movements || [])
+      if (showToast) {
+        if ((movements || []).length > 0) toast.success(`Loaded ${movements?.length || 0} issue transactions`)
+        else toast.info('No issue transactions yet. Run the SQL backfill if old received requests should appear.')
+      }
+    } finally {
+      setIsRefreshingTransactions(false)
+    }
+  }
 
   const fetchData = async () => {
     const { data: inv } = await supabase.from('ppe_inventory').select('*').order('category').order('item_id_code')
@@ -76,15 +105,7 @@ function InventoryContent() {
     }
     const { data: hist } = await supabase.from('restock_history').select('*').order('created_at', { ascending: false })
     if (hist) setHistory(hist)
-    const { data: movements, error: movementsError } = await supabase
-      .from('ppe_stock_transactions')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100)
-    if (movements) setStockTransactions(movements)
-    if (movementsError) {
-      console.warn('Stock movement log is not ready yet:', movementsError.message)
-    }
+    await fetchStockTransactions(false)
     setLoading(false)
   }
 
@@ -425,10 +446,15 @@ function InventoryContent() {
                         <p className="mt-2 text-sm normal-case text-zinc-300">Latest {stockTransactions.length} stock deductions from received requests and direct issue.</p>
                         <p className="mt-1 text-[11px] normal-case text-zinc-500">If this is empty after deploy, rerun sql/ppe_stock_transactions.sql once to backfill old received requests.</p>
                       </div>
-                      <button onClick={fetchData} className="rounded-2xl border border-blue-400/30 bg-blue-500/10 px-5 py-3 text-[10px] font-black text-blue-200 transition-all hover:bg-blue-500 hover:text-white">
-                        Refresh Log
+                      <button onClick={() => fetchStockTransactions(true)} disabled={isRefreshingTransactions} className="rounded-2xl border border-blue-400/30 bg-blue-500/10 px-5 py-3 text-[10px] font-black text-blue-200 transition-all hover:bg-blue-500 hover:text-white disabled:cursor-wait disabled:opacity-60">
+                        {isRefreshingTransactions ? 'Refreshing...' : 'Refresh Log'}
                       </button>
                     </div>
+                    {stockTransactionError && (
+                      <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-[11px] normal-case text-red-200">
+                        {stockTransactionError}. Run <span className="font-black text-white">sql/ppe_stock_transactions.sql</span> in Supabase, then press Refresh Log again.
+                      </div>
+                    )}
                   </div>
                   {stockTransactions.length === 0 ? (
                     <div className="rounded-[40px] border border-white/5 bg-black/40 p-12 text-center text-zinc-600 font-black tracking-widest">
