@@ -9,8 +9,6 @@ import { notifyOneSignal } from '@/lib/onesignalClient';
 import { isAdminRole } from '@/lib/roles';
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-const isUuid = (value: unknown) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 
 async function ensureDirectIssueTimeline(requestId: unknown, approverName: string, approvedAt: string) {
   if (!requestId || !approverName) return;
@@ -161,7 +159,6 @@ export default function CartDrawer() {
         extraPayload.approved_at = directIssueAt;
         extraPayload.received_at = directIssueAt;
         if (user?.full_name) extraPayload.approved_by_name = user.full_name;
-        if (isUuid(user?.id)) extraPayload.approved_by = user.id;
       }
 
       const { data, error } = await insertPpeRequest({
