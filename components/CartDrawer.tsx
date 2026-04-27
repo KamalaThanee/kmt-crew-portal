@@ -9,6 +9,7 @@ import { notifyOneSignal } from '@/lib/onesignalClient';
 import { isAdminRole } from '@/lib/roles';
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
 
 async function ensureDirectIssueTimeline(requestId: unknown, approverName: string, approvedAt: string) {
   if (!requestId || !approverName) return;
@@ -48,7 +49,7 @@ export default function CartDrawer() {
 
     if (isAdminRole(u.position)) {
       const { data } = await supabase.from('crews').select('*').order('full_name');
-      if (data) setCrews(data);
+      if (data) setCrews(data.filter(isCrewActive));
     }
 
     const reqQuery = await applyPpeRequestUserFilter(

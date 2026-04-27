@@ -13,6 +13,8 @@ const AI_MODELS = [
   { id: 'google/gemma-4-31b-it:free', provider: 'openrouter', label: 'Gemma 4 31B (Backup Free)' },
 ]
 
+const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at
+
 const compressImage = (file: File): Promise<string> =>
   new Promise((resolve) => {
     const reader = new FileReader()
@@ -75,7 +77,14 @@ function UploadContent() {
       const [crewRes, certMasterRes] = await Promise.all([crewPromise, certMasterPromise])
       if (!active) return
 
-      setTargetCrew(crewRes.data || user)
+      const resolvedCrew = crewRes.data || user
+      if (!isCrewActive(resolvedCrew)) {
+        toast.error('This crew is marked as resigned')
+        router.replace('/certificates')
+        return
+      }
+
+      setTargetCrew(resolvedCrew)
 
       const matchedMasterRow =
         certMasterRes.data?.find((row: any) => normalizeText(row.cert_name) === normalizeText(certName)) ||
@@ -89,7 +98,7 @@ function UploadContent() {
     return () => {
       active = false
     }
-  }, [user, certName, targetCrewId])
+  }, [user, certName, targetCrewId, router])
 
   const canSave = useMemo(() => {
     if (!file || !finalData.issueDate || !finalData.expiryDate) return false
