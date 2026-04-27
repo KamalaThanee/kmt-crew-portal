@@ -546,7 +546,7 @@ export default function AdminHistoryPage() {
         <button
           type="button"
           onClick={() => setStatusFilter('all')}
-          className={`rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-amber-950/20 transition-all ${cardActiveClass('all')}`}
+          className="rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-amber-950/20 transition-colors hover:border-amber-300/40"
         >
           <p className="text-[9px] uppercase tracking-widest text-amber-200">Requests</p>
           <p className="mt-3 text-3xl font-black text-white">{summary.requestCount}</p>
