@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
 
 function CertificatesContent() {
   const router = useRouter()
@@ -45,7 +46,7 @@ function CertificatesContent() {
     ]);
     if (m.data) setMatrix(m.data);
     if (c.data) setMyCerts(c.data);
-    if (crewsRes.data) setCrews(crewsRes.data);
+    if (crewsRes.data) setCrews(crewsRes.data.filter(isCrewActive));
     if (allC.data) setAllCerts(allC.data);
     if (r.data) setRules(r.data);
     setLoading(false);

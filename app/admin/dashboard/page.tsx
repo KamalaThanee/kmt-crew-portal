@@ -11,6 +11,7 @@ import {
 import Link from 'next/link'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -44,6 +45,7 @@ export default function AdminDashboard() {
     ]);
 
     const matrix = matrixRes.data || []; const allCerts = allCertsRes.data || [];
+    const activeCrews = (crewsRes.data || []).filter(isCrewActive);
     const inventory = invRes.data || []; const lastRestock = restockRes.data || [];
 
     let okCount = 0; let expired = 0; let warning = 0; let suit = 0; let boot = 0;
@@ -65,13 +67,38 @@ export default function AdminDashboard() {
 
     const { count: totalPending } = await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending');
 
+    const vesselProgress = activeCrews.map((crew: any) => {
+      const required = matrix.filter((row: any) => normalize(row.position) === normalize(crew.position) && row.requirement_type === 'P')
+      if (required.length === 0) return null
+
+      const crewCerts = allCerts.filter((cert: any) => cert.crew_id === crew.id)
+      let ready = 0
+      required.forEach((req: any) => {
+        const uploaded = crewCerts.find((cert: any) => normalize(cert.cert_name) === normalize(req.cert_name))
+        if (!uploaded) return
+        if (isNoExpiryDate(uploaded.expiry_date)) {
+          ready++
+          return
+        }
+
+        const daysLeft = (new Date(uploaded.expiry_date).getTime() - today.getTime()) / 86400000
+        if (daysLeft >= 0) ready++
+      })
+
+      return Math.round((ready / required.length) * 100)
+    }).filter((value: number | null): value is number => value !== null)
+
+    const vesselCompliance = vesselProgress.length > 0
+      ? Math.round(vesselProgress.reduce((sum: number, value: number) => sum + value, 0) / vesselProgress.length)
+      : 0
+
     setPersonal({ progress: myRequired.length > 0 ? Math.round((okCount/myRequired.length)*100) : 0, okCount, reqCount: myRequired.length, expired, warning, missing: myRequired.length - okCount, suit, boot, lastStatus: myReqsRes.data?.[0]?.status || 'None' });
     
     setVessel({ 
       pending: totalPending || 0, 
       lowStock: inventory.filter(i => (i.quantity||0) <= (i.threshold||0)).length, 
       totalItems: inventory.reduce((a, b) => a + (b.quantity || 0), 0), 
-      compliance: 85,
+      compliance: vesselCompliance,
       lastRestockDate: lastRestock.length > 0 ? new Date(lastRestock[0].created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'
     });
     setLoading(false);
