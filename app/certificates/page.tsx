@@ -212,11 +212,95 @@ function CertificatesContent() {
     const link = document.createElement('a')
     link.href = href
     link.download = filename
-    link.target = '_blank'
     link.rel = 'noopener noreferrer'
     document.body.appendChild(link)
     link.click()
     link.remove()
+  }
+
+  const crc32 = (data: Uint8Array) => {
+    let crc = -1
+    for (let i = 0; i < data.length; i++) {
+      crc ^= data[i]
+      for (let j = 0; j < 8; j++) {
+        crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
+      }
+    }
+    return (crc ^ -1) >>> 0
+  }
+
+  const createZipBlob = (files: Array<{ name: string; data: Uint8Array }>) => {
+    const encoder = new TextEncoder()
+    const chunks: Uint8Array[] = []
+    const centralChunks: Uint8Array[] = []
+    let offset = 0
+
+    const writeHeader = (size: number, writer: (view: DataView) => void) => {
+      const buffer = new ArrayBuffer(size)
+      const view = new DataView(buffer)
+      writer(view)
+      return new Uint8Array(buffer)
+    }
+
+    files.forEach((file) => {
+      const nameBytes = encoder.encode(file.name)
+      const checksum = crc32(file.data)
+      const localOffset = offset
+
+      const localHeader = writeHeader(30, (view) => {
+        view.setUint32(0, 0x04034b50, true)
+        view.setUint16(4, 20, true)
+        view.setUint16(6, 0, true)
+        view.setUint16(8, 0, true)
+        view.setUint16(10, 0, true)
+        view.setUint16(12, 0, true)
+        view.setUint32(14, checksum, true)
+        view.setUint32(18, file.data.length, true)
+        view.setUint32(22, file.data.length, true)
+        view.setUint16(26, nameBytes.length, true)
+        view.setUint16(28, 0, true)
+      })
+
+      chunks.push(localHeader, nameBytes, file.data)
+      offset += localHeader.length + nameBytes.length + file.data.length
+
+      const centralHeader = writeHeader(46, (view) => {
+        view.setUint32(0, 0x02014b50, true)
+        view.setUint16(4, 20, true)
+        view.setUint16(6, 20, true)
+        view.setUint16(8, 0, true)
+        view.setUint16(10, 0, true)
+        view.setUint16(12, 0, true)
+        view.setUint16(14, 0, true)
+        view.setUint32(16, checksum, true)
+        view.setUint32(20, file.data.length, true)
+        view.setUint32(24, file.data.length, true)
+        view.setUint16(28, nameBytes.length, true)
+        view.setUint16(30, 0, true)
+        view.setUint16(32, 0, true)
+        view.setUint16(34, 0, true)
+        view.setUint16(36, 0, true)
+        view.setUint32(38, 0, true)
+        view.setUint32(42, localOffset, true)
+      })
+
+      centralChunks.push(centralHeader, nameBytes)
+    })
+
+    const centralOffset = offset
+    const centralSize = centralChunks.reduce((sum, chunk) => sum + chunk.length, 0)
+    const endHeader = writeHeader(22, (view) => {
+      view.setUint32(0, 0x06054b50, true)
+      view.setUint16(4, 0, true)
+      view.setUint16(6, 0, true)
+      view.setUint16(8, files.length, true)
+      view.setUint16(10, files.length, true)
+      view.setUint32(12, centralSize, true)
+      view.setUint32(16, centralOffset, true)
+      view.setUint16(20, 0, true)
+    })
+
+    return new Blob([...chunks, ...centralChunks, endHeader], { type: 'application/zip' })
   }
 
   const handleDownloadFilteredCertificates = async () => {
@@ -231,29 +315,26 @@ function CertificatesContent() {
     }
 
     setIsDownloadingCerts(true)
-    let downloaded = 0
 
     try {
+      const files: Array<{ name: string; data: Uint8Array }> = []
       for (const cert of filteredCertificateDownloads) {
         const baseName = `${safeFileName(cert.crewName)}_${safeFileName(cert.certName)}`
-        try {
-          const response = await fetch(cert.url)
-          if (!response.ok) throw new Error('Unable to fetch file')
-          const blob = await response.blob()
-          const ext = getFileExtension(cert.url, response.headers.get('content-type'))
-          const blobUrl = URL.createObjectURL(blob)
-          triggerDownload(blobUrl, `${baseName}.${ext}`)
-          window.setTimeout(() => URL.revokeObjectURL(blobUrl), 3000)
-          downloaded++
-        } catch {
-          triggerDownload(cert.url, `${baseName}.${getFileExtension(cert.url)}`)
-          downloaded++
-        }
-
-        await new Promise((resolve) => window.setTimeout(resolve, 250))
+        const response = await fetch(cert.url)
+        if (!response.ok) throw new Error(`Unable to fetch ${cert.crewName}`)
+        const blob = await response.blob()
+        const ext = getFileExtension(cert.url, response.headers.get('content-type'))
+        files.push({ name: `${baseName}.${ext}`, data: new Uint8Array(await blob.arrayBuffer()) })
       }
 
-      toast.success(`Started ${downloaded} certificate download${downloaded === 1 ? '' : 's'}`)
+      const zipBlob = createZipBlob(files)
+      const zipUrl = URL.createObjectURL(zipBlob)
+      const stamp = new Date().toISOString().slice(0, 10)
+      triggerDownload(zipUrl, `${safeFileName(filterSpecificCert)}_certificates_${stamp}.zip`)
+      window.setTimeout(() => URL.revokeObjectURL(zipUrl), 3000)
+      toast.success(`Downloaded ZIP with ${files.length} certificate${files.length === 1 ? '' : 's'}`)
+    } catch (error: any) {
+      toast.error(error.message || 'Unable to create ZIP')
     } finally {
       setIsDownloadingCerts(false)
     }
@@ -360,10 +441,10 @@ function CertificatesContent() {
                 onClick={handleDownloadFilteredCertificates}
                 disabled={filterSpecificCert === 'All' || filteredCertificateDownloads.length === 0 || isDownloadingCerts}
                 className="flex items-center justify-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-xs font-black text-emerald-300 transition-all hover:bg-emerald-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-                title={filterSpecificCert === 'All' ? 'Select a specific certificate first' : `Download ${filteredCertificateDownloads.length} matching files`}
+                title={filterSpecificCert === 'All' ? 'Select a specific certificate first' : `Download ${filteredCertificateDownloads.length} matching files as ZIP`}
               >
                 {isDownloadingCerts ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>}
-                {filterSpecificCert === 'All' ? 'Download Filtered' : `Download ${filteredCertificateDownloads.length}`}
+                {filterSpecificCert === 'All' ? 'Download ZIP' : `ZIP ${filteredCertificateDownloads.length}`}
               </button>
            </div>
 
