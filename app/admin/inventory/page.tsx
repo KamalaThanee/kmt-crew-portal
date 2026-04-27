@@ -234,23 +234,56 @@ function InventoryContent() {
   }
 
   const deleteRestockLine = async (line: any) => {
-    if (!confirm(`Delete restock line "${line.item_name}"? This removes history only and will not change stock quantity.`)) return
+    if (!confirm(`Delete restock line "${line.item_name}" and subtract ${line.quantity_added} from current stock?`)) return
+
+    if (line.item_id) {
+      const { data: inv, error: readError } = await supabase
+        .from('ppe_inventory')
+        .select('quantity')
+        .eq('id', line.item_id)
+        .single()
+      if (readError) return toast.error(readError.message || 'Unable to read inventory')
+
+      const nextQuantity = Math.max(0, Number(inv?.quantity || 0) - Number(line.quantity_added || 0))
+      const { error: stockError } = await supabase
+        .from('ppe_inventory')
+        .update({ quantity: nextQuantity })
+        .eq('id', line.item_id)
+      if (stockError) return toast.error(stockError.message || 'Unable to adjust stock')
+    }
 
     const { error } = await supabase.from('restock_history').delete().eq('id', line.id)
     if (error) return toast.error(error.message || 'Unable to delete restock line')
 
-    toast.success('Restock line deleted')
+    toast.success('Restock line deleted and stock adjusted')
     fetchData()
   }
 
   const deleteRestockBatch = async (batch: any) => {
-    if (!confirm(`Delete DO ${batch.do_number}? This removes ${batch.lines.length} history lines only and will not change stock quantity.`)) return
+    if (!confirm(`Delete DO ${batch.do_number} and subtract ${batch.totalQty} total units from current stock?`)) return
 
     const ids = batch.lines.map((line: any) => line.id).filter(Boolean)
+    for (const line of batch.lines) {
+      if (!line.item_id) continue
+      const { data: inv, error: readError } = await supabase
+        .from('ppe_inventory')
+        .select('quantity')
+        .eq('id', line.item_id)
+        .single()
+      if (readError) return toast.error(readError.message || `Unable to read stock for ${line.item_name}`)
+
+      const nextQuantity = Math.max(0, Number(inv?.quantity || 0) - Number(line.quantity_added || 0))
+      const { error: stockError } = await supabase
+        .from('ppe_inventory')
+        .update({ quantity: nextQuantity })
+        .eq('id', line.item_id)
+      if (stockError) return toast.error(stockError.message || `Unable to adjust stock for ${line.item_name}`)
+    }
+
     const { error } = await supabase.from('restock_history').delete().in('id', ids)
     if (error) return toast.error(error.message || 'Unable to delete DO history')
 
-    toast.success(`Deleted ${batch.do_number}`)
+    toast.success(`Deleted ${batch.do_number} and adjusted stock`)
     setExpandedRestockBatches(expandedRestockBatches.filter((id) => id !== batch.id))
     fetchData()
   }
