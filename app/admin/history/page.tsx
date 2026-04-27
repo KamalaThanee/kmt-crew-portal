@@ -82,6 +82,20 @@ const LEGACY_HISTORY_COLUMNS = [
   'received_at',
   'status',
   'approved_by',
+  'approved_by_name',
+  'crew_id',
+  'crew_name',
+  'admin_remark',
+  'rejection_reason',
+  'reason',
+  'items',
+].join(',')
+const MINIMAL_HISTORY_COLUMNS = [
+  'id',
+  'created_at',
+  'received_at',
+  'status',
+  'approved_by',
   'crew_id',
   'crew_name',
   'admin_remark',
@@ -347,6 +361,8 @@ export default function AdminHistoryPage() {
         (message.includes('approved_at') ||
           message.includes('rejected_at') ||
           message.includes('approved_by_name') ||
+          message.includes('requester_name') ||
+          message.includes('full_name') ||
           message.includes('schema cache'))
       )
     }
@@ -357,6 +373,9 @@ export default function AdminHistoryPage() {
       let result = await buildHistoryQuery(HISTORY_COLUMNS)
       if (result.error && isMissingHistoryColumn(result.error)) {
         result = await buildHistoryQuery(LEGACY_HISTORY_COLUMNS, true)
+      }
+      if (result.error && isMissingHistoryColumn(result.error)) {
+        result = await buildHistoryQuery(MINIMAL_HISTORY_COLUMNS, true)
       }
 
       if (!active) return
@@ -493,7 +512,7 @@ export default function AdminHistoryPage() {
 
   const cardActiveClass = (targetStatus: string) =>
     statusFilter === targetStatus
-      ? 'ring-2 ring-white/30 scale-[1.01]'
+      ? 'ring-2 ring-white/30'
       : 'hover:-translate-y-0.5 hover:border-white/30'
 
   if (loading) {
