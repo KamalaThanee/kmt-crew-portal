@@ -8,6 +8,8 @@ import { notifyOneSignal } from '@/lib/onesignalClient';
 import { isAdminRole } from '@/lib/roles';
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+const isUuid = (value: unknown) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 
 export default function CartDrawer() {
   const [isOpen, setIsOpen] = useState(false);
@@ -128,15 +130,24 @@ export default function CartDrawer() {
     setIsSubmitting(true);
     try {
       const selectedCrew = onBehalf ? crews.find(c => c.id === targetCrewId) : user;
+      if (!selectedCrew) throw new Error('Selected crew not found');
       const isDirect = onBehalf && selectedCrew.id !== user.id;
+      const extraPayload: Record<string, unknown> = {
+        items: cartItems,
+        reason: reason.trim() || 'Standard Request',
+        status: isDirect ? 'received' : 'pending',
+      };
+
+      if (isDirect) {
+        extraPayload.approved_at = new Date().toISOString();
+        extraPayload.received_at = new Date().toISOString();
+        if (user?.full_name) extraPayload.approved_by_name = user.full_name;
+        if (isUuid(user?.id)) extraPayload.approved_by = user.id;
+      }
 
       const { data, error } = await insertPpeRequest({
         crew: selectedCrew,
-        extra: {
-          items: cartItems,
-          reason: reason.trim() || 'Standard Request',
-          status: isDirect ? 'received' : 'pending',
-        },
+        extra: extraPayload,
       });
 
       if (error) throw error;

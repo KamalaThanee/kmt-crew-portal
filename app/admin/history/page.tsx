@@ -30,6 +30,8 @@ type HistoryItem = {
 type HistoryRow = {
   id: string
   created_at: string
+  approved_at?: string | null
+  rejected_at?: string | null
   received_at?: string | null
   status?: string | null
   approved_by?: string | null
@@ -83,6 +85,33 @@ const getStatusMeta = (row: HistoryRow, adminNameMap: Record<string, string>) =>
     return `Approved by ${actorName} • Received`
   }
   return 'Waiting for approval'
+}
+
+const getStatusTimelineMeta = (row: HistoryRow, adminNameMap: Record<string, string>) => {
+  const status = normalize(row.status || 'pending')
+  const actorName =
+    row.approved_by_name ||
+    (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : 'Unknown approver')
+
+  const timeline: string[] = []
+
+  if (row.approved_at || status === 'approved' || status === 'received') {
+    timeline.push(`Approved by ${actorName}${row.approved_at ? ` on ${formatDateTime(row.approved_at)}` : ''}`)
+  }
+
+  if (row.rejected_at || status === 'rejected') {
+    timeline.push(`Rejected by ${actorName}${row.rejected_at ? ` on ${formatDateTime(row.rejected_at)}` : ''}`)
+  }
+
+  if (status === 'received') {
+    timeline.push(`Received${row.received_at ? ` on ${formatDateTime(row.received_at)}` : ''}`)
+  }
+
+  if (status === 'pending') {
+    return 'Waiting for approval'
+  }
+
+  return timeline.length > 0 ? timeline.join(' | ') : '-'
 }
 
 const getItemSummary = (row: HistoryRow) =>
@@ -245,7 +274,7 @@ export default function AdminHistoryPage() {
     fetchData()
   }, [router])
 
-  const filteredRows = useMemo(() => {
+  const contextRows = useMemo(() => {
     return rows.filter((row) => {
       const createdAt = row.created_at ? new Date(row.created_at) : null
       const rowMonth = row.created_at ? row.created_at.slice(5, 7) : ''
@@ -254,12 +283,15 @@ export default function AdminHistoryPage() {
       const itemSummary = getItemSummary(row)
       const matchesCrew = !searchCrew || normalize(crewName).includes(normalize(searchCrew))
       const matchesItem = !searchItem || normalize(itemSummary).includes(normalize(searchItem))
-      const matchesStatus = statusFilter === 'all' || normalize(row.status || 'pending') === statusFilter
       const matchesMonth = monthFilter === 'all' || rowMonth === monthFilter
       const matchesYear = yearFilter === 'all' || rowYear === yearFilter
-      return !!createdAt && matchesCrew && matchesItem && matchesStatus && matchesMonth && matchesYear
+      return !!createdAt && matchesCrew && matchesItem && matchesMonth && matchesYear
     })
-  }, [rows, searchCrew, searchItem, statusFilter, monthFilter, yearFilter])
+  }, [rows, searchCrew, searchItem, monthFilter, yearFilter])
+
+  const filteredRows = useMemo(() => {
+    return contextRows.filter((row) => statusFilter === 'all' || normalize(row.status || 'pending') === statusFilter)
+  }, [contextRows, statusFilter])
 
   const monthOptions = useMemo(() => {
     return [...new Set(rows.map((row) => (row.created_at ? row.created_at.slice(5, 7) : '')).filter(Boolean))].sort()
@@ -291,7 +323,7 @@ export default function AdminHistoryPage() {
     const crewCounts = new Map<string, number>()
     const itemCounts = new Map<string, number>()
 
-    filteredRows.forEach((row) => {
+    contextRows.forEach((row) => {
       const status = normalize(row.status || 'pending')
       if (status === 'approved') approvedCount += 1
       else if (status === 'rejected') rejectedCount += 1
@@ -311,7 +343,7 @@ export default function AdminHistoryPage() {
     const topItemEntry = [...itemCounts.entries()].sort((a, b) => b[1] - a[1])[0]
 
     return {
-      requestCount: filteredRows.length,
+      requestCount: contextRows.length,
       pendingCount,
       approvedCount,
       rejectedCount,
@@ -321,16 +353,22 @@ export default function AdminHistoryPage() {
       topItem: topItemEntry ? topItemEntry[0] : '-',
       topItemCount: topItemEntry ? topItemEntry[1] : 0,
     }
-  }, [filteredRows])
+  }, [contextRows])
 
   const exportRows = useMemo(
     () =>
       filteredRows.map((row) => ({
         RequestedAt: formatDateTime(row.created_at),
+        ApprovedAt: formatDateTime(row.approved_at),
+        RejectedAt: formatDateTime(row.rejected_at),
+        ReceivedAt: formatDateTime(row.received_at),
+        DecisionBy:
+          row.approved_by_name ||
+          (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : ''),
         Crew: getCrewName(row),
         Items: getItemSummary(row),
         Status: row.status || 'pending',
-        Detail: getStatusMeta(row, adminNameMap),
+        Detail: getStatusTimelineMeta(row, adminNameMap),
         RequestReason: row.reason || '',
         AdminRemark: row.admin_remark || row.rejection_reason || '',
       })),
@@ -349,6 +387,11 @@ export default function AdminHistoryPage() {
     const stamp = new Date().toISOString().slice(0, 10)
     XLSX.writeFile(workbook, `kmt-issue-history-${stamp}.xlsx`)
   }
+
+  const cardActiveClass = (targetStatus: string) =>
+    statusFilter === targetStatus
+      ? 'ring-2 ring-white/30 scale-[1.01]'
+      : 'hover:-translate-y-0.5 hover:border-white/30'
 
   if (loading) {
     return (
@@ -378,31 +421,51 @@ export default function AdminHistoryPage() {
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/14 to-zinc-950 p-5 shadow-xl shadow-amber-950/20">
+        <button
+          type="button"
+          onClick={() => setStatusFilter('all')}
+          className={`rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-amber-950/20 transition-all ${cardActiveClass('all')}`}
+        >
           <p className="text-[9px] uppercase tracking-widest text-amber-200">Requests</p>
           <p className="mt-3 text-3xl font-black text-white">{summary.requestCount}</p>
           <p className="mt-2 text-xs font-semibold text-amber-100/70">Total rows in the current view</p>
-        </div>
-        <div className="rounded-[28px] border border-orange-400/20 bg-gradient-to-br from-orange-500/14 to-zinc-950 p-5 shadow-xl shadow-orange-950/20">
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter('pending')}
+          className={`rounded-[28px] border border-orange-400/20 bg-gradient-to-br from-orange-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-orange-950/20 transition-all ${cardActiveClass('pending')}`}
+        >
           <p className="text-[9px] uppercase tracking-widest text-orange-200">Pending</p>
           <p className="mt-3 text-3xl font-black text-white">{summary.pendingCount}</p>
           <p className="mt-2 text-xs font-semibold text-orange-100/70">Waiting for approval</p>
-        </div>
-        <div className="rounded-[28px] border border-emerald-400/20 bg-gradient-to-br from-emerald-500/14 to-zinc-950 p-5 shadow-xl shadow-emerald-950/20">
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter('approved')}
+          className={`rounded-[28px] border border-emerald-400/20 bg-gradient-to-br from-emerald-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-emerald-950/20 transition-all ${cardActiveClass('approved')}`}
+        >
           <p className="text-[9px] uppercase tracking-widest text-emerald-200">Approved</p>
           <p className="mt-3 text-3xl font-black text-white">{summary.approvedCount}</p>
           <p className="mt-2 text-xs font-semibold text-emerald-100/70">Approved and waiting to receive</p>
-        </div>
-        <div className="rounded-[28px] border border-rose-400/20 bg-gradient-to-br from-rose-500/14 to-zinc-950 p-5 shadow-xl shadow-rose-950/20">
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter('rejected')}
+          className={`rounded-[28px] border border-rose-400/20 bg-gradient-to-br from-rose-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-rose-950/20 transition-all ${cardActiveClass('rejected')}`}
+        >
           <p className="text-[9px] uppercase tracking-widest text-rose-200">Rejected</p>
           <p className="mt-3 text-3xl font-black text-white">{summary.rejectedCount}</p>
           <p className="mt-2 text-xs font-semibold text-rose-100/70">Rejected requests in this view</p>
-        </div>
-        <div className="rounded-[28px] border border-sky-400/20 bg-gradient-to-br from-sky-500/14 to-zinc-950 p-5 shadow-xl shadow-sky-950/20">
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter('received')}
+          className={`rounded-[28px] border border-sky-400/20 bg-gradient-to-br from-sky-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-sky-950/20 transition-all ${cardActiveClass('received')}`}
+        >
           <p className="text-[9px] uppercase tracking-widest text-sky-200">Received</p>
           <p className="mt-3 text-3xl font-black text-white">{summary.receivedCount}</p>
           <p className="mt-2 text-xs font-semibold text-sky-100/70">Completed and received</p>
-        </div>
+        </button>
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -544,7 +607,7 @@ export default function AdminHistoryPage() {
                     </span>
                   </td>
                   <td className="px-6 py-5 font-semibold text-zinc-300 normal-case">
-                    {getStatusMeta(row, adminNameMap)}
+                    {getStatusTimelineMeta(row, adminNameMap)}
                     {(row.admin_remark || row.rejection_reason) && (
                       <div className="mt-1 text-[11px] text-zinc-500">{row.admin_remark || row.rejection_reason}</div>
                     )}
@@ -597,7 +660,7 @@ export default function AdminHistoryPage() {
               <div className="grid gap-3">
                 <div className="rounded-2xl border border-emerald-500/10 bg-emerald-500/[0.05] p-4">
                   <p className="mb-2 text-[9px] uppercase tracking-widest text-emerald-200/80">Status Detail</p>
-                  <p className="text-sm font-semibold text-white normal-case">{getStatusMeta(row, adminNameMap)}</p>
+                  <p className="text-sm font-semibold text-white normal-case">{getStatusTimelineMeta(row, adminNameMap)}</p>
                   {(row.admin_remark || row.rejection_reason) && (
                     <p className="mt-2 text-[11px] font-semibold text-zinc-400 normal-case">
                       {row.admin_remark || row.rejection_reason}
