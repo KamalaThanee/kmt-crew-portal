@@ -57,6 +57,52 @@ type SearchableSelectProps = {
 }
 
 const normalize = (value: string) => String(value || '').toLowerCase().trim()
+const PAGE_SIZE = 25
+const HISTORY_COLUMNS = [
+  'id',
+  'created_at',
+  'approved_at',
+  'rejected_at',
+  'received_at',
+  'status',
+  'approved_by',
+  'approved_by_name',
+  'crew_id',
+  'crew_name',
+  'requester_name',
+  'full_name',
+  'admin_remark',
+  'rejection_reason',
+  'reason',
+  'items',
+].join(',')
+const LEGACY_HISTORY_COLUMNS = [
+  'id',
+  'created_at',
+  'received_at',
+  'status',
+  'approved_by',
+  'approved_by_name',
+  'crew_id',
+  'crew_name',
+  'admin_remark',
+  'rejection_reason',
+  'reason',
+  'items',
+].join(',')
+const MINIMAL_HISTORY_COLUMNS = [
+  'id',
+  'created_at',
+  'received_at',
+  'status',
+  'approved_by',
+  'crew_id',
+  'crew_name',
+  'admin_remark',
+  'rejection_reason',
+  'reason',
+  'items',
+].join(',')
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-'
@@ -221,13 +267,34 @@ function SearchableSelect({
 export default function AdminHistoryPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
+  const [isFetchingRows, setIsFetchingRows] = useState(false)
   const [rows, setRows] = useState<HistoryRow[]>([])
+  const [summaryRows, setSummaryRows] = useState<HistoryRow[]>([])
+  const [rowCount, setRowCount] = useState(0)
+  const [summaryRowCount, setSummaryRowCount] = useState(0)
   const [adminNameMap, setAdminNameMap] = useState<Record<string, string>>({})
   const [searchCrew, setSearchCrew] = useState('')
   const [searchItem, setSearchItem] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [monthFilter, setMonthFilter] = useState('all')
   const [yearFilter, setYearFilter] = useState('all')
+  const [page, setPage] = useState(0)
+
+  useEffect(() => {
+    setPage(0)
+  }, [searchCrew, searchItem, statusFilter, monthFilter, yearFilter])
+
+  useEffect(() => {
+    const previousGutter = document.documentElement.style.scrollbarGutter
+    const previousOverflowY = document.body.style.overflowY
+    document.documentElement.style.scrollbarGutter = 'stable'
+    document.body.style.overflowY = 'scroll'
+
+    return () => {
+      document.documentElement.style.scrollbarGutter = previousGutter
+      document.body.style.overflowY = previousOverflowY
+    }
+  }, [])
 
   useEffect(() => {
     const userStr = localStorage.getItem('kmt_user')
@@ -242,24 +309,13 @@ export default function AdminHistoryPage() {
       return
     }
 
-    const fetchData = async () => {
-      setLoading(true)
-
-      const [requestsRes, crewsRes] = await Promise.all([
-        supabase.from('ppe_requests').select('*').order('created_at', { ascending: false }),
-        supabase.from('crews').select('id, full_name'),
-      ])
-
-      if (requestsRes.error) {
-        console.error('History load failed:', requestsRes.error)
-        toast.error(requestsRes.error.message || 'Unable to load issue history')
-      }
-
+    const fetchCrewLookup = async () => {
+      const crewsRes = await supabase.from('crews').select('id, full_name').order('full_name')
       if (crewsRes.error) {
         console.error('Crew lookup failed:', crewsRes.error)
+        return
       }
 
-      setRows((requestsRes.data || []) as HistoryRow[])
       setAdminNameMap(
         Object.fromEntries(
           (crewsRes.data || []).map((crew: { id: string; full_name: string }) => [
@@ -271,43 +327,157 @@ export default function AdminHistoryPage() {
       setLoading(false)
     }
 
-    fetchData()
+    fetchCrewLookup()
   }, [router])
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('kmt_user')
+    if (!userStr) return
+    const user = JSON.parse(userStr)
+    if (!isAdminRole(user.position)) return
+
+    let active = true
+
+    const buildHistoryQuery = (
+      columns: string,
+      legacySchema = false,
+      options: { includeStatusFilter?: boolean; paginate?: boolean } = {},
+    ) => {
+      const { includeStatusFilter = true, paginate = true } = options
+      let query = supabase
+        .from('ppe_requests')
+        .select(columns, { count: 'exact' })
+        .order('created_at', { ascending: false })
+
+      if (includeStatusFilter && statusFilter !== 'all') query = query.eq('status', statusFilter)
+      if (yearFilter !== 'all') {
+        const startMonth = monthFilter !== 'all' ? Number(monthFilter) - 1 : 0
+        const endMonth = monthFilter !== 'all' ? startMonth + 1 : 12
+        const start = new Date(Number(yearFilter), startMonth, 1).toISOString()
+        const end = new Date(Number(yearFilter), endMonth, 1).toISOString()
+        query = query.gte('created_at', start).lt('created_at', end)
+      }
+
+      const crewQuery = normalize(searchCrew)
+      if (crewQuery) {
+        const safeCrewQuery = crewQuery.replace(/[,%]/g, ' ')
+        query = legacySchema
+          ? query.ilike('crew_name', `%${safeCrewQuery}%`)
+          : query.or(
+              `crew_name.ilike.%${safeCrewQuery}%,requester_name.ilike.%${safeCrewQuery}%,full_name.ilike.%${safeCrewQuery}%`,
+            )
+      }
+
+      if (!paginate) return query.limit(1000)
+
+      const from = page * PAGE_SIZE
+      const to = from + PAGE_SIZE - 1
+      return query.range(from, to)
+    }
+
+    const isMissingHistoryColumn = (error: unknown) => {
+      const message = String((error as { message?: string })?.message || '').toLowerCase()
+      return (
+        message.includes('column') &&
+        (message.includes('approved_at') ||
+          message.includes('rejected_at') ||
+          message.includes('approved_by_name') ||
+          message.includes('requester_name') ||
+          message.includes('full_name') ||
+          message.includes('schema cache'))
+      )
+    }
+
+    const runHistoryQuery = async (options: { includeStatusFilter?: boolean; paginate?: boolean }) => {
+      let result = await buildHistoryQuery(HISTORY_COLUMNS, false, options)
+      if (result.error && isMissingHistoryColumn(result.error)) {
+        result = await buildHistoryQuery(LEGACY_HISTORY_COLUMNS, true, options)
+      }
+      if (result.error && isMissingHistoryColumn(result.error)) {
+        result = await buildHistoryQuery(MINIMAL_HISTORY_COLUMNS, true, options)
+      }
+
+      return result
+    }
+
+    const fetchRows = async () => {
+      setIsFetchingRows(true)
+
+      const [result, summaryResult] = await Promise.all([
+        runHistoryQuery({ includeStatusFilter: true, paginate: true }),
+        runHistoryQuery({ includeStatusFilter: false, paginate: false }),
+      ])
+
+      if (!active) return
+      if (result.error) {
+        console.error('History load failed:', result.error)
+        toast.error(result.error.message || 'Unable to load issue history')
+        setRows([])
+        setRowCount(0)
+      } else {
+        setRows(((result.data || []) as unknown) as HistoryRow[])
+        setRowCount(result.count || 0)
+      }
+
+      if (summaryResult.error) {
+        console.error('History summary load failed:', summaryResult.error)
+        setSummaryRows([])
+        setSummaryRowCount(0)
+      } else {
+        setSummaryRows(((summaryResult.data || []) as unknown) as HistoryRow[])
+        setSummaryRowCount(summaryResult.count || 0)
+      }
+
+      setIsFetchingRows(false)
+      setLoading(false)
+    }
+
+    fetchRows()
+
+    return () => {
+      active = false
+    }
+  }, [page, searchCrew, statusFilter, monthFilter, yearFilter])
 
   const contextRows = useMemo(() => {
     return rows.filter((row) => {
       const createdAt = row.created_at ? new Date(row.created_at) : null
-      const rowMonth = row.created_at ? row.created_at.slice(5, 7) : ''
-      const rowYear = row.created_at ? row.created_at.slice(0, 4) : ''
-      const crewName = getCrewName(row)
       const itemSummary = getItemSummary(row)
-      const matchesCrew = !searchCrew || normalize(crewName).includes(normalize(searchCrew))
       const matchesItem = !searchItem || normalize(itemSummary).includes(normalize(searchItem))
-      const matchesMonth = monthFilter === 'all' || rowMonth === monthFilter
-      const matchesYear = yearFilter === 'all' || rowYear === yearFilter
-      return !!createdAt && matchesCrew && matchesItem && matchesMonth && matchesYear
+      return !!createdAt && matchesItem
     })
-  }, [rows, searchCrew, searchItem, monthFilter, yearFilter])
+  }, [rows, searchItem])
 
   const filteredRows = useMemo(() => {
-    return contextRows.filter((row) => statusFilter === 'all' || normalize(row.status || 'pending') === statusFilter)
-  }, [contextRows, statusFilter])
+    return contextRows
+  }, [contextRows])
+
+  const summaryContextRows = useMemo(() => {
+    return summaryRows.filter((row) => {
+      const createdAt = row.created_at ? new Date(row.created_at) : null
+      const itemSummary = getItemSummary(row)
+      const matchesItem = !searchItem || normalize(itemSummary).includes(normalize(searchItem))
+      return !!createdAt && matchesItem
+    })
+  }, [summaryRows, searchItem])
 
   const monthOptions = useMemo(() => {
-    return [...new Set(rows.map((row) => (row.created_at ? row.created_at.slice(5, 7) : '')).filter(Boolean))].sort()
-  }, [rows])
+    return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
+  }, [])
 
   const yearOptions = useMemo(() => {
-    return [...new Set(rows.map((row) => (row.created_at ? row.created_at.slice(0, 4) : '')).filter(Boolean))].sort(
-      (a, b) => Number(b) - Number(a),
-    )
-  }, [rows])
+    const currentYear = new Date().getFullYear()
+    return Array.from({ length: 6 }, (_, index) => String(currentYear - index))
+  }, [])
 
   const crewOptions = useMemo(() => {
-    return [...new Set(rows.map((row) => getCrewName(row)).filter(Boolean))].sort((a, b) =>
-      a.localeCompare(b),
-    )
-  }, [rows])
+    return [
+      ...new Set([
+        ...Object.values(adminNameMap),
+        ...rows.map((row) => getCrewName(row)).filter(Boolean),
+      ]),
+    ].sort((a, b) => a.localeCompare(b))
+  }, [adminNameMap, rows])
 
   const itemOptions = useMemo(() => {
     return [...new Set(rows.flatMap((row) => (row.items || []).map((item) => item.item_name || '').filter(Boolean)))].sort(
@@ -323,7 +493,7 @@ export default function AdminHistoryPage() {
     const crewCounts = new Map<string, number>()
     const itemCounts = new Map<string, number>()
 
-    contextRows.forEach((row) => {
+    summaryContextRows.forEach((row) => {
       const status = normalize(row.status || 'pending')
       if (status === 'approved') approvedCount += 1
       else if (status === 'rejected') rejectedCount += 1
@@ -343,7 +513,7 @@ export default function AdminHistoryPage() {
     const topItemEntry = [...itemCounts.entries()].sort((a, b) => b[1] - a[1])[0]
 
     return {
-      requestCount: contextRows.length,
+      requestCount: searchItem ? summaryContextRows.length : summaryRowCount,
       pendingCount,
       approvedCount,
       rejectedCount,
@@ -353,7 +523,7 @@ export default function AdminHistoryPage() {
       topItem: topItemEntry ? topItemEntry[0] : '-',
       topItemCount: topItemEntry ? topItemEntry[1] : 0,
     }
-  }, [contextRows])
+  }, [searchItem, summaryContextRows, summaryRowCount])
 
   const exportRows = useMemo(
     () =>
@@ -390,8 +560,8 @@ export default function AdminHistoryPage() {
 
   const cardActiveClass = (targetStatus: string) =>
     statusFilter === targetStatus
-      ? 'ring-2 ring-white/30 scale-[1.01]'
-      : 'hover:-translate-y-0.5 hover:border-white/30'
+      ? 'ring-2 ring-white/30'
+      : 'hover:border-white/30'
 
   if (loading) {
     return (
@@ -533,7 +703,11 @@ export default function AdminHistoryPage() {
 
           <select
             value={monthFilter}
-            onChange={(e) => setMonthFilter(e.target.value)}
+            onChange={(e) => {
+              const nextMonth = e.target.value
+              setMonthFilter(nextMonth)
+              if (nextMonth !== 'all' && yearFilter === 'all') setYearFilter(String(new Date().getFullYear()))
+            }}
             className="rounded-2xl border border-amber-500/25 bg-zinc-950/70 px-4 py-3 text-sm font-semibold text-white outline-none transition focus:border-amber-400"
           >
             <option value="all">All Months</option>
@@ -561,8 +735,13 @@ export default function AdminHistoryPage() {
 
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
-          {filteredRows.length} records
+          {filteredRows.length} shown {searchItem ? 'after item filter' : ''} / {rowCount} matching records
         </div>
+        {isFetchingRows && (
+          <div className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-200">
+            Loading page...
+          </div>
+        )}
         {rows.length === 0 && (
           <div className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-200">
             No request rows returned from ppe_requests
@@ -697,6 +876,30 @@ export default function AdminHistoryPage() {
           <p className="mt-2 text-xs font-semibold text-zinc-400 normal-case">Try clearing filters or confirm data exists in ppe_requests.</p>
         </div>
       )}
+
+      <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-[28px] border border-white/6 bg-zinc-950/45 p-4 md:flex-row">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+          Page {page + 1} of {Math.max(1, Math.ceil(rowCount / PAGE_SIZE))}
+        </p>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            disabled={page === 0 || isFetchingRows}
+            onClick={() => setPage((prev) => Math.max(0, prev - 1))}
+            className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-xs font-black uppercase text-white transition disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            disabled={(page + 1) * PAGE_SIZE >= rowCount || isFetchingRows}
+            onClick={() => setPage((prev) => prev + 1)}
+            className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-5 py-3 text-xs font-black uppercase text-orange-200 transition disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            Next
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
