@@ -6,7 +6,7 @@ import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { 
   Settings, Users, Package, SlidersHorizontal, Search, UserPlus,
-  Loader2, Upload, Edit, RefreshCw, X, Save, Box, ChevronRight, User
+  Loader2, Upload, Edit, RefreshCw, X, Save, Box, ChevronRight, User, Trash2
 } from 'lucide-react'
 import imageCompression from 'browser-image-compression'
 
@@ -105,6 +105,21 @@ function SettingsContent() {
       fetchData(); toast.success('PIN has been reset');
     }
   };
+
+  const handleDeleteCrew = async (crew: any) => {
+    if (!crew?.id) return
+    if (!confirm(`Delete ${crew.full_name}? Use this only for crew who already resigned. This will remove the crew master record and their uploaded certificates.`)) return
+
+    const certDelete = await supabase.from('crew_certs').delete().eq('crew_id', crew.id)
+    if (certDelete.error) return toast.error('Delete certificates failed: ' + certDelete.error.message)
+
+    const crewDelete = await supabase.from('crews').delete().eq('id', crew.id)
+    if (crewDelete.error) return toast.error('Delete crew failed: ' + crewDelete.error.message)
+
+    toast.success(`${crew.full_name} deleted`)
+    setIsEditCrewOpen(false)
+    fetchData()
+  }
 
   const handleUpload = async (type: 'suit' | 'boot', file: File) => {
     setUploading(prev => ({ ...prev, [type]: true }));
@@ -214,6 +229,11 @@ function SettingsContent() {
                     <button onClick={() => handleResetPin(editingCrew.id, editingCrew.full_name)} className="flex-1 py-5 bg-zinc-800 border border-white/5 rounded-3xl font-black uppercase text-[10px] text-zinc-500 hover:bg-red-600 hover:text-white transition-all">Reset PIN</button>
                  )}
               </div>
+              {editingCrew.id && (
+                <button onClick={() => handleDeleteCrew(editingCrew)} className="w-full py-4 bg-red-500/10 border border-red-500/20 rounded-3xl font-black uppercase text-[10px] text-red-400 hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-3">
+                  <Trash2 size={16}/> Delete Resigned Crew
+                </button>
+              )}
             </div>
           </div>
         </div>

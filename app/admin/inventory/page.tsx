@@ -233,6 +233,28 @@ function InventoryContent() {
     return supabase.from('restock_history').insert(legacyRow)
   }
 
+  const deleteRestockLine = async (line: any) => {
+    if (!confirm(`Delete restock line "${line.item_name}"? This removes history only and will not change stock quantity.`)) return
+
+    const { error } = await supabase.from('restock_history').delete().eq('id', line.id)
+    if (error) return toast.error(error.message || 'Unable to delete restock line')
+
+    toast.success('Restock line deleted')
+    fetchData()
+  }
+
+  const deleteRestockBatch = async (batch: any) => {
+    if (!confirm(`Delete DO ${batch.do_number}? This removes ${batch.lines.length} history lines only and will not change stock quantity.`)) return
+
+    const ids = batch.lines.map((line: any) => line.id).filter(Boolean)
+    const { error } = await supabase.from('restock_history').delete().in('id', ids)
+    if (error) return toast.error(error.message || 'Unable to delete DO history')
+
+    toast.success(`Deleted ${batch.do_number}`)
+    setExpandedRestockBatches(expandedRestockBatches.filter((id) => id !== batch.id))
+    fetchData()
+  }
+
   const openDoDocument = async (receiptUrl: string) => {
     if (!receiptUrl) return toast.error('No DO file attached')
 
@@ -590,6 +612,9 @@ function InventoryContent() {
                                 <ExternalLink size={14}/> View DO
                               </button>
                             )}
+                            <button onClick={(e) => { e.stopPropagation(); deleteRestockBatch(batch) }} className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-[10px] font-black text-red-300 hover:bg-red-600 hover:text-white transition-all flex items-center gap-2">
+                              <Trash2 size={14}/> Delete
+                            </button>
                             <p className="text-emerald-500 font-black text-2xl">+{batch.totalQty}</p>
                             <ChevronDown size={22} className={`text-zinc-600 transition-transform ${expanded ? 'rotate-180' : ''}`} />
                           </div>
@@ -597,14 +622,19 @@ function InventoryContent() {
                         {expanded && (
                           <div className="border-t border-white/5 p-6 space-y-3">
                             {batch.lines.map((line: any) => (
-                              <div key={line.id} className="flex items-center justify-between rounded-2xl bg-white/5 px-5 py-4">
+                              <div key={line.id} className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-5 py-4">
                                 <div>
                                   <p className="text-white font-black italic">{line.item_name}</p>
                                   <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
                                     {[line.color, line.size].filter(Boolean).join(' | ') || 'No spec'}
                                   </p>
                                 </div>
-                                <p className="text-emerald-400 font-black">+{line.quantity_added}</p>
+                                <div className="flex items-center gap-3">
+                                  <p className="text-emerald-400 font-black">+{line.quantity_added}</p>
+                                  <button onClick={() => deleteRestockLine(line)} className="rounded-xl bg-red-500/10 p-3 text-red-400 hover:bg-red-600 hover:text-white transition-all">
+                                    <Trash2 size={14}/>
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>

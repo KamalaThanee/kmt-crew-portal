@@ -29,7 +29,13 @@ for update
 using (true)
 with check (true);
 
-grant select, insert, update on public.restock_history to anon, authenticated;
+drop policy if exists "Allow delete restock history" on public.restock_history;
+create policy "Allow delete restock history"
+on public.restock_history
+for delete
+using (true);
+
+grant select, insert, update, delete on public.restock_history to anon, authenticated;
 
 drop policy if exists "Allow read DO files" on storage.objects;
 create policy "Allow read DO files"
