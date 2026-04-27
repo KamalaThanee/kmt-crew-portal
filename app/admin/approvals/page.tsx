@@ -90,7 +90,7 @@ export default function ApprovalsPage() {
         .from('ppe_requests')
         .update(variant)
         .eq('id', requestId)
-        .select('id, status, approved_by, approved_by_name, approved_at, rejected_at')
+        .select('id, status')
         .maybeSingle()
 
       if (!result.error) return result
