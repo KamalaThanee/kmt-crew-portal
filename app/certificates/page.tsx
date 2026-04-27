@@ -7,7 +7,7 @@ import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { 
   ShieldCheck, FileBadge, User, Ship, ChevronRight, ChevronDown, Eye, RefreshCcw, 
-  AlertTriangle, Clock, CheckCircle2, XCircle, Search, Filter, Plus, Users
+  AlertTriangle, Clock, CheckCircle2, XCircle, Search, Filter, Plus, Users, Download, Loader2
 } from 'lucide-react'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
@@ -33,6 +33,7 @@ function CertificatesContent() {
   const [filterSpecificCert, setFilterSpecificCert] = useState('All')
   const [personalFilter, setPersonalFilter] = useState('all') 
   const [expandedCrews, setExpandedCrews] = useState<string[]>([])
+  const [isDownloadingCerts, setIsDownloadingCerts] = useState(false)
 
   const isAdmin = useMemo(() => isAdminRole(currentUser?.position), [currentUser]);
 
@@ -166,6 +167,98 @@ function CertificatesContent() {
     });
   }, [enhancedCrews, filterMode]);
 
+  const filteredCertificateDownloads = useMemo(() => {
+    if (filterSpecificCert === 'All') return []
+
+    return finalDisplayCrews
+      .map((crew: any) => {
+        const cert = crew.certData.list.find((item: any) => normalize(item.cert_name) === normalize(filterSpecificCert))
+        if (!cert?.uploaded?.file_url) return null
+        return {
+          crewName: crew.full_name,
+          certName: cert.cert_name,
+          url: cert.uploaded.file_url,
+          expiryDate: cert.uploaded.expiry_date,
+        }
+      })
+      .filter(Boolean) as Array<{ crewName: string; certName: string; url: string; expiryDate?: string }>
+  }, [filterSpecificCert, finalDisplayCrews])
+
+  const safeFileName = (value: string) => String(value || 'file').replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '')
+
+  const getFileExtension = (url: string, contentType?: string | null) => {
+    const mimeExt: Record<string, string> = {
+      'application/pdf': 'pdf',
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+    }
+
+    if (contentType) {
+      const matched = Object.entries(mimeExt).find(([mime]) => contentType.includes(mime))
+      if (matched) return matched[1]
+    }
+
+    try {
+      const path = new URL(url).pathname
+      const ext = path.split('.').pop()?.split('?')[0]
+      if (ext && ext.length <= 5) return ext
+    } catch {}
+
+    return 'pdf'
+  }
+
+  const triggerDownload = (href: string, filename: string) => {
+    const link = document.createElement('a')
+    link.href = href
+    link.download = filename
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  }
+
+  const handleDownloadFilteredCertificates = async () => {
+    if (filterSpecificCert === 'All') {
+      toast.error('Select a specific certificate first')
+      return
+    }
+
+    if (filteredCertificateDownloads.length === 0) {
+      toast.error('No uploaded certificate files in the current filter')
+      return
+    }
+
+    setIsDownloadingCerts(true)
+    let downloaded = 0
+
+    try {
+      for (const cert of filteredCertificateDownloads) {
+        const baseName = `${safeFileName(cert.crewName)}_${safeFileName(cert.certName)}`
+        try {
+          const response = await fetch(cert.url)
+          if (!response.ok) throw new Error('Unable to fetch file')
+          const blob = await response.blob()
+          const ext = getFileExtension(cert.url, response.headers.get('content-type'))
+          const blobUrl = URL.createObjectURL(blob)
+          triggerDownload(blobUrl, `${baseName}.${ext}`)
+          window.setTimeout(() => URL.revokeObjectURL(blobUrl), 3000)
+          downloaded++
+        } catch {
+          triggerDownload(cert.url, `${baseName}.${getFileExtension(cert.url)}`)
+          downloaded++
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 250))
+      }
+
+      toast.success(`Started ${downloaded} certificate download${downloaded === 1 ? '' : 's'}`)
+    } finally {
+      setIsDownloadingCerts(false)
+    }
+  }
+
   if (loading || !currentUser) return <div className="min-h-screen bg-black flex items-center justify-center text-orange-500 font-black animate-pulse">VAULT ACCESSING...</div>
 
   return (
@@ -259,10 +352,19 @@ function CertificatesContent() {
               ))}
            </div>
 
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-zinc-900/50 p-4 rounded-[28px] border border-white/5">
+           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-zinc-900/50 p-4 rounded-[28px] border border-white/5">
               <div className="relative md:col-span-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16}/><input type="text" placeholder="Search crew..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-black/50 border border-white/10 p-4 pl-12 rounded-2xl outline-none focus:border-orange-500 text-xs font-bold" /></div>
               <select value={filterPos} onChange={e => setFilterPos(e.target.value)} className="bg-black/50 border border-white/10 p-4 rounded-2xl outline-none text-xs font-bold text-blue-400"><option value="All">All Positions</option>{allPositions.map(p => <option key={p} value={p}>{p}</option>)}</select>
               <select value={filterSpecificCert} onChange={e => setFilterSpecificCert(e.target.value)} className="bg-black/50 border border-white/10 p-4 rounded-2xl outline-none text-xs font-bold text-orange-400"><option value="All">Select Specific Certificate...</option>{allCertTypes.map(c => <option key={c} value={c}>{c}</option>)}</select>
+              <button
+                onClick={handleDownloadFilteredCertificates}
+                disabled={filterSpecificCert === 'All' || filteredCertificateDownloads.length === 0 || isDownloadingCerts}
+                className="flex items-center justify-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-xs font-black text-emerald-300 transition-all hover:bg-emerald-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                title={filterSpecificCert === 'All' ? 'Select a specific certificate first' : `Download ${filteredCertificateDownloads.length} matching files`}
+              >
+                {isDownloadingCerts ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>}
+                {filterSpecificCert === 'All' ? 'Download Filtered' : `Download ${filteredCertificateDownloads.length}`}
+              </button>
            </div>
 
            <div className="space-y-4">
