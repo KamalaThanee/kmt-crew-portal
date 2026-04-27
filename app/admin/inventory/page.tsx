@@ -235,20 +235,28 @@ function InventoryContent() {
   const openDoDocument = async (receiptUrl: string) => {
     if (!receiptUrl) return toast.error('No DO file attached')
 
-    const publicBucketMarker = '/storage/v1/object/public/do-files/'
-    const signedBucketMarker = '/storage/v1/object/sign/do-files/'
-    const isStoragePath = receiptUrl.startsWith('do-files/') || receiptUrl.includes(publicBucketMarker) || receiptUrl.includes(signedBucketMarker)
+    const getDoFilePath = (value: string) => {
+      if (value.startsWith('do-files/')) return value.replace(/^do-files\//, '')
+      try {
+        const url = new URL(value)
+        const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/do-files\/(.+)$/)
+        return match?.[1] ? decodeURIComponent(match[1]) : ''
+      } catch {
+        return ''
+      }
+    }
 
-    if (isStoragePath) {
-      const filePath = decodeURIComponent(
-        receiptUrl
-          .replace(/^do-files\//, '')
-          .split(publicBucketMarker).pop()
-          ?.split(signedBucketMarker).pop()
-          ?.split('?')[0] || '',
-      )
+    const filePath = getDoFilePath(receiptUrl)
+
+    if (filePath) {
       const { data, error } = await supabase.storage.from('do-files').createSignedUrl(filePath, 60)
-      if (error) return toast.error(error.message || 'Unable to open DO file')
+      if (error) {
+        const message = String(error.message || '').toLowerCase()
+        if (message.includes('not found')) {
+          return toast.error('DO file was not found in storage. This older record may have been saved before the do-files bucket existed.')
+        }
+        return toast.error(error.message || 'Unable to open DO file')
+      }
       window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
       return
     }
