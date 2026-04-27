@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx'
 import { 
   Package, Search, AlertTriangle, Download, Plus, Edit, X, Save, 
   Box, ChevronDown, ChevronRight, Archive, FileText, Loader2, 
-  CheckCircle2, Trash2, Upload, Clock, User,
+  CheckCircle2, Trash2, Upload, Clock, User, ExternalLink,
   HardHat, Headphones, Eye, Wind, Shirt, Hand, Footprints, MoreHorizontal
 } from 'lucide-react'
 import imageCompression from 'browser-image-compression'
@@ -64,6 +64,9 @@ function InventoryContent() {
   const [restockView, setRestockView] = useState<'entry' | 'history' | 'issue-log'>('entry')
 
   const [restockEntries, setRestockEntries] = useState([{ id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }])
+  const [doNumber, setDoNumber] = useState('')
+  const [restockMonthFilter, setRestockMonthFilter] = useState('all')
+  const [expandedRestockBatches, setExpandedRestockBatches] = useState<string[]>([])
   const [doFile, setDoFile] = useState<File | null>(null)
   const [isProcessingRestock, setIsProcessingRestock] = useState(false)
   const [isRefreshingTransactions, setIsRefreshingTransactions] = useState(false)
@@ -208,6 +211,27 @@ function InventoryContent() {
   const addRow = () => setRestockEntries([...restockEntries, { id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }])
   const removeRow = (id: number) => setRestockEntries(restockEntries.filter(e => e.id !== id))
 
+  const generateDoNumber = () => {
+    const now = new Date()
+    const date = now.toISOString().slice(0, 10).replace(/-/g, '')
+    const time = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0')
+    return `DO-${date}-${time}`
+  }
+
+  const isMissingRestockColumn = (error: unknown) => {
+    const message = String((error as { message?: string })?.message || '').toLowerCase()
+    return message.includes('schema cache') || message.includes('column')
+  }
+
+  const insertRestockHistory = async (row: Record<string, any>) => {
+    const result = await supabase.from('restock_history').insert(row)
+    if (!result.error) return result
+    if (!isMissingRestockColumn(result.error)) return result
+
+    const { batch_id: _batchId, do_number: _doNumber, ...legacyRow } = row
+    return supabase.from('restock_history').insert(legacyRow)
+  }
+
   const filteredInventoryGrouped = useMemo(() => {
     const groups: Record<string, any[]> = {}
     const filtered = inventory.filter(item => {
@@ -233,6 +257,45 @@ function InventoryContent() {
     })
     return groups;
   }, [inventory, searchTerm, selectedCats, showLowStock])
+
+  const restockMonthOptions = useMemo(() => {
+    const options = new Set<string>()
+    history.forEach((h) => {
+      if (!h.created_at) return
+      options.add(new Date(h.created_at).toISOString().slice(0, 7))
+    })
+    return [...options].sort().reverse()
+  }, [history])
+
+  const restockBatches = useMemo(() => {
+    const filtered = history.filter((h) => {
+      if (restockMonthFilter === 'all') return true
+      if (!h.created_at) return false
+      return new Date(h.created_at).toISOString().slice(0, 7) === restockMonthFilter
+    })
+
+    const groups: Record<string, any> = {}
+    filtered.forEach((h) => {
+      const createdAt = h.created_at || new Date().toISOString()
+      const key = h.batch_id || h.do_number || h.receipt_url || `${new Date(createdAt).toISOString().slice(0, 10)}-${h.added_by || 'admin'}`
+      if (!groups[key]) {
+        groups[key] = {
+          id: key,
+          do_number: h.do_number || `DO-${new Date(createdAt).toISOString().slice(0, 10).replace(/-/g, '')}`,
+          receipt_url: h.receipt_url,
+          added_by: h.added_by,
+          created_at: createdAt,
+          lines: [],
+          totalQty: 0,
+        }
+      }
+      groups[key].lines.push(h)
+      groups[key].totalQty += Number(h.quantity_added || 0)
+      if (h.receipt_url && !groups[key].receipt_url) groups[key].receipt_url = h.receipt_url
+    })
+
+    return Object.values(groups).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  }, [history, restockMonthFilter])
 
   const handleExportExcel = () => {
     const rows = Object.entries(filteredInventoryGrouped).flatMap(([category, items]) =>
@@ -277,8 +340,10 @@ function InventoryContent() {
     if (validEntries.length === 0 || !doFile) return toast.error('Check items and DO file')
     setIsProcessingRestock(true)
     try {
+      const finalDoNumber = doNumber.trim() || generateDoNumber()
+      const batchId = `${finalDoNumber}-${Date.now()}`
       const compressedFile = await imageCompression(doFile, { maxSizeMB: 0.3, maxWidthOrHeight: 1024 })
-      const fileName = `DO_${Date.now()}_${doFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+      const fileName = `${finalDoNumber}_${Date.now()}_${doFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
       await supabase.storage.from('do-files').upload(fileName, compressedFile)
       const { data: { publicUrl } } = supabase.storage.from('do-files').getPublicUrl(fileName)
       const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
@@ -286,9 +351,18 @@ function InventoryContent() {
         const item = inventory.find(i => String(i.id) === String(entry.inventory_id))
         if (!item) continue;
         await supabase.from('ppe_inventory').update({ quantity: Number(item.quantity) + Number(entry.qty) }).eq('id', item.id)
-        await supabase.from('restock_history').insert({ item_id: item.id, item_name: item.item_name, quantity_added: Number(entry.qty), added_by: admin.full_name || 'Admin', receipt_url: publicUrl })
+        const { error } = await insertRestockHistory({
+          item_id: item.id,
+          item_name: item.item_name,
+          quantity_added: Number(entry.qty),
+          added_by: admin.full_name || 'Admin',
+          receipt_url: publicUrl,
+          do_number: finalDoNumber,
+          batch_id: batchId,
+        })
+        if (error) throw error
       }
-      toast.success('Restock Complete'); setRestockEntries([{ id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }]); setDoFile(null); setRestockView('history'); fetchData();
+      toast.success(`Received ${finalDoNumber}`); setRestockEntries([{ id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }]); setDoNumber(''); setDoFile(null); setRestockView('history'); fetchData();
     } catch (e: any) { toast.error(e.message) } finally { setIsProcessingRestock(false) }
   }
 
@@ -384,6 +458,15 @@ function InventoryContent() {
             <div className="overflow-y-auto p-10 flex-1 no-scrollbar pb-20">
               {restockView === 'entry' ? (
                 <div className="space-y-12 animate-in fade-in max-w-4xl mx-auto">
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 rounded-[32px] border border-emerald-500/20 bg-emerald-500/10 p-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-emerald-300 ml-2 tracking-[0.2em] block">DO Number</label>
+                      <input value={doNumber} onChange={(e) => setDoNumber(e.target.value)} placeholder="Enter DO number or leave blank for auto" className="w-full bg-black/60 border border-emerald-500/20 p-5 rounded-3xl outline-none text-white font-black text-sm focus:border-emerald-500 uppercase" />
+                    </div>
+                    <button onClick={() => setDoNumber(generateDoNumber())} className="rounded-3xl border border-emerald-400/30 px-6 py-4 text-[10px] font-black text-emerald-200 hover:bg-emerald-500 hover:text-white transition-all">
+                      Auto Number
+                    </button>
+                  </div>
                   <div className="space-y-6">
                     {restockEntries.map((entry, index) => (
                       <div key={entry.id} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center bg-black/50 p-6 rounded-[32px] border border-white/5 group hover:border-emerald-500/30 transition-all">
@@ -425,17 +508,64 @@ function InventoryContent() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-end pt-12 border-t border-white/10 pb-10">
                     <div className="space-y-3"><label className="text-[10px] font-black uppercase text-zinc-600 ml-3 tracking-[0.2em] block">Delivery Document</label><label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed ${doFile ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 hover:border-emerald-500/50'} rounded-[32px] cursor-pointer transition-all`}><Upload size={32} className="text-zinc-700"/><p className="text-xs">{doFile ? doFile.name : "Select Image"}</p><input type="file" className="hidden" accept="image/*" onChange={(e) => setDoFile(e.target.files?.[0] || null)} /></label></div>
-                    <button onClick={handleRestockSubmit} disabled={isProcessingRestock} className="w-full h-32 bg-emerald-600 hover:bg-emerald-500 text-white rounded-[40px] font-black uppercase shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-4">{isProcessingRestock ? <Loader2 className="animate-spin" size={32}/> : <Save size={32}/>} Confirm Intake</button>
+                    <button onClick={handleRestockSubmit} disabled={isProcessingRestock} className="w-full h-32 bg-emerald-600 hover:bg-emerald-500 text-white rounded-[40px] font-black uppercase shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-4">{isProcessingRestock ? <Loader2 className="animate-spin" size={32}/> : <Save size={32}/>} Receive DO</button>
                   </div>
                 </div>
               ) : restockView === 'history' ? (
-                <div className="space-y-6 pb-20 max-w-4xl mx-auto">
-                  {history.map(h => (
-                    <div key={h.id} className="bg-black/40 border border-white/5 p-8 rounded-[40px] flex justify-between items-center group shadow-xl">
-                      <div className="flex items-center gap-8"><a href={h.receipt_url} target="_blank" rel="noopener noreferrer" className="p-5 bg-emerald-500/10 text-emerald-500 rounded-[24px] hover:bg-emerald-500 hover:text-white transition-all"><FileText size={32}/></a><div><p className="text-white font-black text-lg uppercase italic">{h.item_name}</p><div className="flex gap-6 mt-2 text-zinc-600 font-bold uppercase text-[10px] tracking-widest"><span>{new Date(h.created_at).toLocaleString()}</span><span>By: {h.added_by}</span></div></div></div>
-                      <div className="text-right"><p className="text-emerald-500 font-black text-2xl">+{h.quantity_added}</p></div>
+                <div className="space-y-6 pb-20 max-w-5xl mx-auto">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-[32px] border border-emerald-500/20 bg-emerald-500/10 p-6">
+                    <div>
+                      <p className="text-emerald-300 text-[10px] tracking-[0.25em] uppercase">DO Receiving History</p>
+                      <p className="mt-2 text-sm normal-case text-zinc-300">{restockBatches.length} DO batches in current filter.</p>
                     </div>
-                  ))}
+                    <select value={restockMonthFilter} onChange={(e) => setRestockMonthFilter(e.target.value)} className="bg-black/60 border border-emerald-500/20 rounded-2xl px-5 py-3 text-white font-black text-xs outline-none focus:border-emerald-500">
+                      <option value="all">All Months</option>
+                      {restockMonthOptions.map((month) => <option key={month} value={month}>{month}</option>)}
+                    </select>
+                  </div>
+                  {restockBatches.length === 0 ? (
+                    <div className="rounded-[40px] border border-white/5 bg-black/40 p-12 text-center text-zinc-600 font-black tracking-widest">
+                      No restock history in this period
+                    </div>
+                  ) : restockBatches.map((batch: any) => {
+                    const expanded = expandedRestockBatches.includes(batch.id)
+                    return (
+                      <div key={batch.id} className="bg-black/40 border border-white/5 rounded-[40px] overflow-hidden shadow-xl">
+                        <button onClick={() => setExpandedRestockBatches(expanded ? expandedRestockBatches.filter(id => id !== batch.id) : [...expandedRestockBatches, batch.id])} className="w-full p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 text-left group">
+                          <div className="flex items-center gap-6">
+                            <div className="p-5 bg-emerald-500/10 text-emerald-500 rounded-[24px] group-hover:bg-emerald-500 group-hover:text-white transition-all"><FileText size={32}/></div>
+                            <div>
+                              <p className="text-white font-black text-xl uppercase italic">{batch.do_number}</p>
+                              <div className="flex flex-wrap gap-4 mt-2 text-zinc-600 font-bold uppercase text-[10px] tracking-widest">
+                                <span>{new Date(batch.created_at).toLocaleString()}</span>
+                                <span>By: {batch.added_by || 'Admin'}</span>
+                                <span>{batch.lines.length} lines</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 self-end md:self-auto">
+                            {batch.receipt_url && (
+                              <a href={batch.receipt_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[10px] font-black text-emerald-300 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
+                                <ExternalLink size={14}/> View DO
+                              </a>
+                            )}
+                            <p className="text-emerald-500 font-black text-2xl">+{batch.totalQty}</p>
+                            <ChevronDown size={22} className={`text-zinc-600 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                          </div>
+                        </button>
+                        {expanded && (
+                          <div className="border-t border-white/5 p-6 space-y-3">
+                            {batch.lines.map((line: any) => (
+                              <div key={line.id} className="flex items-center justify-between rounded-2xl bg-white/5 px-5 py-4">
+                                <p className="text-white font-black italic">{line.item_name}</p>
+                                <p className="text-emerald-400 font-black">+{line.quantity_added}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               ) : (
                 <div className="space-y-4 pb-20 max-w-5xl mx-auto animate-in fade-in">
