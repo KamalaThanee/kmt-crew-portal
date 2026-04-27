@@ -7,7 +7,7 @@ type PpeRequestColumns = {
 
 const ID_COLUMN_CANDIDATES = ['crew_id', 'requester_id', 'user_id']
 const NAME_COLUMN_CANDIDATES = ['crew_name', 'requester_name', 'full_name']
-const OPTIONAL_INSERT_COLUMNS = ['approved_by', 'approved_by_name', 'approved_at', 'rejected_at', 'received_at']
+const OPTIONAL_INSERT_COLUMNS = ['approved_by', 'approved_at', 'rejected_at', 'received_at', 'approved_by_name']
 
 let cachedColumns: Promise<PpeRequestColumns> | null = null
 let cachedInsertColumns: { idColumn: string | null; nameColumn: string | null } | null = null
@@ -24,6 +24,11 @@ function isMissingColumnError(error: unknown, column: string) {
 function isSchemaCacheColumnError(error: unknown) {
   const message = String((error as { message?: string })?.message || '').toLowerCase()
   return message.includes('schema cache') || message.includes('column')
+}
+
+function isApprovedByForeignKeyError(error: unknown) {
+  const message = String((error as { message?: string })?.message || '').toLowerCase()
+  return message.includes('approved_by_fkey') || (message.includes('approved_by') && message.includes('foreign key'))
 }
 
 async function findFirstExistingColumn(candidates: string[]) {
@@ -140,7 +145,7 @@ export async function insertPpeRequest(payload: {
       }
 
       lastError = result.error
-      if (!isSchemaCacheColumnError(result.error)) {
+      if (!isSchemaCacheColumnError(result.error) && !isApprovedByForeignKeyError(result.error)) {
         return result
       }
     }

@@ -71,25 +71,12 @@ export default function ApprovalsPage() {
     if (status === 'rejected') payload.rejected_at = new Date().toISOString()
 
     const variants: Record<string, any>[] = [payload]
-    if ('approved_by' in payload) {
-      const { approved_by: _approvedBy, ...withoutApprovedBy } = payload
-      variants.push(withoutApprovedBy)
-    }
-    if ('approved_by_name' in payload) {
-      const { approved_by_name: _approvedByName, ...withoutApprovedByName } = payload
-      variants.push(withoutApprovedByName)
-    }
-    if ('approved_at' in payload) {
-      const { approved_at: _approvedAt, ...withoutApprovedAt } = payload
-      variants.push(withoutApprovedAt)
-    }
-    if ('rejected_at' in payload) {
-      const { rejected_at: _rejectedAt, ...withoutRejectedAt } = payload
-      variants.push(withoutRejectedAt)
-    }
-    if ('approved_by' in payload && 'approved_by_name' in payload) {
-      const { approved_by: _approvedBy, approved_by_name: _approvedByName, ...statusOnly } = payload
-      variants.push(statusOnly)
+    let shrinkingPayload = { ...payload }
+    for (const column of ['approved_by', 'approved_at', 'rejected_at', 'approved_by_name']) {
+      if (!(column in shrinkingPayload)) continue
+      shrinkingPayload = { ...shrinkingPayload }
+      delete shrinkingPayload[column]
+      variants.push(shrinkingPayload)
     }
 
     let lastResult: any = null
@@ -103,7 +90,7 @@ export default function ApprovalsPage() {
         .from('ppe_requests')
         .update(variant)
         .eq('id', requestId)
-        .select('id, status, approved_by, approved_by_name, approved_at, rejected_at')
+        .select('id, status')
         .maybeSingle()
 
       if (!result.error) return result
