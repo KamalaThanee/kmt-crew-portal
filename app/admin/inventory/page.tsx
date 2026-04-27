@@ -13,6 +13,7 @@ import {
 import imageCompression from 'browser-image-compression'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+const DO_BUCKET = 'receipts'
 const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
 
 const compareSize = (a: any, b: any) => {
@@ -235,25 +236,27 @@ function InventoryContent() {
   const openDoDocument = async (receiptUrl: string) => {
     if (!receiptUrl) return toast.error('No DO file attached')
 
-    const getDoFilePath = (value: string) => {
-      if (value.startsWith('do-files/')) return value.replace(/^do-files\//, '')
+    const getStorageFileRef = (value: string) => {
+      const directPath = value.match(/^(receipts|do-files)\/(.+)$/)
+      if (directPath) return { bucket: directPath[1], path: directPath[2] }
+
       try {
         const url = new URL(value)
-        const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/do-files\/(.+)$/)
-        return match?.[1] ? decodeURIComponent(match[1]) : ''
+        const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/(receipts|do-files)\/(.+)$/)
+        return match?.[1] && match?.[2] ? { bucket: match[1], path: decodeURIComponent(match[2]) } : null
       } catch {
-        return ''
+        return null
       }
     }
 
-    const filePath = getDoFilePath(receiptUrl)
+    const fileRef = getStorageFileRef(receiptUrl)
 
-    if (filePath) {
-      const { data, error } = await supabase.storage.from('do-files').createSignedUrl(filePath, 60)
+    if (fileRef?.path) {
+      const { data, error } = await supabase.storage.from(fileRef.bucket).createSignedUrl(fileRef.path, 60)
       if (error) {
         const message = String(error.message || '').toLowerCase()
         if (message.includes('not found')) {
-          return toast.error('DO file was not found in storage. This older record may have been saved before the do-files bucket existed.')
+          return toast.error('DO file was not found in storage. This older record may point to a file that was never uploaded.')
         }
         return toast.error(error.message || 'Unable to open DO file')
       }
@@ -376,9 +379,9 @@ function InventoryContent() {
       const batchId = `${finalDoNumber}-${Date.now()}`
       const compressedFile = await imageCompression(doFile, { maxSizeMB: 0.3, maxWidthOrHeight: 1024 })
       const fileName = `${finalDoNumber}_${Date.now()}_${doFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-      const { error: uploadError } = await supabase.storage.from('do-files').upload(fileName, compressedFile)
+      const { error: uploadError } = await supabase.storage.from(DO_BUCKET).upload(fileName, compressedFile)
       if (uploadError) throw uploadError
-      const storedReceiptPath = `do-files/${fileName}`
+      const storedReceiptPath = `${DO_BUCKET}/${fileName}`
       const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
       for (const entry of validEntries) {
         const item = inventory.find(i => String(i.id) === String(entry.inventory_id))
