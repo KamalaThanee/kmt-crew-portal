@@ -269,7 +269,9 @@ export default function AdminHistoryPage() {
   const [loading, setLoading] = useState(true)
   const [isFetchingRows, setIsFetchingRows] = useState(false)
   const [rows, setRows] = useState<HistoryRow[]>([])
+  const [summaryRows, setSummaryRows] = useState<HistoryRow[]>([])
   const [rowCount, setRowCount] = useState(0)
+  const [summaryRowCount, setSummaryRowCount] = useState(0)
   const [adminNameMap, setAdminNameMap] = useState<Record<string, string>>({})
   const [searchCrew, setSearchCrew] = useState('')
   const [searchItem, setSearchItem] = useState('')
@@ -336,13 +338,18 @@ export default function AdminHistoryPage() {
 
     let active = true
 
-    const buildHistoryQuery = (columns: string, legacySchema = false) => {
+    const buildHistoryQuery = (
+      columns: string,
+      legacySchema = false,
+      options: { includeStatusFilter?: boolean; paginate?: boolean } = {},
+    ) => {
+      const { includeStatusFilter = true, paginate = true } = options
       let query = supabase
         .from('ppe_requests')
         .select(columns, { count: 'exact' })
         .order('created_at', { ascending: false })
 
-      if (statusFilter !== 'all') query = query.eq('status', statusFilter)
+      if (includeStatusFilter && statusFilter !== 'all') query = query.eq('status', statusFilter)
       if (yearFilter !== 'all') {
         const startMonth = monthFilter !== 'all' ? Number(monthFilter) - 1 : 0
         const endMonth = monthFilter !== 'all' ? startMonth + 1 : 12
@@ -360,6 +367,8 @@ export default function AdminHistoryPage() {
               `crew_name.ilike.%${safeCrewQuery}%,requester_name.ilike.%${safeCrewQuery}%,full_name.ilike.%${safeCrewQuery}%`,
             )
       }
+
+      if (!paginate) return query.limit(1000)
 
       const from = page * PAGE_SIZE
       const to = from + PAGE_SIZE - 1
@@ -379,16 +388,25 @@ export default function AdminHistoryPage() {
       )
     }
 
+    const runHistoryQuery = async (options: { includeStatusFilter?: boolean; paginate?: boolean }) => {
+      let result = await buildHistoryQuery(HISTORY_COLUMNS, false, options)
+      if (result.error && isMissingHistoryColumn(result.error)) {
+        result = await buildHistoryQuery(LEGACY_HISTORY_COLUMNS, true, options)
+      }
+      if (result.error && isMissingHistoryColumn(result.error)) {
+        result = await buildHistoryQuery(MINIMAL_HISTORY_COLUMNS, true, options)
+      }
+
+      return result
+    }
+
     const fetchRows = async () => {
       setIsFetchingRows(true)
 
-      let result = await buildHistoryQuery(HISTORY_COLUMNS)
-      if (result.error && isMissingHistoryColumn(result.error)) {
-        result = await buildHistoryQuery(LEGACY_HISTORY_COLUMNS, true)
-      }
-      if (result.error && isMissingHistoryColumn(result.error)) {
-        result = await buildHistoryQuery(MINIMAL_HISTORY_COLUMNS, true)
-      }
+      const [result, summaryResult] = await Promise.all([
+        runHistoryQuery({ includeStatusFilter: true, paginate: true }),
+        runHistoryQuery({ includeStatusFilter: false, paginate: false }),
+      ])
 
       if (!active) return
       if (result.error) {
@@ -399,6 +417,15 @@ export default function AdminHistoryPage() {
       } else {
         setRows(((result.data || []) as unknown) as HistoryRow[])
         setRowCount(result.count || 0)
+      }
+
+      if (summaryResult.error) {
+        console.error('History summary load failed:', summaryResult.error)
+        setSummaryRows([])
+        setSummaryRowCount(0)
+      } else {
+        setSummaryRows(((summaryResult.data || []) as unknown) as HistoryRow[])
+        setSummaryRowCount(summaryResult.count || 0)
       }
 
       setIsFetchingRows(false)
@@ -424,6 +451,15 @@ export default function AdminHistoryPage() {
   const filteredRows = useMemo(() => {
     return contextRows
   }, [contextRows])
+
+  const summaryContextRows = useMemo(() => {
+    return summaryRows.filter((row) => {
+      const createdAt = row.created_at ? new Date(row.created_at) : null
+      const itemSummary = getItemSummary(row)
+      const matchesItem = !searchItem || normalize(itemSummary).includes(normalize(searchItem))
+      return !!createdAt && matchesItem
+    })
+  }, [summaryRows, searchItem])
 
   const monthOptions = useMemo(() => {
     return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
@@ -457,7 +493,7 @@ export default function AdminHistoryPage() {
     const crewCounts = new Map<string, number>()
     const itemCounts = new Map<string, number>()
 
-    contextRows.forEach((row) => {
+    summaryContextRows.forEach((row) => {
       const status = normalize(row.status || 'pending')
       if (status === 'approved') approvedCount += 1
       else if (status === 'rejected') rejectedCount += 1
@@ -477,7 +513,7 @@ export default function AdminHistoryPage() {
     const topItemEntry = [...itemCounts.entries()].sort((a, b) => b[1] - a[1])[0]
 
     return {
-      requestCount: contextRows.length,
+      requestCount: searchItem ? summaryContextRows.length : summaryRowCount,
       pendingCount,
       approvedCount,
       rejectedCount,
@@ -487,7 +523,7 @@ export default function AdminHistoryPage() {
       topItem: topItemEntry ? topItemEntry[0] : '-',
       topItemCount: topItemEntry ? topItemEntry[1] : 0,
     }
-  }, [contextRows])
+  }, [searchItem, summaryContextRows, summaryRowCount])
 
   const exportRows = useMemo(
     () =>
