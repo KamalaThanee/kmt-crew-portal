@@ -93,7 +93,7 @@ const getStatusTimelineMeta = (row: HistoryRow, adminNameMap: Record<string, str
     row.approved_by_name ||
     (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : 'Unknown approver')
 
-  const timeline = [`Requested on ${formatDateTime(row.created_at)}`]
+  const timeline: string[] = []
 
   if (row.approved_at || status === 'approved' || status === 'received') {
     timeline.push(`Approved by ${actorName}${row.approved_at ? ` on ${formatDateTime(row.approved_at)}` : ''}`)
@@ -108,10 +108,10 @@ const getStatusTimelineMeta = (row: HistoryRow, adminNameMap: Record<string, str
   }
 
   if (status === 'pending') {
-    timeline.push('Waiting for approval')
+    return 'Waiting for approval'
   }
 
-  return timeline.join(' | ')
+  return timeline.length > 0 ? timeline.join(' | ') : '-'
 }
 
 const getItemSummary = (row: HistoryRow) =>
