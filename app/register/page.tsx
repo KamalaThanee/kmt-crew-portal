@@ -5,6 +5,8 @@ import { supabase } from '../../lib/supabase'
 import { toast } from 'sonner'
 import { Search, Key, ChevronRight, ChevronLeft, User, ShieldCheck } from 'lucide-react'
 
+const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at
+
 export default function RegisterPage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
@@ -41,7 +43,7 @@ export default function RegisterPage() {
         supabase.from('ppe_inventory').select('*'),
         supabase.from('ppe_settings').select('*').eq('id', 1).single()
       ]);
-      if (cr.data) setCrewList(cr.data)
+      if (cr.data) setCrewList(cr.data.filter(isCrewActive))
       if (inv.data) setInventory(inv.data)
       if (st.data) setSizeCharts({ suit: st.data.suit_chart_url || '', boot: st.data.boot_url || '' })
       setLoading(false)

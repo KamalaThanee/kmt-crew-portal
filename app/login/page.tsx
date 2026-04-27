@@ -7,6 +7,8 @@ import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { ChevronDown, Loader2, Lock, Search, ShieldCheck, User, UserPlus } from 'lucide-react'
 
+const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at
+
 export default function LoginPage() {
   const router = useRouter()
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -24,7 +26,7 @@ export default function LoginPage() {
 
     const fetchRegisteredCrews = async () => {
       const { data } = await supabase.from('crews').select('*').not('pin', 'is', null).order('full_name')
-      if (data) setCrews(data)
+      if (data) setCrews(data.filter(isCrewActive))
     }
 
     fetchRegisteredCrews()
@@ -63,6 +65,11 @@ export default function LoginPage() {
 
       if (error || !crew) {
         toast.error('Incorrect PIN')
+        return
+      }
+
+      if (!isCrewActive(crew)) {
+        toast.error('This crew account is marked as resigned')
         return
       }
 

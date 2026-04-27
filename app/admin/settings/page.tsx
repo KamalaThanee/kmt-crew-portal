@@ -11,6 +11,7 @@ import {
 import imageCompression from 'browser-image-compression'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
 
 function SettingsContent() {
   const router = useRouter();
@@ -23,6 +24,7 @@ function SettingsContent() {
   const [inventory, setInventory] = useState<any[]>([]);
   const [crews, setCrews] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [crewStatusFilter, setCrewStatusFilter] = useState<'active' | 'resigned' | 'all'>('active');
 
   const [editingCrew, setEditingCrew] = useState<any>(null);
   const [isEditCrewOpen, setIsEditCrewOpen] = useState(false);
@@ -73,8 +75,16 @@ function SettingsContent() {
   const bootSizes = useMemo(() => smartSort([...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')).map(i => i.size))].filter(Boolean)), [inventory])
 
   const filteredCrews = useMemo(() => {
-    return crews.filter(crew => crew.full_name.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [crews, searchTerm]);
+    return crews.filter(crew => {
+      const matchesSearch = crew.full_name.toLowerCase().includes(searchTerm.toLowerCase());
+      const active = isCrewActive(crew);
+      const matchesStatus =
+        crewStatusFilter === 'all' ||
+        (crewStatusFilter === 'active' && active) ||
+        (crewStatusFilter === 'resigned' && !active);
+      return matchesSearch && matchesStatus;
+    });
+  }, [crews, searchTerm, crewStatusFilter]);
 
   const handleSaveCrew = async () => {
     if (!editingCrew.full_name || !editingCrew.position) return toast.error('Full Name and Position required');
@@ -87,6 +97,7 @@ function SettingsContent() {
       suit_color: editingCrew.suit_color,
       suit_size: editingCrew.suit_size,
       boot_size: editingCrew.boot_size,
+      is_active: editingCrew.is_active ?? true,
       registered: editingCrew.registered || false
     });
 
@@ -106,17 +117,46 @@ function SettingsContent() {
     }
   };
 
-  const handleDeleteCrew = async (crew: any) => {
+  const handleArchiveCrew = async (crew: any) => {
     if (!crew?.id) return
-    if (!confirm(`Delete ${crew.full_name}? Use this only for crew who already resigned. This will remove the crew master record and their uploaded certificates.`)) return
+    if (!confirm(`Mark ${crew.full_name} as resigned? They will be hidden from login, registration, and direct issue lists, but history will remain.`)) return
 
-    const certDelete = await supabase.from('crew_certs').delete().eq('crew_id', crew.id)
-    if (certDelete.error) return toast.error('Delete certificates failed: ' + certDelete.error.message)
+    const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
+    const { error } = await supabase
+      .from('crews')
+      .update({
+        is_active: false,
+        resigned_at: new Date().toISOString(),
+        resigned_by: admin.full_name || 'Admin',
+        pin: null,
+        registered: false,
+      })
+      .eq('id', crew.id)
 
-    const crewDelete = await supabase.from('crews').delete().eq('id', crew.id)
-    if (crewDelete.error) return toast.error('Delete crew failed: ' + crewDelete.error.message)
+    if (error) {
+      const message = String(error.message || '').toLowerCase()
+      if (message.includes('is_active') || message.includes('resigned_at') || message.includes('schema cache')) {
+        return toast.error('Run sql/crew_archive.sql in Supabase first, then try again.')
+      }
+      return toast.error('Archive failed: ' + error.message)
+    }
 
-    toast.success(`${crew.full_name} deleted`)
+    toast.success(`${crew.full_name} marked as resigned`)
+    setIsEditCrewOpen(false)
+    fetchData()
+  }
+
+  const handleRestoreCrew = async (crew: any) => {
+    if (!crew?.id) return
+    if (!confirm(`Restore ${crew.full_name} to active crew list?`)) return
+
+    const { error } = await supabase
+      .from('crews')
+      .update({ is_active: true, resigned_at: null, resigned_by: null })
+      .eq('id', crew.id)
+
+    if (error) return toast.error('Restore failed: ' + error.message)
+    toast.success(`${crew.full_name} restored`)
     setIsEditCrewOpen(false)
     fetchData()
   }
@@ -159,7 +199,7 @@ function SettingsContent() {
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                   <div>
                     <h2 className="text-2xl font-black italic text-white uppercase tracking-tighter leading-none">Barge Crew Master</h2>
-                    <p className="text-zinc-600 mt-2">{crews.length} Personnel in Database</p>
+                    <p className="text-zinc-600 mt-2">{filteredCrews.length} Personnel in current view</p>
                   </div>
                   {/* 🎯 ปุ่มเพิ่มลูกเรือใหม่ */}
                   <button onClick={() => { setEditingCrew({ full_name: '', position: '', suit_color: '', suit_size: '', boot_size: '', registered: false }); setIsEditCrewOpen(true); }} className="px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white rounded-2xl flex items-center gap-3 active:scale-95 transition-all shadow-lg shadow-orange-600/20"><UserPlus size={18}/> Add New Barge Crew</button>
@@ -170,14 +210,27 @@ function SettingsContent() {
                   <input type="text" placeholder="Search by name..." className="w-full bg-black/50 border border-white/10 p-5 pl-14 rounded-[24px] outline-none text-sm font-bold text-white focus:border-orange-500 transition-all" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 </div>
 
+                <div className="flex flex-wrap gap-3">
+                  {[
+                    ['active', 'Active Crew'],
+                    ['resigned', 'Resigned'],
+                    ['all', 'All Crew'],
+                  ].map(([value, label]) => (
+                    <button key={value} onClick={() => setCrewStatusFilter(value as 'active' | 'resigned' | 'all')} className={`px-5 py-3 rounded-2xl border text-[10px] font-black uppercase transition-all ${crewStatusFilter === value ? 'bg-orange-600 border-orange-400 text-white shadow-lg shadow-orange-600/20' : 'bg-black/40 border-white/10 text-zinc-500 hover:text-orange-400'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {filteredCrews.map(crew => (
-                    <div key={crew.id} className="flex justify-between items-center bg-black/40 p-6 rounded-[32px] border border-white/5 group hover:border-orange-500/50 transition-all cursor-pointer shadow-xl" onClick={() => { setEditingCrew(crew); setIsEditCrewOpen(true); }}>
+                    <div key={crew.id} className={`flex justify-between items-center bg-black/40 p-6 rounded-[32px] border group hover:border-orange-500/50 transition-all cursor-pointer shadow-xl ${isCrewActive(crew) ? 'border-white/5' : 'border-red-500/20 opacity-70'}`} onClick={() => { setEditingCrew(crew); setIsEditCrewOpen(true); }}>
                       <div className="flex items-center gap-5">
                         <div className="w-14 h-14 bg-zinc-800 rounded-2xl flex items-center justify-center text-zinc-600 group-hover:text-orange-500 transition-colors border border-white/5"><User size={28}/></div>
                         <div>
                           <p className="font-bold text-lg text-white group-hover:text-orange-500 transition-colors leading-tight">{crew.full_name}</p>
                           <p className="text-xs text-zinc-500 mt-1 uppercase tracking-widest italic">{crew.position}</p>
+                          {!isCrewActive(crew) && <p className="text-[9px] text-red-400 mt-2 uppercase tracking-widest">Resigned {crew.resigned_at ? new Date(crew.resigned_at).toLocaleDateString() : ''}</p>}
                         </div>
                       </div>
                       <ChevronRight size={24} className="text-zinc-800 group-hover:text-orange-500 transition-all" />
@@ -230,9 +283,15 @@ function SettingsContent() {
                  )}
               </div>
               {editingCrew.id && (
-                <button onClick={() => handleDeleteCrew(editingCrew)} className="w-full py-4 bg-red-500/10 border border-red-500/20 rounded-3xl font-black uppercase text-[10px] text-red-400 hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-3">
-                  <Trash2 size={16}/> Delete Resigned Crew
-                </button>
+                isCrewActive(editingCrew) ? (
+                  <button onClick={() => handleArchiveCrew(editingCrew)} className="w-full py-4 bg-red-500/10 border border-red-500/20 rounded-3xl font-black uppercase text-[10px] text-red-400 hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-3">
+                    <Trash2 size={16}/> Mark as Resigned
+                  </button>
+                ) : (
+                  <button onClick={() => handleRestoreCrew(editingCrew)} className="w-full py-4 bg-emerald-500/10 border border-emerald-500/20 rounded-3xl font-black uppercase text-[10px] text-emerald-400 hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-3">
+                    <RefreshCw size={16}/> Restore Active Crew
+                  </button>
+                )
               )}
             </div>
           </div>
