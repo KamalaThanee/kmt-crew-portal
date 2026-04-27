@@ -7,7 +7,7 @@ type PpeRequestColumns = {
 
 const ID_COLUMN_CANDIDATES = ['crew_id', 'requester_id', 'user_id']
 const NAME_COLUMN_CANDIDATES = ['crew_name', 'requester_name', 'full_name']
-const OPTIONAL_INSERT_COLUMNS = ['approved_by', 'approved_by_name', 'approved_at', 'rejected_at', 'received_at']
+const OPTIONAL_INSERT_COLUMNS = ['approved_at', 'rejected_at', 'received_at', 'approved_by', 'approved_by_name']
 
 let cachedColumns: Promise<PpeRequestColumns> | null = null
 let cachedInsertColumns: { idColumn: string | null; nameColumn: string | null } | null = null

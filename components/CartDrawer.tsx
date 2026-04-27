@@ -12,6 +12,23 @@ const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-
 const isUuid = (value: unknown) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 
+async function ensureDirectIssueTimeline(requestId: unknown, approverName: string, approvedAt: string) {
+  if (!requestId || !approverName) return;
+
+  const { error } = await supabase
+    .from('ppe_requests')
+    .update({
+      approved_by_name: approverName,
+      approved_at: approvedAt,
+      received_at: approvedAt,
+    })
+    .eq('id', requestId);
+
+  if (error) {
+    console.warn('Unable to persist direct issue timeline metadata:', error.message);
+  }
+}
+
 export default function CartDrawer() {
   const [isOpen, setIsOpen] = useState(false);
   const [cartItems, setCartItems] = useState<any[]>([]);
@@ -133,6 +150,7 @@ export default function CartDrawer() {
       const selectedCrew = onBehalf ? crews.find(c => c.id === targetCrewId) : user;
       if (!selectedCrew) throw new Error('Selected crew not found');
       const isDirect = onBehalf && selectedCrew.id !== user.id;
+      const directIssueAt = new Date().toISOString();
       const extraPayload: Record<string, unknown> = {
         items: cartItems,
         reason: reason.trim() || 'Standard Request',
@@ -140,8 +158,8 @@ export default function CartDrawer() {
       };
 
       if (isDirect) {
-        extraPayload.approved_at = new Date().toISOString();
-        extraPayload.received_at = new Date().toISOString();
+        extraPayload.approved_at = directIssueAt;
+        extraPayload.received_at = directIssueAt;
         if (user?.full_name) extraPayload.approved_by_name = user.full_name;
         if (isUuid(user?.id)) extraPayload.approved_by = user.id;
       }
@@ -152,6 +170,10 @@ export default function CartDrawer() {
       });
 
       if (error) throw error;
+
+      if (isDirect) {
+        await ensureDirectIssueTimeline(data?.id, user?.full_name, directIssueAt);
+      }
 
       if (!isDirect) {
         const pushResult = await notifyOneSignal({
