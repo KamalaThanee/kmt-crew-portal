@@ -84,8 +84,6 @@ const LEGACY_HISTORY_COLUMNS = [
   'approved_by',
   'crew_id',
   'crew_name',
-  'requester_name',
-  'full_name',
   'admin_remark',
   'rejection_reason',
   'reason',
@@ -312,7 +310,7 @@ export default function AdminHistoryPage() {
 
     let active = true
 
-    const buildHistoryQuery = (columns: string) => {
+    const buildHistoryQuery = (columns: string, legacySchema = false) => {
       let query = supabase
         .from('ppe_requests')
         .select(columns, { count: 'exact' })
@@ -330,9 +328,11 @@ export default function AdminHistoryPage() {
       const crewQuery = normalize(searchCrew)
       if (crewQuery) {
         const safeCrewQuery = crewQuery.replace(/[,%]/g, ' ')
-        query = query.or(
-          `crew_name.ilike.%${safeCrewQuery}%,requester_name.ilike.%${safeCrewQuery}%,full_name.ilike.%${safeCrewQuery}%`,
-        )
+        query = legacySchema
+          ? query.ilike('crew_name', `%${safeCrewQuery}%`)
+          : query.or(
+              `crew_name.ilike.%${safeCrewQuery}%,requester_name.ilike.%${safeCrewQuery}%,full_name.ilike.%${safeCrewQuery}%`,
+            )
       }
 
       const from = page * PAGE_SIZE
@@ -356,7 +356,7 @@ export default function AdminHistoryPage() {
 
       let result = await buildHistoryQuery(HISTORY_COLUMNS)
       if (result.error && isMissingHistoryColumn(result.error)) {
-        result = await buildHistoryQuery(LEGACY_HISTORY_COLUMNS)
+        result = await buildHistoryQuery(LEGACY_HISTORY_COLUMNS, true)
       }
 
       if (!active) return
