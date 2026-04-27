@@ -543,15 +543,11 @@ export default function AdminHistoryPage() {
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <button
-          type="button"
-          onClick={() => setStatusFilter('all')}
-          className="rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-amber-950/20 transition-colors hover:border-amber-300/40"
-        >
+        <div className="rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-amber-950/20">
           <p className="text-[9px] uppercase tracking-widest text-amber-200">Requests</p>
           <p className="mt-3 text-3xl font-black text-white">{summary.requestCount}</p>
           <p className="mt-2 text-xs font-semibold text-amber-100/70">Total rows in the current view</p>
-        </button>
+        </div>
         <button
           type="button"
           onClick={() => setStatusFilter('pending')}
