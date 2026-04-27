@@ -67,6 +67,8 @@ export default function ApprovalsPage() {
     const payload = { status, ...extra } as Record<string, any>
     if (isUuid(admin.id)) payload.approved_by = admin.id
     if (admin.full_name) payload.approved_by_name = admin.full_name
+    if (status === 'approved') payload.approved_at = new Date().toISOString()
+    if (status === 'rejected') payload.rejected_at = new Date().toISOString()
 
     const variants: Record<string, any>[] = [payload]
     if ('approved_by' in payload) {
@@ -76,6 +78,14 @@ export default function ApprovalsPage() {
     if ('approved_by_name' in payload) {
       const { approved_by_name: _approvedByName, ...withoutApprovedByName } = payload
       variants.push(withoutApprovedByName)
+    }
+    if ('approved_at' in payload) {
+      const { approved_at: _approvedAt, ...withoutApprovedAt } = payload
+      variants.push(withoutApprovedAt)
+    }
+    if ('rejected_at' in payload) {
+      const { rejected_at: _rejectedAt, ...withoutRejectedAt } = payload
+      variants.push(withoutRejectedAt)
     }
     if ('approved_by' in payload && 'approved_by_name' in payload) {
       const { approved_by: _approvedBy, approved_by_name: _approvedByName, ...statusOnly } = payload
@@ -93,7 +103,7 @@ export default function ApprovalsPage() {
         .from('ppe_requests')
         .update(variant)
         .eq('id', requestId)
-        .select('id, status, approved_by, approved_by_name')
+        .select('id, status, approved_by, approved_by_name, approved_at, rejected_at')
         .maybeSingle()
 
       if (!result.error) return result
@@ -102,6 +112,8 @@ export default function ApprovalsPage() {
       if (
         !isMissingColumnError(result.error, 'approved_by') &&
         !isMissingColumnError(result.error, 'approved_by_name') &&
+        !isMissingColumnError(result.error, 'approved_at') &&
+        !isMissingColumnError(result.error, 'rejected_at') &&
         !isApprovedByForeignKeyError(result.error)
       ) {
         return result

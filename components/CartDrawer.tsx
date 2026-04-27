@@ -139,6 +139,7 @@ export default function CartDrawer() {
       };
 
       if (isDirect) {
+        extraPayload.approved_at = new Date().toISOString();
         extraPayload.received_at = new Date().toISOString();
         if (user?.full_name) extraPayload.approved_by_name = user.full_name;
         if (isUuid(user?.id)) extraPayload.approved_by = user.id;

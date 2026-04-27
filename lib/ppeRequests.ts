@@ -7,6 +7,7 @@ type PpeRequestColumns = {
 
 const ID_COLUMN_CANDIDATES = ['crew_id', 'requester_id', 'user_id']
 const NAME_COLUMN_CANDIDATES = ['crew_name', 'requester_name', 'full_name']
+const OPTIONAL_INSERT_COLUMNS = ['approved_by', 'approved_by_name', 'approved_at', 'rejected_at', 'received_at']
 
 let cachedColumns: Promise<PpeRequestColumns> | null = null
 let cachedInsertColumns: { idColumn: string | null; nameColumn: string | null } | null = null
@@ -94,6 +95,14 @@ export async function insertPpeRequest(payload: {
   extra?: Record<string, unknown>
 }) {
   const baseRow = { ...(payload.extra || {}) }
+  const baseRowVariants: Record<string, unknown>[] = [baseRow]
+  let shrinkingRow = { ...baseRow }
+  for (const column of OPTIONAL_INSERT_COLUMNS) {
+    if (!(column in shrinkingRow)) continue
+    shrinkingRow = { ...shrinkingRow }
+    delete shrinkingRow[column]
+    baseRowVariants.push(shrinkingRow)
+  }
   const variants: Array<{ idColumn: string | null; nameColumn: string | null }> = []
 
   if (cachedInsertColumns) {
@@ -114,24 +123,26 @@ export async function insertPpeRequest(payload: {
   let lastError: any = null
 
   for (const variant of variants) {
-    const key = `${variant.idColumn || '-'}|${variant.nameColumn || '-'}`
-    if (seen.has(key)) continue
-    seen.add(key)
+    for (const rowBase of baseRowVariants) {
+      const key = `${variant.idColumn || '-'}|${variant.nameColumn || '-'}|${JSON.stringify(Object.keys(rowBase).sort())}`
+      if (seen.has(key)) continue
+      seen.add(key)
 
-    const row: Record<string, unknown> = { ...baseRow }
-    if (variant.idColumn && payload.crew?.id) row[variant.idColumn] = payload.crew.id
-    if (variant.nameColumn && payload.crew?.full_name) row[variant.nameColumn] = payload.crew.full_name
+      const row: Record<string, unknown> = { ...rowBase }
+      if (variant.idColumn && payload.crew?.id) row[variant.idColumn] = payload.crew.id
+      if (variant.nameColumn && payload.crew?.full_name) row[variant.nameColumn] = payload.crew.full_name
 
-    const result = await supabase.from('ppe_requests').insert(row).select('id').single()
-    if (!result.error) {
-      cachedInsertColumns = variant
-      cachedColumns = Promise.resolve(variant)
-      return result
-    }
+      const result = await supabase.from('ppe_requests').insert(row).select('id').single()
+      if (!result.error) {
+        cachedInsertColumns = variant
+        cachedColumns = Promise.resolve(variant)
+        return result
+      }
 
-    lastError = result.error
-    if (!isSchemaCacheColumnError(result.error)) {
-      return result
+      lastError = result.error
+      if (!isSchemaCacheColumnError(result.error)) {
+        return result
+      }
     }
   }
 

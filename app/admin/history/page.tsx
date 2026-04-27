@@ -30,6 +30,8 @@ type HistoryItem = {
 type HistoryRow = {
   id: string
   created_at: string
+  approved_at?: string | null
+  rejected_at?: string | null
   received_at?: string | null
   status?: string | null
   approved_by?: string | null
@@ -83,6 +85,33 @@ const getStatusMeta = (row: HistoryRow, adminNameMap: Record<string, string>) =>
     return `Approved by ${actorName} • Received`
   }
   return 'Waiting for approval'
+}
+
+const getStatusTimelineMeta = (row: HistoryRow, adminNameMap: Record<string, string>) => {
+  const status = normalize(row.status || 'pending')
+  const actorName =
+    row.approved_by_name ||
+    (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : 'Unknown approver')
+
+  const timeline = [`Requested on ${formatDateTime(row.created_at)}`]
+
+  if (row.approved_at || status === 'approved' || status === 'received') {
+    timeline.push(`Approved by ${actorName}${row.approved_at ? ` on ${formatDateTime(row.approved_at)}` : ''}`)
+  }
+
+  if (row.rejected_at || status === 'rejected') {
+    timeline.push(`Rejected by ${actorName}${row.rejected_at ? ` on ${formatDateTime(row.rejected_at)}` : ''}`)
+  }
+
+  if (status === 'received') {
+    timeline.push(`Received${row.received_at ? ` on ${formatDateTime(row.received_at)}` : ''}`)
+  }
+
+  if (status === 'pending') {
+    timeline.push('Waiting for approval')
+  }
+
+  return timeline.join(' | ')
 }
 
 const getItemSummary = (row: HistoryRow) =>
@@ -330,10 +359,16 @@ export default function AdminHistoryPage() {
     () =>
       filteredRows.map((row) => ({
         RequestedAt: formatDateTime(row.created_at),
+        ApprovedAt: formatDateTime(row.approved_at),
+        RejectedAt: formatDateTime(row.rejected_at),
+        ReceivedAt: formatDateTime(row.received_at),
+        DecisionBy:
+          row.approved_by_name ||
+          (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : ''),
         Crew: getCrewName(row),
         Items: getItemSummary(row),
         Status: row.status || 'pending',
-        Detail: getStatusMeta(row, adminNameMap),
+        Detail: getStatusTimelineMeta(row, adminNameMap),
         RequestReason: row.reason || '',
         AdminRemark: row.admin_remark || row.rejection_reason || '',
       })),
@@ -572,7 +607,7 @@ export default function AdminHistoryPage() {
                     </span>
                   </td>
                   <td className="px-6 py-5 font-semibold text-zinc-300 normal-case">
-                    {getStatusMeta(row, adminNameMap)}
+                    {getStatusTimelineMeta(row, adminNameMap)}
                     {(row.admin_remark || row.rejection_reason) && (
                       <div className="mt-1 text-[11px] text-zinc-500">{row.admin_remark || row.rejection_reason}</div>
                     )}
@@ -625,7 +660,7 @@ export default function AdminHistoryPage() {
               <div className="grid gap-3">
                 <div className="rounded-2xl border border-emerald-500/10 bg-emerald-500/[0.05] p-4">
                   <p className="mb-2 text-[9px] uppercase tracking-widest text-emerald-200/80">Status Detail</p>
-                  <p className="text-sm font-semibold text-white normal-case">{getStatusMeta(row, adminNameMap)}</p>
+                  <p className="text-sm font-semibold text-white normal-case">{getStatusTimelineMeta(row, adminNameMap)}</p>
                   {(row.admin_remark || row.rejection_reason) && (
                     <p className="mt-2 text-[11px] font-semibold text-zinc-400 normal-case">
                       {row.admin_remark || row.rejection_reason}
