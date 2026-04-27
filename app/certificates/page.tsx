@@ -212,15 +212,29 @@ function CertificatesContent() {
            </div>
 
            <div className="space-y-3">
-              {(personalFilter === 'all' ? myCertData.list : myCertData.list.filter(c => c.status === personalFilter)).map((item, idx) => (
-                <div key={idx} className={`bg-zinc-900 border ${item.status === 'missing' ? 'border-red-500/20' : item.status === 'optional' ? 'border-white/5 opacity-50' : 'border-white/10'} rounded-[24px] p-5 flex items-center justify-between group hover:border-orange-500/30 transition-all shadow-xl`}>
+               {(personalFilter === 'all' ? myCertData.list : myCertData.list.filter(c => c.status === personalFilter)).map((item, idx) => (
+                <div key={idx} className={`bg-zinc-900 border ${item.status === 'missing' ? 'border-red-500/20' : item.status === 'optional' ? 'border-white/5 opacity-50' : 'border-white/10'} rounded-[24px] p-5 flex items-center justify-between gap-4 group hover:border-orange-500/30 transition-all shadow-xl`}>
                   <div className="flex items-center gap-4">
                     <div className={`p-3.5 rounded-2xl ${item.status === 'ok' ? 'bg-emerald-500/10 text-emerald-500' : item.status === 'warning' ? 'bg-amber-500/10 text-amber-500' : item.status === 'optional' ? 'bg-slate-800 text-slate-500' : 'bg-red-500/10 text-red-500'}`}>
                       {item.status === 'ok' ? <CheckCircle2 size={24}/> : item.status === 'optional' ? <Clock size={24}/> : <AlertTriangle size={24}/>}
                     </div>
                     <div><p className={`text-[8px] font-black uppercase tracking-widest mb-1 ${item.is_mandatory ? 'text-blue-500' : 'text-zinc-600'}`}>{item.is_mandatory ? 'MANDATORY' : 'OPTIONAL'}</p><h3 className="text-white text-xs md:text-sm font-black leading-tight">{item.cert_name}</h3>{item.uploaded && <p className="text-[9px] mt-1 text-blue-500 font-black">Exp: {formatExpiryLabel(item.uploaded.expiry_date)}</p>}</div>
                   </div>
-                  <button onClick={() => router.push(`/certificates/upload?cert=${encodeURIComponent(item.cert_name)}`)} className="px-6 py-3 bg-orange-600 rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all">Upload</button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {item.uploaded?.file_url && (
+                      <a
+                        href={item.uploaded.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-xl bg-white/5 p-3 text-orange-500 transition-all hover:bg-orange-600 hover:text-white"
+                        aria-label={`Open ${item.cert_name}`}
+                        title="Open uploaded certificate"
+                      >
+                        <Eye size={16} />
+                      </a>
+                    )}
+                    <button onClick={() => router.push(`/certificates/upload?cert=${encodeURIComponent(item.cert_name)}`)} className="px-6 py-3 bg-orange-600 rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all">Upload</button>
+                  </div>
                 </div>
               ))}
            </div>
