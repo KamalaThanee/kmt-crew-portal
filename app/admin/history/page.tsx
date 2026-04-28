@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { isAdminRole } from '@/lib/roles'
-import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 import {
   CheckCircle2,
@@ -545,12 +544,13 @@ export default function AdminHistoryPage() {
     [filteredRows, adminNameMap],
   )
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!exportRows.length) {
       toast.error('No history rows to export')
       return
     }
 
+    const XLSX = await import('xlsx')
     const worksheet = XLSX.utils.json_to_sheet(exportRows)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Issue History')

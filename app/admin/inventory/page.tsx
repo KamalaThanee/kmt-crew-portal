@@ -3,14 +3,12 @@ import { useState, useEffect, useMemo, Suspense, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import * as XLSX from 'xlsx'
 import { 
   Package, Search, AlertTriangle, Download, Plus, Edit, X, Save, 
   Box, ChevronDown, ChevronRight, Archive, FileText, Loader2, 
   CheckCircle2, Trash2, Upload, Clock, User, ExternalLink,
   HardHat, Headphones, Eye, Wind, Shirt, Hand, Footprints, MoreHorizontal
 } from 'lucide-react'
-import imageCompression from 'browser-image-compression'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 const DO_BUCKET = 'receipts'
@@ -372,7 +370,7 @@ function InventoryContent() {
     return Object.values(groups).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   }, [history, restockMonthFilter])
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const rows = Object.entries(filteredInventoryGrouped).flatMap(([category, items]) =>
       items.map((item) => ({
         Category: category,
@@ -392,6 +390,7 @@ function InventoryContent() {
       return
     }
 
+    const XLSX = await import('xlsx')
     const worksheet = XLSX.utils.json_to_sheet(rows)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory')
@@ -400,7 +399,7 @@ function InventoryContent() {
     toast.success(`Exported ${rows.length} inventory rows`)
   }
 
-  const handleExportRestockBatch = (batch: any) => {
+  const handleExportRestockBatch = async (batch: any) => {
     const rows = (batch.lines || []).map((line: any, index: number) => ({
       No: index + 1,
       'DO Number': batch.do_number || '',
@@ -417,6 +416,7 @@ function InventoryContent() {
       return
     }
 
+    const XLSX = await import('xlsx')
     const worksheet = XLSX.utils.json_to_sheet(rows)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'DO Detail')
@@ -442,6 +442,7 @@ function InventoryContent() {
     try {
       const finalDoNumber = doNumber.trim() || generateDoNumber()
       const batchId = `${finalDoNumber}-${Date.now()}`
+      const imageCompression = (await import('browser-image-compression')).default
       const compressedFile = await imageCompression(doFile, { maxSizeMB: 0.3, maxWidthOrHeight: 1024 })
       const fileName = `${finalDoNumber}_${Date.now()}_${doFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
       const { error: uploadError } = await supabase.storage.from(DO_BUCKET).upload(fileName, compressedFile)
