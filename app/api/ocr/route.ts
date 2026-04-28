@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { NO_EXPIRY_DATE, parseBooleanLike, resolveExpiryDate } from '@/lib/certificates';
+import { auditCertTypeMatch, NO_EXPIRY_DATE, parseBooleanLike, resolveExpiryDate } from '@/lib/certificates';
 
 export const runtime = 'edge';
 
@@ -11,16 +11,17 @@ export async function POST(req: Request) {
     if (!apiKey) throw new Error("Missing OCR provider API key");
     
     // 🎯 Prompt ใหม่: เน้นการวิเคราะห์เชิงลึกแบบ Auditor
-    const prompt = `You are a maritime safety auditor.
+    const prompt = `You are a strict maritime certificate auditor with STCW 2010 awareness and Thai maritime/workplace safety compliance awareness.
     TASK: Determine if the uploaded document satisfies the requirement for "${certName}".
     USER IDENTITY: "${crewName}".
 
     AUDIT RULES:
-    1. NAME MATCH: Be flexible with titles (Mr, Capt) and middle names. If the core name matches, personNameMatch = true.
-    2. CERT TYPE MATCH: DO NOT look for exact string matches. Analyze the CONTENT.
-       - Example: "DGR Course for Offshore" satisfies "Dangerous Goods Regulations Training".
-       - Example: "Basic Fire Fighting" satisfies "Advance Fire" only if the content shows advanced modules (use your knowledge).
-       - Training providers often use different titles for the same regulatory requirement (STCW/OPITO). If it serves the same purpose, certTypeMatch = true.
+    1. NAME MATCH: Be flexible only with titles (Mr, Capt) and harmless spacing/order differences. If the core person name is different or missing, personNameMatch = false.
+    2. CERT TYPE MATCH: Be strict. The uploaded certificate must satisfy the selected requirement, not just be vaguely related.
+       - Advanced/Advance Fire Fighting requires advanced fire fighting evidence. Basic Fire Fighting is NOT acceptable for Advance Fire.
+       - Safety Officer Training requires a safety officer/supervisor certificate. Generic Basic Offshore Safety Training, BOSIET, FOET, or general safety induction is NOT acceptable.
+       - BOSIET/FOET can satisfy "Basic Offshore Safety Training / Further Offshore Training" only when the document title/content explicitly indicates BOSIET, FOET, Basic Offshore Safety, or Further Offshore Training.
+       - Use maritime/STCW compliance knowledge, but reject when unsure. Do not approve a lower-level certificate for a higher-level requirement.
     3. DATE: Convert Thai years to CE. If the document does not clearly show an expiry date, return expiryDate as an empty string. Only use "2099-12-31" when the certificate explicitly states it never expires.
 
     Return ONLY raw JSON:
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
     if (!jsonMatch) throw new Error("AI Analysis Error");
 
     const parsed = JSON.parse(jsonMatch[0]);
+    const certTypeAllowed = auditCertTypeMatch(certName, parsed.detectedCertName, parsed.note);
     const refreshYearsNumber = Number.isFinite(Number(refreshYears)) ? Number(refreshYears) : null;
     const noExpiryPolicy = parseBooleanLike(noExpiry);
     const policyOverrodeNoExpiry =
@@ -74,6 +76,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ...parsed,
+      certTypeMatch: Boolean(parsed.certTypeMatch) && certTypeAllowed,
       expiryDate: resolvedExpiryDate,
       expiryFoundInDocument: policyOverrodeNoExpiry ? false : parsed.expiryFoundInDocument,
       expiryDerivedFromPolicy: (!parsed.expiryDate || policyOverrodeNoExpiry) && !!resolvedExpiryDate,

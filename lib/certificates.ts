@@ -36,7 +36,7 @@ export function extractCertPolicy(row: Record<string, any> | null | undefined): 
 
   const refreshYears = Number.isFinite(Number(refreshYearsRaw)) ? Number(refreshYearsRaw) : null
 
-  const noExpiry =
+  const noExpiryFlag =
     parseBooleanLike(row.no_expiry) ||
     parseBooleanLike(row.noExpiry) ||
     parseBooleanLike(row.no_refresh) ||
@@ -46,7 +46,7 @@ export function extractCertPolicy(row: Record<string, any> | null | undefined): 
 
   return {
     refreshYears,
-    noExpiry,
+    noExpiry: !!noExpiryFlag && !(refreshYears && refreshYears > 0),
   }
 }
 
@@ -83,4 +83,29 @@ export function isNoExpiryDate(value: unknown) {
 
 export function formatExpiryLabel(value: unknown) {
   return isNoExpiryDate(value) ? 'No Expiry' : String(value || '')
+}
+
+export function auditCertTypeMatch(requestedCertName: unknown, detectedCertName: unknown, note?: unknown) {
+  const requested = normalizeText(requestedCertName)
+  const detected = normalizeText(detectedCertName)
+  const reasoning = normalizeText(note)
+  const evidence = `${detected} ${reasoning}`
+
+  const requestsAdvancedFire = requested.includes('advancefire') || requested.includes('advancedfire')
+  const evidenceBasicFire = evidence.includes('basicfire') || evidence.includes('basicfirefighting')
+  const evidenceAdvancedFire = evidence.includes('advancefire') || evidence.includes('advancedfire')
+
+  if (requestsAdvancedFire && evidenceBasicFire && !evidenceAdvancedFire) {
+    return false
+  }
+
+  const requestsSafetyOfficer = requested.includes('safetyofficer')
+  const evidenceSafetyOfficer = evidence.includes('safetyofficer')
+  const evidenceGenericSafety = evidence.includes('basicoffshoresafety') || evidence.includes('bosiet') || evidence.includes('foet')
+
+  if (requestsSafetyOfficer && evidenceGenericSafety && !evidenceSafetyOfficer) {
+    return false
+  }
+
+  return true
 }
