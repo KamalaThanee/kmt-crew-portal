@@ -1,48 +1,23 @@
 'use client'
-import { useState, useEffect, useMemo, Suspense, useCallback } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
+import {
+  buildInventoryExportRows,
+  buildRestockBatchExportRows,
+  DO_BUCKET,
+  generateInventoryCode,
+  getRestockMonthOptions,
+  groupInventoryByCategory,
+  groupRestockBatches,
+} from '@/lib/inventory'
 import { 
   Package, Search, AlertTriangle, Download, Plus, Edit, X, Save, 
   Box, ChevronDown, ChevronRight, Archive, FileText, Loader2, 
-  CheckCircle2, Trash2, Upload, Clock, User, ExternalLink,
+  Trash2, Upload, ExternalLink,
   HardHat, Headphones, Eye, Wind, Shirt, Hand, Footprints, MoreHorizontal
 } from 'lucide-react'
-
-const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-const DO_BUCKET = 'receipts'
-const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
-
-const compareSize = (a: any, b: any) => {
-  const sa = String(a || '').trim().toUpperCase()
-  const sb = String(b || '').trim().toUpperCase()
-
-  const freeRank: Record<string, number> = { 'FREE SIZE': 9998, 'FREESIZE': 9998, 'FS': 9998 }
-  if (freeRank[sa] !== undefined || freeRank[sb] !== undefined) {
-    const ra = freeRank[sa] ?? 10000
-    const rb = freeRank[sb] ?? 10000
-    if (ra !== rb) return ra - rb
-  }
-
-  const idxA = sizeOrder.indexOf(sa)
-  const idxB = sizeOrder.indexOf(sb)
-  const hasA = idxA !== -1
-  const hasB = idxB !== -1
-  if (hasA && hasB) return idxA - idxB
-  if (hasA) return -1
-  if (hasB) return 1
-
-  const numA = Number(sa)
-  const numB = Number(sb)
-  const isNumA = !Number.isNaN(numA)
-  const isNumB = !Number.isNaN(numB)
-  if (isNumA && isNumB) return numA - numB
-  if (isNumA) return -1
-  if (isNumB) return 1
-
-  return sa.localeCompare(sb, undefined, { numeric: true })
-}
 
 function InventoryContent() {
   const searchParams = useSearchParams()
@@ -149,33 +124,7 @@ function InventoryContent() {
     })
   }
 
-  const generateNextCode = (catName: string) => {
-    const catItems = inventory.filter(i => i.category === catName)
-    const numbers = catItems.map(i => {
-      const match = String(i.item_id_code).match(/(\d+)\s*$/)
-      return match ? parseInt(match[1], 10) : 0
-    })
-    const nextNumber = numbers.length > 0 ? Math.max(...numbers) + 1 : 1
-    const padded = String(nextNumber).padStart(2, '0')
-
-    const prefixMap: Record<string, string> = {
-      'Head Protection': 'Head',
-      'Ears Protection': 'Ear',
-      'Eyes Protection': 'Eye',
-      'Respiratory Protection': 'Resp',
-      'Body Protection': 'Body',
-      'Hands Protection': 'Hand',
-      'Foots Protection': 'Foot',
-      'Other': 'Other'
-    }
-
-    const existingPrefix = catItems
-      .map(i => String(i.item_id_code || '').match(/^([A-Za-z]+)-\d+$/)?.[1])
-      .find(Boolean)
-
-    const prefix = existingPrefix || prefixMap[catName] || catName.replace(/\s+Protection$/i, '').replace(/\s+/g, '')
-    return `${prefix}-${padded}`
-  }
+  const generateNextCode = (catName: string) => generateInventoryCode(inventory, catName)
 
   const updateRow = (id: number, field: string, value: string) => {
     setRestockEntries(prev => prev.map(e => {
@@ -305,85 +254,20 @@ function InventoryContent() {
     return toast.error('This DO file link points to an old bucket. Please upload the DO again into receipts.')
   }
 
-  const filteredInventoryGrouped = useMemo(() => {
-    const groups: Record<string, any[]> = {}
-    const filtered = inventory.filter(item => {
-      const matchesSearch = item.item_name?.toLowerCase().includes(searchTerm.toLowerCase()) || (item.item_id_code||"").toLowerCase().includes(searchTerm.toLowerCase())
-      const matchesCat = selectedCats.length === 0 || selectedCats.includes(item.category);
-      const matchesStock = showLowStock ? (item.quantity <= item.threshold) : true
-      return matchesSearch && matchesCat && matchesStock
-    })
+  const filteredInventoryGrouped = useMemo(
+    () => groupInventoryByCategory({ inventory, searchTerm, selectedCats, showLowStock }),
+    [inventory, searchTerm, selectedCats, showLowStock],
+  )
 
-    filtered.forEach(item => {
-      const cat = item.category || 'Other'
-      if (!groups[cat]) groups[cat] = []
-      groups[cat].push(item)
-    })
-    Object.keys(groups).forEach(cat => {
-      groups[cat] = groups[cat].sort((a, b) => {
-        const nameCmp = String(a.item_name || '').localeCompare(String(b.item_name || ''), undefined, { numeric: true })
-        if (nameCmp !== 0) return nameCmp
-        const colorCmp = String(a.color || '').localeCompare(String(b.color || ''), undefined, { numeric: true })
-        if (colorCmp !== 0) return colorCmp
-        return compareSize(a.size, b.size)
-      })
-    })
-    return groups;
-  }, [inventory, searchTerm, selectedCats, showLowStock])
+  const restockMonthOptions = useMemo(() => getRestockMonthOptions(history), [history])
 
-  const restockMonthOptions = useMemo(() => {
-    const options = new Set<string>()
-    history.forEach((h) => {
-      if (!h.created_at) return
-      options.add(new Date(h.created_at).toISOString().slice(0, 7))
-    })
-    return [...options].sort().reverse()
-  }, [history])
-
-  const restockBatches = useMemo(() => {
-    const filtered = history.filter((h) => {
-      if (restockMonthFilter === 'all') return true
-      if (!h.created_at) return false
-      return new Date(h.created_at).toISOString().slice(0, 7) === restockMonthFilter
-    })
-
-    const groups: Record<string, any> = {}
-    filtered.forEach((h) => {
-      const createdAt = h.created_at || new Date().toISOString()
-      const key = h.batch_id || h.do_number || h.receipt_url || `${new Date(createdAt).toISOString().slice(0, 10)}-${h.added_by || 'admin'}`
-      if (!groups[key]) {
-        groups[key] = {
-          id: key,
-          do_number: h.do_number || `DO-${new Date(createdAt).toISOString().slice(0, 10).replace(/-/g, '')}`,
-          receipt_url: h.receipt_url,
-          added_by: h.added_by,
-          created_at: createdAt,
-          lines: [],
-          totalQty: 0,
-        }
-      }
-      groups[key].lines.push(h)
-      groups[key].totalQty += Number(h.quantity_added || 0)
-      if (h.receipt_url && !groups[key].receipt_url) groups[key].receipt_url = h.receipt_url
-    })
-
-    return Object.values(groups).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  }, [history, restockMonthFilter])
+  const restockBatches = useMemo(
+    () => groupRestockBatches(history, restockMonthFilter),
+    [history, restockMonthFilter],
+  )
 
   const handleExportExcel = async () => {
-    const rows = Object.entries(filteredInventoryGrouped).flatMap(([category, items]) =>
-      items.map((item) => ({
-        Category: category,
-        Code: item.item_id_code || '',
-        'Item Name': item.item_name || '',
-        Color: item.color || '',
-        Size: item.size || '',
-        Unit: item.unit || 'Piece',
-        Quantity: Number(item.quantity || 0),
-        Threshold: Number(item.threshold || 0),
-        Status: Number(item.quantity || 0) <= Number(item.threshold || 0) ? 'Low Stock' : 'OK',
-      })),
-    )
+    const rows = buildInventoryExportRows(filteredInventoryGrouped)
 
     if (rows.length === 0) {
       toast.error('No inventory data to export')
@@ -400,16 +284,7 @@ function InventoryContent() {
   }
 
   const handleExportRestockBatch = async (batch: any) => {
-    const rows = (batch.lines || []).map((line: any, index: number) => ({
-      No: index + 1,
-      'DO Number': batch.do_number || '',
-      'Received Date': batch.created_at ? new Date(batch.created_at).toLocaleString() : '',
-      'Received By': batch.added_by || 'Admin',
-      'Item Name': line.item_name || '',
-      Color: line.color || '',
-      Size: line.size || '',
-      Quantity: Number(line.quantity_added || 0),
-    }))
+    const rows = buildRestockBatchExportRows(batch)
 
     if (rows.length === 0) {
       toast.error('No DO lines to export')
