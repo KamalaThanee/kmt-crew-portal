@@ -22,8 +22,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests';
-import { isAdminRole } from '@/lib/roles';
-import { clearOneSignalUser, getOneSignalBuildInfo, getOneSignalStatus, requestOneSignalPermission } from '@/lib/onesignalClient';
+import { getOneSignalBuildInfo, getOneSignalStatus, requestOneSignalPermission } from '@/lib/onesignalClient';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { toast } from 'sonner';
 
 type CrewActionItem = {
@@ -76,8 +76,7 @@ function getCertTriggerText(certName: string, trigger: CertTrigger, daysLeft: nu
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [mounted, setMounted] = useState(false);
+  const { user, mounted, isAdmin, logout } = useCurrentUser();
   const [showProfile, setShowProfile] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [cartCount, setCartCount] = useState(0);
@@ -100,8 +99,6 @@ export default function Navbar() {
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
-
-  const isAdmin = isAdminRole(user?.position);
 
   const playNotificationSound = () => {
     try {
@@ -152,16 +149,6 @@ export default function Navbar() {
           ],
     [isAdmin],
   );
-
-  useEffect(() => {
-    setMounted(true);
-    const storedUser = localStorage.getItem('kmt_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    } else {
-      setUser(null);
-    }
-  }, [pathname]);
 
   useEffect(() => {
     if (!mounted || !user?.id) return;
@@ -867,8 +854,7 @@ export default function Navbar() {
                   )}
                   <button
                     onClick={() => {
-                      clearOneSignalUser();
-                      localStorage.removeItem('kmt_user');
+                      logout();
                       router.push('/login');
                     }}
                     className="w-full flex items-center gap-3 px-4 py-4 text-xs text-red-400 font-black uppercase tracking-widest hover:bg-red-500/10 rounded-2xl transition-all text-left"
