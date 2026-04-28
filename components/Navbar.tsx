@@ -519,7 +519,9 @@ export default function Navbar() {
                 </button>
                 <button
                   onClick={() => {
-                    localStorage.setItem(`kmt_push_nudge_dismissed_${user.id}`, 'true');
+                    if (user?.id) {
+                      localStorage.setItem(`kmt_push_nudge_dismissed_${user.id}`, 'true');
+                    }
                     setShowPushNudge(false);
                   }}
                   className="rounded-xl bg-white/5 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-zinc-400"
