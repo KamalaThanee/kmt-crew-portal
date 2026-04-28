@@ -1,48 +1,27 @@
 'use client'
-import { useState, useEffect, useMemo, Suspense, useCallback } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { 
-  Package, Search, AlertTriangle, Download, Plus, Edit, X, Save, 
-  Box, ChevronDown, ChevronRight, Archive, FileText, Loader2, 
-  CheckCircle2, Trash2, Upload, Clock, User, ExternalLink,
+import {
+  buildInventoryExportRows,
+  buildRestockBatchExportRows,
+  DO_BUCKET,
+  generateInventoryCode,
+  getRestockMonthOptions,
+  groupInventoryByCategory,
+  groupRestockBatches,
+} from '@/lib/inventory'
+import { EditItemModal } from '@/components/inventory/EditItemModal'
+import { InventoryControls } from '@/components/inventory/InventoryControls'
+import { InventoryList } from '@/components/inventory/InventoryList'
+import { IssueLogPanel } from '@/components/inventory/IssueLogPanel'
+import { RestockEntryPanel } from '@/components/inventory/RestockEntryPanel'
+import { RestockHistoryPanel } from '@/components/inventory/RestockHistoryPanel'
+import {
+  X, Archive,
   HardHat, Headphones, Eye, Wind, Shirt, Hand, Footprints, MoreHorizontal
 } from 'lucide-react'
-
-const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-const DO_BUCKET = 'receipts'
-const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
-
-const compareSize = (a: any, b: any) => {
-  const sa = String(a || '').trim().toUpperCase()
-  const sb = String(b || '').trim().toUpperCase()
-
-  const freeRank: Record<string, number> = { 'FREE SIZE': 9998, 'FREESIZE': 9998, 'FS': 9998 }
-  if (freeRank[sa] !== undefined || freeRank[sb] !== undefined) {
-    const ra = freeRank[sa] ?? 10000
-    const rb = freeRank[sb] ?? 10000
-    if (ra !== rb) return ra - rb
-  }
-
-  const idxA = sizeOrder.indexOf(sa)
-  const idxB = sizeOrder.indexOf(sb)
-  const hasA = idxA !== -1
-  const hasB = idxB !== -1
-  if (hasA && hasB) return idxA - idxB
-  if (hasA) return -1
-  if (hasB) return 1
-
-  const numA = Number(sa)
-  const numB = Number(sb)
-  const isNumA = !Number.isNaN(numA)
-  const isNumB = !Number.isNaN(numB)
-  if (isNumA && isNumB) return numA - numB
-  if (isNumA) return -1
-  if (isNumB) return 1
-
-  return sa.localeCompare(sb, undefined, { numeric: true })
-}
 
 function InventoryContent() {
   const searchParams = useSearchParams()
@@ -149,33 +128,7 @@ function InventoryContent() {
     })
   }
 
-  const generateNextCode = (catName: string) => {
-    const catItems = inventory.filter(i => i.category === catName)
-    const numbers = catItems.map(i => {
-      const match = String(i.item_id_code).match(/(\d+)\s*$/)
-      return match ? parseInt(match[1], 10) : 0
-    })
-    const nextNumber = numbers.length > 0 ? Math.max(...numbers) + 1 : 1
-    const padded = String(nextNumber).padStart(2, '0')
-
-    const prefixMap: Record<string, string> = {
-      'Head Protection': 'Head',
-      'Ears Protection': 'Ear',
-      'Eyes Protection': 'Eye',
-      'Respiratory Protection': 'Resp',
-      'Body Protection': 'Body',
-      'Hands Protection': 'Hand',
-      'Foots Protection': 'Foot',
-      'Other': 'Other'
-    }
-
-    const existingPrefix = catItems
-      .map(i => String(i.item_id_code || '').match(/^([A-Za-z]+)-\d+$/)?.[1])
-      .find(Boolean)
-
-    const prefix = existingPrefix || prefixMap[catName] || catName.replace(/\s+Protection$/i, '').replace(/\s+/g, '')
-    return `${prefix}-${padded}`
-  }
+  const generateNextCode = (catName: string) => generateInventoryCode(inventory, catName)
 
   const updateRow = (id: number, field: string, value: string) => {
     setRestockEntries(prev => prev.map(e => {
@@ -305,85 +258,20 @@ function InventoryContent() {
     return toast.error('This DO file link points to an old bucket. Please upload the DO again into receipts.')
   }
 
-  const filteredInventoryGrouped = useMemo(() => {
-    const groups: Record<string, any[]> = {}
-    const filtered = inventory.filter(item => {
-      const matchesSearch = item.item_name?.toLowerCase().includes(searchTerm.toLowerCase()) || (item.item_id_code||"").toLowerCase().includes(searchTerm.toLowerCase())
-      const matchesCat = selectedCats.length === 0 || selectedCats.includes(item.category);
-      const matchesStock = showLowStock ? (item.quantity <= item.threshold) : true
-      return matchesSearch && matchesCat && matchesStock
-    })
+  const filteredInventoryGrouped = useMemo(
+    () => groupInventoryByCategory({ inventory, searchTerm, selectedCats, showLowStock }),
+    [inventory, searchTerm, selectedCats, showLowStock],
+  )
 
-    filtered.forEach(item => {
-      const cat = item.category || 'Other'
-      if (!groups[cat]) groups[cat] = []
-      groups[cat].push(item)
-    })
-    Object.keys(groups).forEach(cat => {
-      groups[cat] = groups[cat].sort((a, b) => {
-        const nameCmp = String(a.item_name || '').localeCompare(String(b.item_name || ''), undefined, { numeric: true })
-        if (nameCmp !== 0) return nameCmp
-        const colorCmp = String(a.color || '').localeCompare(String(b.color || ''), undefined, { numeric: true })
-        if (colorCmp !== 0) return colorCmp
-        return compareSize(a.size, b.size)
-      })
-    })
-    return groups;
-  }, [inventory, searchTerm, selectedCats, showLowStock])
+  const restockMonthOptions = useMemo(() => getRestockMonthOptions(history), [history])
 
-  const restockMonthOptions = useMemo(() => {
-    const options = new Set<string>()
-    history.forEach((h) => {
-      if (!h.created_at) return
-      options.add(new Date(h.created_at).toISOString().slice(0, 7))
-    })
-    return [...options].sort().reverse()
-  }, [history])
-
-  const restockBatches = useMemo(() => {
-    const filtered = history.filter((h) => {
-      if (restockMonthFilter === 'all') return true
-      if (!h.created_at) return false
-      return new Date(h.created_at).toISOString().slice(0, 7) === restockMonthFilter
-    })
-
-    const groups: Record<string, any> = {}
-    filtered.forEach((h) => {
-      const createdAt = h.created_at || new Date().toISOString()
-      const key = h.batch_id || h.do_number || h.receipt_url || `${new Date(createdAt).toISOString().slice(0, 10)}-${h.added_by || 'admin'}`
-      if (!groups[key]) {
-        groups[key] = {
-          id: key,
-          do_number: h.do_number || `DO-${new Date(createdAt).toISOString().slice(0, 10).replace(/-/g, '')}`,
-          receipt_url: h.receipt_url,
-          added_by: h.added_by,
-          created_at: createdAt,
-          lines: [],
-          totalQty: 0,
-        }
-      }
-      groups[key].lines.push(h)
-      groups[key].totalQty += Number(h.quantity_added || 0)
-      if (h.receipt_url && !groups[key].receipt_url) groups[key].receipt_url = h.receipt_url
-    })
-
-    return Object.values(groups).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  }, [history, restockMonthFilter])
+  const restockBatches = useMemo(
+    () => groupRestockBatches(history, restockMonthFilter),
+    [history, restockMonthFilter],
+  )
 
   const handleExportExcel = async () => {
-    const rows = Object.entries(filteredInventoryGrouped).flatMap(([category, items]) =>
-      items.map((item) => ({
-        Category: category,
-        Code: item.item_id_code || '',
-        'Item Name': item.item_name || '',
-        Color: item.color || '',
-        Size: item.size || '',
-        Unit: item.unit || 'Piece',
-        Quantity: Number(item.quantity || 0),
-        Threshold: Number(item.threshold || 0),
-        Status: Number(item.quantity || 0) <= Number(item.threshold || 0) ? 'Low Stock' : 'OK',
-      })),
-    )
+    const rows = buildInventoryExportRows(filteredInventoryGrouped)
 
     if (rows.length === 0) {
       toast.error('No inventory data to export')
@@ -400,16 +288,7 @@ function InventoryContent() {
   }
 
   const handleExportRestockBatch = async (batch: any) => {
-    const rows = (batch.lines || []).map((line: any, index: number) => ({
-      No: index + 1,
-      'DO Number': batch.do_number || '',
-      'Received Date': batch.created_at ? new Date(batch.created_at).toLocaleString() : '',
-      'Received By': batch.added_by || 'Admin',
-      'Item Name': line.item_name || '',
-      Color: line.color || '',
-      Size: line.size || '',
-      Quantity: Number(line.quantity_added || 0),
-    }))
+    const rows = buildRestockBatchExportRows(batch)
 
     if (rows.length === 0) {
       toast.error('No DO lines to export')
@@ -474,82 +353,34 @@ function InventoryContent() {
 
   return (
     <div className="p-4 md:p-12 max-w-[1600px] mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
-      <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div><h1 className="text-4xl md:text-5xl font-black italic flex items-center gap-4 tracking-tighter text-white"><Package className="text-blue-500" size={40}/> Inventory</h1></div>
-        <div className="flex flex-wrap gap-3">
-           <button onClick={handleExportExcel} className="px-8 py-4 bg-blue-600/10 border border-blue-500/30 text-blue-400 rounded-[20px] font-black text-xs flex items-center gap-3 transition-all active:scale-95 shadow-lg shadow-blue-500/5"><Download size={18}/> Export Excel</button>
-           <button onClick={() => { setRestockView('entry'); setIsRestockModalOpen(true); }} className="px-8 py-4 bg-emerald-600/10 border border-emerald-500/30 text-emerald-500 rounded-[20px] font-black text-xs flex items-center gap-3 transition-all active:scale-95 shadow-lg shadow-emerald-500/5"><Archive size={18}/> Receive Stock</button>
-           <button onClick={() => { setEditingItem({ item_name: '', category: 'Other', quantity: 0, threshold: 1, item_id_code: generateNextCode('Other') }); setIsItemModalOpen(true); }} className="px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white rounded-[20px] font-black text-xs flex items-center gap-3 active:scale-95 transition-all shadow-lg shadow-orange-600/20"><Plus size={18}/> Add Item</button>
-        </div>
-      </div>
+      <InventoryControls
+        categoryConfig={categoryConfig}
+        selectedCats={selectedCats}
+        showLowStock={showLowStock}
+        onAddItem={() => { setEditingItem({ item_name: '', category: 'Other', quantity: 0, threshold: 1, item_id_code: generateNextCode('Other') }); setIsItemModalOpen(true); }}
+        onExportExcel={handleExportExcel}
+        onOpenReceiveStock={() => { setRestockView('entry'); setIsRestockModalOpen(true); }}
+        onSearchTermChange={setSearchTerm}
+        onShowLowStockChange={setShowLowStock}
+        onToggleCat={toggleCat}
+      />
 
-      <div className="space-y-6 mb-10">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-2 relative"><Search className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-600" size={20}/><input type="text" placeholder="Search item code or name..." className="w-full bg-black/60 border border-white/10 rounded-[24px] py-4 pl-14 pr-6 text-white outline-none focus:border-orange-500 transition-all text-sm font-bold" onChange={(e) => setSearchTerm(e.target.value)} /></div>
-          <button onClick={() => setShowLowStock(!showLowStock)} className={`rounded-[24px] font-black text-xs uppercase flex items-center justify-center gap-3 border transition-all ${showLowStock ? 'bg-red-500/20 border-red-500 text-red-500 shadow-inner' : 'bg-black/40 border-white/10 text-zinc-600 hover:text-red-500'}`}><AlertTriangle size={18}/> {showLowStock ? 'Low Stock Only' : 'Filter Low Stock'}</button>
-        </div>
-
-        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-2">
-          {categoryConfig.map(cat => {
-            const Icon = cat.icon; const isActive = selectedCats.includes(cat.name);
-            return (
-              <button key={cat.name} onClick={() => toggleCat(cat.name)} className={`flex flex-col items-center justify-center gap-2 min-w-[70px] h-[80px] rounded-2xl border transition-all ${isActive ? 'bg-orange-600 border-orange-400 text-white scale-105 shadow-lg shadow-orange-600/30' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:border-white/20'}`}>
-                <Icon size={24} /><span className="text-[8px] font-black uppercase tracking-widest">{cat.label}</span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="space-y-6">
-        {Object.entries(filteredInventoryGrouped).map(([category, items]) => {
-          const isExpanded = expandedCats.includes(category);
-          return (
-            <div key={category} className={`border rounded-[40px] overflow-hidden transition-all duration-300 ${isExpanded ? 'border-orange-500/30 bg-black/40 shadow-2xl' : 'border-white/5 bg-zinc-900/30'}`}>
-              <button onClick={() => setExpandedCats(isExpanded ? expandedCats.filter(c => c !== category) : [...expandedCats, category])} className="w-full p-8 flex items-center justify-between outline-none group transition-colors"><div className="flex items-center gap-5 text-orange-500 group-hover:scale-105 transition-transform"><Box size={32}/><h2 className="text-lg font-black text-white tracking-widest uppercase">{category} ({items.length})</h2></div>{isExpanded ? <ChevronDown size={28} className="text-orange-500"/> : <ChevronRight size={28} className="text-zinc-800"/>}</button>
-              {isExpanded && (
-                <div className="overflow-x-auto border-t border-white/5 bg-black/30 p-6">
-                  <table className="w-full text-left text-[12px] font-black border-separate border-spacing-y-3">
-                    <thead className="text-zinc-600"><tr><th className="p-6 pl-8">Code</th><th className="p-6">Item Name</th><th className="p-6 text-center">Spec</th><th className="p-6 text-right">Stock</th><th className="p-6 text-center pr-8">Action</th></tr></thead>
-                    <tbody>
-                      {items.map(item => {
-                        const isLow = item.quantity <= item.threshold;
-                        return (
-                          <tr key={item.id} className="bg-white/5 hover:bg-orange-600/10 transition-all rounded-2xl group">
-                            <td className={`p-6 pl-8 rounded-l-[24px] border-l-4 ${isLow ? 'border-red-500/50' : 'border-transparent group-hover:border-orange-500'} text-zinc-500 font-black`}>{item.item_id_code}</td>
-                            <td className="p-6 text-white font-bold">{item.item_name}</td>
-                            <td className="p-6 text-center text-blue-400 font-black">{item.color} {item.size}</td>
-                            <td className={`p-6 text-right font-black text-xl ${isLow ? 'text-red-500' : 'text-emerald-500'}`}>{item.quantity}</td>
-                            <td className="p-6 text-center pr-8 rounded-r-[24px]"><button onClick={() => { setEditingItem(item); setIsItemModalOpen(true); }} className="p-3 bg-black/50 border border-white/10 rounded-xl text-orange-400 hover:bg-orange-600 hover:text-white hover:border-orange-500 transition-all"><Edit size={16}/></button></td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+      <InventoryList
+        expandedCats={expandedCats}
+        groupedInventory={filteredInventoryGrouped}
+        onEditItem={(item) => { setEditingItem(item); setIsItemModalOpen(true); }}
+        onExpandedCatsChange={setExpandedCats}
+      />
 
       {isItemModalOpen && editingItem && (
-        <div className="fixed inset-0 z-[2000] bg-black/98 flex items-center justify-center p-6 backdrop-blur-xl">
-          <div className="bg-zinc-900 border border-orange-500/30 rounded-[56px] w-full max-w-xl p-12 space-y-8 shadow-2xl overflow-y-auto max-h-[92vh] no-scrollbar">
-            <div className="flex justify-between items-center border-b border-white/5 pb-8 text-orange-500"><h2 className="text-3xl font-black italic uppercase tracking-tighter">Edit Item</h2><button onClick={() => setIsItemModalOpen(false)} className="p-4 bg-white/5 rounded-full hover:bg-red-500 transition-all text-white"><X size={24}/></button></div>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="col-span-2 space-y-2"><label className="text-orange-500 font-black ml-2 uppercase text-[9px]">CATEGORY *</label><select className="w-full bg-black border border-white/10 p-5 rounded-3xl outline-none text-white font-black text-sm focus:border-orange-500" value={editingItem.category} onChange={e => {const newCat = e.target.value; setEditingItem({...editingItem, category: newCat, item_id_code: editingItem.id ? editingItem.item_id_code : generateNextCode(newCat)})}}>{categoryConfig.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}</select></div>
-              <div className="col-span-2 space-y-2"><label className="text-zinc-500 font-black ml-2 uppercase text-[9px]">ITEM NAME *</label><input className="w-full bg-black border border-white/10 p-5 rounded-3xl outline-none text-white font-black text-sm focus:border-orange-500" value={editingItem.item_name} onChange={e => setEditingItem({...editingItem, item_name: e.target.value})}/></div>
-              <div className="space-y-2"><label className="text-blue-500 font-black ml-2 uppercase text-[9px]">CODE (AUTO)</label><input className="w-full bg-blue-500/10 border border-blue-500/30 p-5 rounded-3xl text-blue-400 font-black italic text-sm" value={editingItem.item_id_code} readOnly /></div>
-              <div className="space-y-2"><label className="text-zinc-500 font-black ml-2 uppercase text-[9px]">UNIT</label><input className="w-full bg-black border border-white/10 p-5 rounded-3xl text-white font-black text-sm" value={editingItem.unit} onChange={e => setEditingItem({...editingItem, unit: e.target.value})}/></div>
-              <div className="space-y-2"><label className="text-zinc-500 font-black ml-2 uppercase text-[9px]">COLOR</label><input className="w-full bg-black border border-white/10 p-5 rounded-3xl text-white font-black text-sm" value={editingItem.color} onChange={e => setEditingItem({...editingItem, color: e.target.value})}/></div>
-              <div className="space-y-2"><label className="text-zinc-500 font-black ml-2 uppercase text-[9px]">SIZE</label><input className="w-full bg-black border border-white/10 p-5 rounded-3xl text-white font-black text-sm" value={editingItem.size} onChange={e => setEditingItem({...editingItem, size: e.target.value})}/></div>
-              <div className="space-y-2"><label className="text-emerald-500 font-black ml-2 uppercase text-[9px]">STOCK QUANTITY</label><input type="number" className="w-full bg-black border border-emerald-500/30 p-5 rounded-3xl outline-none text-emerald-400 font-black text-2xl focus:border-emerald-500" value={editingItem.quantity} onChange={e => setEditingItem({...editingItem, quantity: e.target.value})}/></div>
-              <div className="space-y-2"><label className="text-red-500 font-black ml-2 uppercase text-[9px]">LOW ALERT AT</label><input type="number" className="w-full bg-black border border-red-500/30 p-5 rounded-3xl outline-none text-red-400 font-black text-2xl focus:border-red-500" value={editingItem.threshold} onChange={e => setEditingItem({...editingItem, threshold: e.target.value})}/></div>
-            </div>
-            <button onClick={handleSaveItem} className="w-full py-6 bg-orange-600 hover:bg-orange-500 text-white rounded-[32px] font-black uppercase text-sm shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3"><Save size={24}/> Update Master Data</button>
-          </div>
-        </div>
+        <EditItemModal
+          categoryConfig={categoryConfig}
+          item={editingItem}
+          generateNextCode={generateNextCode}
+          onChange={setEditingItem}
+          onClose={() => setIsItemModalOpen(false)}
+          onSave={handleSaveItem}
+        />
       )}
 
       {isRestockModalOpen && (
@@ -561,210 +392,46 @@ function InventoryContent() {
             </div>
             <div className="overflow-y-auto p-10 flex-1 no-scrollbar pb-20">
               {restockView === 'entry' ? (
-                <div className="space-y-12 animate-in fade-in max-w-4xl mx-auto">
-                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 rounded-[32px] border border-emerald-500/20 bg-emerald-500/10 p-6">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase text-emerald-300 ml-2 tracking-[0.2em] block">DO Number</label>
-                      <input value={doNumber} onChange={(e) => setDoNumber(e.target.value)} placeholder="Enter DO number or leave blank for auto" className="w-full bg-black/60 border border-emerald-500/20 p-5 rounded-3xl outline-none text-white font-black text-sm focus:border-emerald-500 uppercase" />
-                    </div>
-                    <button onClick={() => setDoNumber(generateDoNumber())} className="rounded-3xl border border-emerald-400/30 px-6 py-4 text-[10px] font-black text-emerald-200 hover:bg-emerald-500 hover:text-white transition-all">
-                      Auto Number
-                    </button>
-                  </div>
-                  <div className="space-y-6">
-                    {restockEntries.map((entry, index) => (
-                      <div key={entry.id} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center bg-black/50 p-6 rounded-[32px] border border-white/5 group hover:border-emerald-500/30 transition-all">
-                        <div className="md:col-span-4">
-                          <select value={entry.product_key} onChange={(e) => updateRow(entry.id, 'product_key', e.target.value)} className="w-full bg-transparent text-base text-white font-black outline-none p-2 uppercase">
-                            <option value="">-- Select Product --</option>
-                            {[...new Map(inventory.map(i => [`${i.category}||${i.item_name}`, i])).values()].map(i => (
-                              <option key={`${i.category}||${i.item_name}`} value={`${i.category}||${i.item_name}`} className="bg-zinc-900">{i.category} | {i.item_name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="md:col-span-2">
-                          <select value={entry.color} onChange={(e) => updateRow(entry.id, 'color', e.target.value)} className="w-full bg-transparent text-base text-white font-black outline-none p-2 uppercase">
-                            <option value="">-- Color --</option>
-                            {[...new Set(inventory.filter(i => `${i.category}||${i.item_name}` === entry.product_key).map(i => i.color).filter(Boolean))].map(color => (
-                              <option key={color} value={color} className="bg-zinc-900">{color}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="md:col-span-2">
-                          <select value={entry.size} onChange={(e) => updateRow(entry.id, 'size', e.target.value)} className="w-full bg-transparent text-base text-white font-black outline-none p-2 uppercase">
-                            <option value="">-- Size --</option>
-                            {[...new Set(
-                              inventory
-                                .filter(i => `${i.category}||${i.item_name}` === entry.product_key)
-                                .filter(i => !entry.color || String(i.color || '') === entry.color)
-                                .map(i => i.size)
-                                .filter(Boolean)
-                            )].map(size => (
-                              <option key={size} value={size} className="bg-zinc-900">{size}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="md:col-span-3"><input type="number" min="1" placeholder="QTY" value={entry.qty} onChange={(e) => updateRow(entry.id, 'qty', e.target.value)} className="w-full bg-zinc-950 border-2 border-emerald-500/20 p-5 rounded-2xl text-center font-black text-emerald-400 outline-none focus:border-emerald-500 text-2xl" /></div>
-                        <div className="md:col-span-1 flex justify-center"><button onClick={() => removeRow(entry.id)} className="text-zinc-800 hover:text-red-500 p-4 bg-white/5 rounded-2xl transition-colors"><Trash2 size={24}/></button></div>
-                      </div>
-                    ))}
-                    <button onClick={addRow} className="w-full py-5 border-2 border-dashed border-zinc-800 rounded-3xl text-xs font-black uppercase text-zinc-600 hover:border-emerald-500 transition-all flex items-center justify-center gap-3"><Plus size={20}/> Add More Items</button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-end pt-12 border-t border-white/10 pb-10">
-                    <div className="space-y-3"><label className="text-[10px] font-black uppercase text-zinc-600 ml-3 tracking-[0.2em] block">Delivery Document</label><label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed ${doFile ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 hover:border-emerald-500/50'} rounded-[32px] cursor-pointer transition-all`}><Upload size={32} className="text-zinc-700"/><p className="text-xs">{doFile ? doFile.name : "Select Image"}</p><input type="file" className="hidden" accept="image/*" onChange={(e) => setDoFile(e.target.files?.[0] || null)} /></label></div>
-                    <button onClick={handleRestockSubmit} disabled={isProcessingRestock} className="w-full h-32 bg-emerald-600 hover:bg-emerald-500 text-white rounded-[40px] font-black uppercase shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-4">{isProcessingRestock ? <Loader2 className="animate-spin" size={32}/> : <Save size={32}/>} Receive DO</button>
-                  </div>
-                </div>
+                <RestockEntryPanel
+                  doNumber={doNumber}
+                  doFile={doFile}
+                  inventory={inventory}
+                  isProcessingRestock={isProcessingRestock}
+                  restockEntries={restockEntries}
+                  onAddRow={addRow}
+                  onDoFileChange={setDoFile}
+                  onDoNumberChange={setDoNumber}
+                  onGenerateDoNumber={() => setDoNumber(generateDoNumber())}
+                  onRemoveRow={removeRow}
+                  onRestockSubmit={handleRestockSubmit}
+                  onUpdateRow={updateRow}
+                />
               ) : restockView === 'history' ? (
-                <div className="space-y-6 pb-20 max-w-5xl mx-auto">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-[32px] border border-emerald-500/20 bg-emerald-500/10 p-6">
-                    <div>
-                      <p className="text-emerald-300 text-[10px] tracking-[0.25em] uppercase">DO Receiving History</p>
-                      <p className="mt-2 text-sm normal-case text-zinc-300">{restockBatches.length} DO batches in current filter.</p>
-                    </div>
-                    <select value={restockMonthFilter} onChange={(e) => setRestockMonthFilter(e.target.value)} className="bg-black/60 border border-emerald-500/20 rounded-2xl px-5 py-3 text-white font-black text-xs outline-none focus:border-emerald-500">
-                      <option value="all">All Months</option>
-                      {restockMonthOptions.map((month) => <option key={month} value={month}>{month}</option>)}
-                    </select>
-                  </div>
-                  {restockBatches.length === 0 ? (
-                    <div className="rounded-[40px] border border-white/5 bg-black/40 p-12 text-center text-zinc-600 font-black tracking-widest">
-                      No restock history in this period
-                    </div>
-                  ) : restockBatches.map((batch: any) => {
-                    const expanded = expandedRestockBatches.includes(batch.id)
-                    return (
-                      <div key={batch.id} className="bg-black/40 border border-white/5 rounded-[40px] overflow-hidden shadow-xl">
-                        <button onClick={() => setExpandedRestockBatches(expanded ? expandedRestockBatches.filter(id => id !== batch.id) : [...expandedRestockBatches, batch.id])} className="w-full p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 text-left group">
-                          <div className="flex items-center gap-6">
-                            <div className="p-5 bg-emerald-500/10 text-emerald-500 rounded-[24px] group-hover:bg-emerald-500 group-hover:text-white transition-all"><FileText size={32}/></div>
-                            <div>
-                              <p className="text-white font-black text-xl uppercase italic">{batch.do_number}</p>
-                              <div className="flex flex-wrap gap-4 mt-2 text-zinc-600 font-bold uppercase text-[10px] tracking-widest">
-                                <span>{new Date(batch.created_at).toLocaleString()}</span>
-                                <span>By: {batch.added_by || 'Admin'}</span>
-                                <span>{batch.lines.length} lines</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3 self-end md:self-auto">
-                            {batch.receipt_url && (
-                              <button onClick={(e) => { e.stopPropagation(); openDoDocument(batch.receipt_url) }} className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[10px] font-black text-emerald-300 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
-                                <ExternalLink size={14}/> View DO
-                              </button>
-                            )}
-                            <button onClick={(e) => { e.stopPropagation(); handleExportRestockBatch(batch) }} className="rounded-2xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-[10px] font-black text-blue-300 hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2">
-                              <Download size={14}/> Export DO
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); deleteRestockBatch(batch) }} className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-[10px] font-black text-red-300 hover:bg-red-600 hover:text-white transition-all flex items-center gap-2">
-                              <Trash2 size={14}/> Delete
-                            </button>
-                            <p className="text-emerald-500 font-black text-2xl">+{batch.totalQty}</p>
-                            <ChevronDown size={22} className={`text-zinc-600 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                          </div>
-                        </button>
-                        {expanded && (
-                          <div className="border-t border-white/5 p-6 space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 rounded-3xl border border-white/5 bg-emerald-500/5 p-5">
-                              <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">DO Number</p>
-                                <p className="mt-1 text-sm font-black text-white">{batch.do_number}</p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">Received</p>
-                                <p className="mt-1 text-sm font-black text-white">{new Date(batch.created_at).toLocaleString()}</p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">Received By</p>
-                                <p className="mt-1 text-sm font-black text-white">{batch.added_by || 'Admin'}</p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">Total Qty</p>
-                                <p className="mt-1 text-sm font-black text-emerald-400">+{batch.totalQty}</p>
-                              </div>
-                            </div>
-                            <div className="hidden md:grid grid-cols-[80px_1fr_140px_140px_110px_56px] gap-4 px-5 text-[9px] font-black uppercase tracking-widest text-zinc-600">
-                              <span>No.</span>
-                              <span>Item</span>
-                              <span>Color</span>
-                              <span>Size</span>
-                              <span className="text-right">Qty</span>
-                              <span></span>
-                            </div>
-                            {batch.lines.map((line: any) => (
-                              <div key={line.id} className="grid grid-cols-1 md:grid-cols-[80px_1fr_140px_140px_110px_56px] md:items-center gap-3 rounded-2xl bg-white/5 px-5 py-4">
-                                <p className="hidden md:block text-zinc-500 font-black">#{batch.lines.indexOf(line) + 1}</p>
-                                <div>
-                                  <p className="text-white font-black italic">{line.item_name}</p>
-                                  <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-zinc-500 md:hidden">
-                                    {[line.color, line.size].filter(Boolean).join(' | ') || 'No spec'}
-                                  </p>
-                                </div>
-                                <p className="hidden md:block text-zinc-300 font-black">{line.color || '-'}</p>
-                                <p className="hidden md:block text-zinc-300 font-black">{line.size || '-'}</p>
-                                <p className="text-emerald-400 font-black md:text-right">+{line.quantity_added}</p>
-                                <button onClick={() => deleteRestockLine(line)} className="w-fit rounded-xl bg-red-500/10 p-3 text-red-400 hover:bg-red-600 hover:text-white transition-all">
-                                  <Trash2 size={14}/>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                <RestockHistoryPanel
+                  restockBatches={restockBatches}
+                  restockMonthFilter={restockMonthFilter}
+                  restockMonthOptions={restockMonthOptions}
+                  expandedRestockBatches={expandedRestockBatches}
+                  onMonthFilterChange={setRestockMonthFilter}
+                  onToggleBatch={(batchId) =>
+                    setExpandedRestockBatches(
+                      expandedRestockBatches.includes(batchId)
+                        ? expandedRestockBatches.filter((id) => id !== batchId)
+                        : [...expandedRestockBatches, batchId],
                     )
-                  })}
-                </div>
+                  }
+                  onOpenDoDocument={openDoDocument}
+                  onExportRestockBatch={handleExportRestockBatch}
+                  onDeleteRestockBatch={deleteRestockBatch}
+                  onDeleteRestockLine={deleteRestockLine}
+                />
               ) : (
-                <div className="space-y-4 pb-20 max-w-5xl mx-auto animate-in fade-in">
-                  <div className="rounded-[32px] border border-blue-500/20 bg-blue-500/10 p-6">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-blue-300 text-[10px] tracking-[0.25em] uppercase">Stock Movement Audit</p>
-                        <p className="mt-2 text-sm normal-case text-zinc-300">Latest {stockTransactions.length} stock deductions from received requests and direct issue.</p>
-                        <p className="mt-1 text-[11px] normal-case text-zinc-500">If this is empty after deploy, rerun sql/ppe_stock_transactions.sql once to backfill old received requests.</p>
-                      </div>
-                      <button onClick={() => fetchStockTransactions(true)} disabled={isRefreshingTransactions} className="rounded-2xl border border-blue-400/30 bg-blue-500/10 px-5 py-3 text-[10px] font-black text-blue-200 transition-all hover:bg-blue-500 hover:text-white disabled:cursor-wait disabled:opacity-60">
-                        {isRefreshingTransactions ? 'Refreshing...' : 'Refresh Log'}
-                      </button>
-                    </div>
-                    {stockTransactionError && (
-                      <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-[11px] normal-case text-red-200">
-                        {stockTransactionError}. Run <span className="font-black text-white">sql/ppe_stock_transactions.sql</span> in Supabase, then press Refresh Log again.
-                      </div>
-                    )}
-                  </div>
-                  {stockTransactions.length === 0 ? (
-                    <div className="rounded-[40px] border border-white/5 bg-black/40 p-12 text-center text-zinc-600 font-black tracking-widest">
-                      No issue transactions yet
-                    </div>
-                  ) : stockTransactions.map((movement) => (
-                    <div key={movement.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-5 rounded-[32px] border border-white/5 bg-black/40 p-6 shadow-xl">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className={`rounded-full px-3 py-1 text-[8px] font-black tracking-widest ${movement.movement_type === 'direct_issue' ? 'bg-orange-500/20 text-orange-300' : 'bg-blue-500/20 text-blue-300'}`}>
-                            {String(movement.movement_type || 'issue').replace(/_/g, ' ')}
-                          </span>
-                          <span className="text-zinc-600 text-[10px]">{new Date(movement.created_at).toLocaleString()}</span>
-                        </div>
-                        <p className="text-white text-base font-black italic uppercase">
-                          {movement.item_name || 'Unknown Item'}
-                          <span className="ml-2 text-blue-300 text-xs not-italic">{[movement.color, movement.size].filter(Boolean).join(' | ')}</span>
-                        </p>
-                        <p className="text-zinc-400 normal-case text-xs">
-                          Crew: <span className="text-white font-black">{movement.crew_name || '-'}</span>
-                          <span className="mx-2 text-zinc-700">|</span>
-                          By: <span className="text-white font-black">{movement.actor_name || '-'}</span>
-                        </p>
-                        {movement.note && <p className="text-[11px] normal-case text-zinc-600">{movement.note}</p>}
-                      </div>
-                      <div className="flex items-center justify-end">
-                        <span className="rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-3 text-xl font-black text-red-400">
-                          {movement.quantity_delta}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <IssueLogPanel
+                  stockTransactions={stockTransactions}
+                  stockTransactionError={stockTransactionError}
+                  isRefreshingTransactions={isRefreshingTransactions}
+                  onRefreshTransactions={() => fetchStockTransactions(true)}
+                />
               )}
             </div>
           </div>
