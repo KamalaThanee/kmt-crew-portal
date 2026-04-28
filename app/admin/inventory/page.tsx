@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, Suspense, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import * as XLSX from 'xlsx'
 import { 
   Package, Search, AlertTriangle, Download, Plus, Edit, X, Save, 
   Box, ChevronDown, ChevronRight, Archive, FileText, Loader2, 
@@ -372,7 +371,7 @@ function InventoryContent() {
     return Object.values(groups).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   }, [history, restockMonthFilter])
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const rows = Object.entries(filteredInventoryGrouped).flatMap(([category, items]) =>
       items.map((item) => ({
         Category: category,
@@ -392,6 +391,7 @@ function InventoryContent() {
       return
     }
 
+    const XLSX = await import('xlsx')
     const worksheet = XLSX.utils.json_to_sheet(rows)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory')
@@ -400,7 +400,7 @@ function InventoryContent() {
     toast.success(`Exported ${rows.length} inventory rows`)
   }
 
-  const handleExportRestockBatch = (batch: any) => {
+  const handleExportRestockBatch = async (batch: any) => {
     const rows = (batch.lines || []).map((line: any, index: number) => ({
       No: index + 1,
       'DO Number': batch.do_number || '',
@@ -417,6 +417,7 @@ function InventoryContent() {
       return
     }
 
+    const XLSX = await import('xlsx')
     const worksheet = XLSX.utils.json_to_sheet(rows)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'DO Detail')
