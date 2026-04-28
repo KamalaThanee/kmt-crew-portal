@@ -2,13 +2,13 @@
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { formatExpiryLabel, isNoExpiryDate } from '@/lib/certificates'
+import { CrewCertificatesPanel } from '@/components/certificates/CrewCertificatesPanel'
+import { PersonalCertificatesPanel } from '@/components/certificates/PersonalCertificatesPanel'
+import { createZipBlob, getFileExtension, safeFileName, triggerDownload } from '@/lib/certificateDownloads'
+import { isNoExpiryDate } from '@/lib/certificates'
 import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
-import { 
-  ShieldCheck, FileBadge, User, Ship, ChevronRight, ChevronDown, Eye, RefreshCcw, 
-  AlertTriangle, Clock, CheckCircle2, XCircle, Search, Filter, Plus, Users, Download, Loader2
-} from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
@@ -184,134 +184,6 @@ function CertificatesContent() {
       .filter(Boolean) as Array<{ crewName: string; certName: string; url: string; expiryDate?: string }>
   }, [filterSpecificCert, finalDisplayCrews])
 
-  const safeFileName = (value: string) => String(value || 'file').replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '')
-
-  const getFileExtension = (url: string, contentType?: string | null) => {
-    const mimeExt: Record<string, string> = {
-      'application/pdf': 'pdf',
-      'image/jpeg': 'jpg',
-      'image/png': 'png',
-      'image/webp': 'webp',
-    }
-
-    if (contentType) {
-      const matched = Object.entries(mimeExt).find(([mime]) => contentType.includes(mime))
-      if (matched) return matched[1]
-    }
-
-    try {
-      const path = new URL(url).pathname
-      const ext = path.split('.').pop()?.split('?')[0]
-      if (ext && ext.length <= 5) return ext
-    } catch {}
-
-    return 'pdf'
-  }
-
-  const triggerDownload = (href: string, filename: string) => {
-    const link = document.createElement('a')
-    link.href = href
-    link.download = filename
-    link.rel = 'noopener noreferrer'
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-  }
-
-  const crc32 = (data: Uint8Array) => {
-    let crc = -1
-    for (let i = 0; i < data.length; i++) {
-      crc ^= data[i]
-      for (let j = 0; j < 8; j++) {
-        crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
-      }
-    }
-    return (crc ^ -1) >>> 0
-  }
-
-  const createZipBlob = (files: Array<{ name: string; data: Uint8Array }>) => {
-    const encoder = new TextEncoder()
-    const chunks: Uint8Array[] = []
-    const centralChunks: Uint8Array[] = []
-    let offset = 0
-
-    const writeHeader = (size: number, writer: (view: DataView) => void) => {
-      const buffer = new ArrayBuffer(size)
-      const view = new DataView(buffer)
-      writer(view)
-      return new Uint8Array(buffer)
-    }
-
-    files.forEach((file) => {
-      const nameBytes = encoder.encode(file.name)
-      const checksum = crc32(file.data)
-      const localOffset = offset
-
-      const localHeader = writeHeader(30, (view) => {
-        view.setUint32(0, 0x04034b50, true)
-        view.setUint16(4, 20, true)
-        view.setUint16(6, 0, true)
-        view.setUint16(8, 0, true)
-        view.setUint16(10, 0, true)
-        view.setUint16(12, 0, true)
-        view.setUint32(14, checksum, true)
-        view.setUint32(18, file.data.length, true)
-        view.setUint32(22, file.data.length, true)
-        view.setUint16(26, nameBytes.length, true)
-        view.setUint16(28, 0, true)
-      })
-
-      chunks.push(localHeader, nameBytes, file.data)
-      offset += localHeader.length + nameBytes.length + file.data.length
-
-      const centralHeader = writeHeader(46, (view) => {
-        view.setUint32(0, 0x02014b50, true)
-        view.setUint16(4, 20, true)
-        view.setUint16(6, 20, true)
-        view.setUint16(8, 0, true)
-        view.setUint16(10, 0, true)
-        view.setUint16(12, 0, true)
-        view.setUint16(14, 0, true)
-        view.setUint32(16, checksum, true)
-        view.setUint32(20, file.data.length, true)
-        view.setUint32(24, file.data.length, true)
-        view.setUint16(28, nameBytes.length, true)
-        view.setUint16(30, 0, true)
-        view.setUint16(32, 0, true)
-        view.setUint16(34, 0, true)
-        view.setUint16(36, 0, true)
-        view.setUint32(38, 0, true)
-        view.setUint32(42, localOffset, true)
-      })
-
-      centralChunks.push(centralHeader, nameBytes)
-    })
-
-    const centralOffset = offset
-    const centralSize = centralChunks.reduce((sum, chunk) => sum + chunk.length, 0)
-    const endHeader = writeHeader(22, (view) => {
-      view.setUint32(0, 0x06054b50, true)
-      view.setUint16(4, 0, true)
-      view.setUint16(6, 0, true)
-      view.setUint16(8, files.length, true)
-      view.setUint16(10, files.length, true)
-      view.setUint32(12, centralSize, true)
-      view.setUint32(16, centralOffset, true)
-      view.setUint16(20, 0, true)
-    })
-
-    const allChunks = [...chunks, ...centralChunks, endHeader]
-    const totalLength = allChunks.reduce((sum, chunk) => sum + chunk.length, 0)
-    const zipBytes = new Uint8Array(totalLength)
-    let cursor = 0
-    allChunks.forEach((chunk) => {
-      zipBytes.set(chunk, cursor)
-      cursor += chunk.length
-    })
-
-    return new Blob([zipBytes.buffer], { type: 'application/zip' })
-  }
-
   const handleDownloadFilteredCertificates = async () => {
     if (filterSpecificCert === 'All') {
       toast.error('Select a specific certificate first')
@@ -370,140 +242,37 @@ function CertificatesContent() {
       </div>
 
       {activeTab === 'personal' && (
-        <div className="space-y-8 animate-in fade-in">
-           <div className="bg-zinc-900 border border-orange-500/20 p-8 rounded-[40px] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 mb-10">
-              <div className="flex items-center gap-8 w-full md:w-auto">
-                 <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
-                    <svg className="w-full h-full transform -rotate-90"><circle cx="48" cy="48" r="44" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/5"/><circle cx="48" cy="48" r="44" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray="276" strokeDashoffset={276 - (myCertData.progress/100)*276} className="text-orange-500 transition-all duration-1000"/></svg>
-                    <span className="absolute text-xl font-black">{myCertData.progress}%</span>
-                 </div>
-                 <div><h2 className="text-2xl font-black italic uppercase">My Compliance</h2><p className="text-zinc-500 mt-1 uppercase text-[10px] tracking-widest">{myCertData.ok} / {myCertData.list.filter(c => c.is_mandatory).length} Mandatory Valid</p></div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full md:w-auto">
-                 {[
-                   { id: 'ok', label: 'Ready', val: myCertData.ok, color: 'border-emerald-500', text: 'text-emerald-500' },
-                   { id: 'warning', label: '90 Days', val: myCertData.warning, color: 'border-orange-500', text: 'text-orange-500' },
-                   { id: 'expired', label: 'Expired', val: myCertData.expired, color: 'border-red-500', text: 'text-red-500' },
-                   { id: 'missing', label: 'Missing', val: myCertData.missing, color: 'border-zinc-700', text: 'text-zinc-500' }
-                 ].map(tile => (
-                   <button key={tile.id} onClick={() => setPersonalFilter(personalFilter === tile.id ? 'all' : tile.id)} className={`bg-black/40 p-4 rounded-2xl border-t-2 ${tile.color} transition-all ${personalFilter === tile.id ? 'bg-zinc-800 ring-2 ring-white/10' : 'hover:bg-zinc-800/50'}`}>
-                      <p className={`text-xl font-black ${tile.text}`}>{tile.val}</p>
-                      <p className="text-[8px] text-zinc-500 mt-1">{tile.label}</p>
-                   </button>
-                 ))}
-              </div>
-           </div>
-
-           <div className="space-y-3">
-               {(personalFilter === 'all' ? myCertData.list : myCertData.list.filter(c => c.status === personalFilter)).map((item, idx) => (
-                <div key={idx} className={`bg-zinc-900 border ${item.status === 'missing' ? 'border-red-500/20' : item.status === 'optional' ? 'border-white/5 opacity-50' : 'border-white/10'} rounded-[24px] p-5 flex items-center justify-between gap-4 group hover:border-orange-500/30 transition-all shadow-xl`}>
-                  <div className="flex items-center gap-4">
-                    <div className={`p-3.5 rounded-2xl ${item.status === 'ok' ? 'bg-emerald-500/10 text-emerald-500' : item.status === 'warning' ? 'bg-amber-500/10 text-amber-500' : item.status === 'optional' ? 'bg-slate-800 text-slate-500' : 'bg-red-500/10 text-red-500'}`}>
-                      {item.status === 'ok' ? <CheckCircle2 size={24}/> : item.status === 'optional' ? <Clock size={24}/> : <AlertTriangle size={24}/>}
-                    </div>
-                    <div><p className={`text-[8px] font-black uppercase tracking-widest mb-1 ${item.is_mandatory ? 'text-blue-500' : 'text-zinc-600'}`}>{item.is_mandatory ? 'MANDATORY' : 'OPTIONAL'}</p><h3 className="text-white text-xs md:text-sm font-black leading-tight">{item.cert_name}</h3>{item.uploaded && <p className="text-[9px] mt-1 text-blue-500 font-black">Exp: {formatExpiryLabel(item.uploaded.expiry_date)}</p>}</div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {item.uploaded?.file_url && (
-                      <a
-                        href={item.uploaded.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-xl bg-white/5 p-3 text-orange-500 transition-all hover:bg-orange-600 hover:text-white"
-                        aria-label={`Open ${item.cert_name}`}
-                        title="Open uploaded certificate"
-                      >
-                        <Eye size={16} />
-                      </a>
-                    )}
-                    <button onClick={() => router.push(`/certificates/upload?cert=${encodeURIComponent(item.cert_name)}`)} className="px-6 py-3 bg-orange-600 rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all">Upload</button>
-                  </div>
-                </div>
-              ))}
-           </div>
-        </div>
+        <PersonalCertificatesPanel
+          myCertData={myCertData}
+          personalFilter={personalFilter}
+          onPersonalFilterChange={setPersonalFilter}
+          onUploadCertificate={(certName) => router.push(`/certificates/upload?cert=${encodeURIComponent(certName)}`)}
+        />
       )}
 
       {activeTab === 'crew' && (
-        <div className="space-y-8 animate-in fade-in">
-           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              {[
-                { id: 'all', label: 'ทั้งหมด', val: crewSummary.total, color: 'border-blue-500', icon: <Users size={16}/> },
-                { id: 'ready', label: 'ครบถ้วน', val: crewSummary.ready, color: 'border-emerald-500', icon: <CheckCircle2 size={16}/> },
-                { id: 'warning', label: 'ใกล้หมด (90D)', val: crewSummary.warning, color: 'border-orange-500', icon: <Clock size={16}/> },
-                { id: 'expired', label: 'หมดแล้ว', val: crewSummary.expired, color: 'border-red-500', icon: <XCircle size={16}/> },
-                { id: 'action', label: 'ต้องดำเนินการ', val: crewSummary.action, color: 'border-red-600', icon: <AlertTriangle size={16}/> }
-              ].map(tile => (
-                <button key={tile.id} onClick={() => setFilterMode(tile.id)} className={`bg-zinc-900 border-t-4 ${tile.color} p-6 rounded-3xl flex flex-col items-center justify-center transition-all active:scale-95 shadow-xl ${filterMode === tile.id ? 'opacity-100 ring-2 ring-white/20' : 'opacity-40 hover:opacity-100'}`}>
-                   <p className="text-2xl font-black">{tile.val}</p>
-                   <p className="text-[8px] mt-2 flex items-center gap-1.5 text-zinc-400">{tile.icon} {tile.label}</p>
-                </button>
-              ))}
-           </div>
-
-           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-zinc-900/50 p-4 rounded-[28px] border border-white/5">
-              <div className="relative md:col-span-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16}/><input type="text" placeholder="Search crew..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-black/50 border border-white/10 p-4 pl-12 rounded-2xl outline-none focus:border-orange-500 text-xs font-bold" /></div>
-              <select value={filterPos} onChange={e => setFilterPos(e.target.value)} className="bg-black/50 border border-white/10 p-4 rounded-2xl outline-none text-xs font-bold text-blue-400"><option value="All">All Positions</option>{allPositions.map(p => <option key={p} value={p}>{p}</option>)}</select>
-              <select value={filterSpecificCert} onChange={e => setFilterSpecificCert(e.target.value)} className="bg-black/50 border border-white/10 p-4 rounded-2xl outline-none text-xs font-bold text-orange-400"><option value="All">Select Specific Certificate...</option>{allCertTypes.map(c => <option key={c} value={c}>{c}</option>)}</select>
-              <button
-                onClick={handleDownloadFilteredCertificates}
-                disabled={filterSpecificCert === 'All' || filteredCertificateDownloads.length === 0 || isDownloadingCerts}
-                className="flex items-center justify-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-xs font-black text-emerald-300 transition-all hover:bg-emerald-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-                title={filterSpecificCert === 'All' ? 'Select a specific certificate first' : `Download ${filteredCertificateDownloads.length} matching files as ZIP`}
-              >
-                {isDownloadingCerts ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>}
-                {filterSpecificCert === 'All' ? 'Download ZIP' : `ZIP ${filteredCertificateDownloads.length}`}
-              </button>
-           </div>
-
-           <div className="space-y-4">
-              {finalDisplayCrews.map(crew => {
-                const isExpanded = expandedCrews.includes(crew.id);
-                const pColor = crew.certData.progress === 100 ? 'text-emerald-500' : crew.certData.expired > 0 ? 'text-red-500' : 'text-amber-500';
-                return (
-                  <div key={crew.id} className={`bg-zinc-900 border rounded-[32px] overflow-hidden transition-all duration-300 ${isExpanded ? 'border-orange-500/50 shadow-2xl' : 'border-white/5 hover:border-white/20'}`}>
-                     <button onClick={() => setExpandedCrews(prev => prev.includes(crew.id) ? prev.filter(id => id !== crew.id) : [...prev, crew.id])} className="w-full p-6 flex flex-col outline-none">
-                        <div className="w-full flex justify-between items-center mb-3">
-                           <div className="flex items-center gap-4">
-                             <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-zinc-500"><User size={20}/></div>
-                             <div className="text-left"><p className="font-black text-sm text-white uppercase">{crew.full_name}</p><p className="text-[9px] text-zinc-500 mt-1 uppercase tracking-widest">{crew.position}</p></div>
-                           </div>
-                           <div className="flex items-center gap-4">
-                              <div className="text-right hidden md:block"><p className={`text-xl font-black ${pColor}`}>{crew.certData.progress}%</p><p className="text-[8px] text-zinc-600 uppercase">Readiness</p></div>
-                              <div className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase ${crew.certData.progress === 100 ? 'bg-emerald-500/10 text-emerald-500' : crew.certData.expired > 0 ? 'bg-red-500/10 text-red-500 animate-pulse' : 'bg-amber-500/10 text-amber-500'}`}>
-                                 {crew.certData.progress === 100 ? '✅ Ready' : crew.certData.expired > 0 ? '🚨 Action Required' : '⚠️ Pending'}
-                              </div>
-                              {isExpanded ? <ChevronDown className="text-orange-500" size={24}/> : <ChevronRight className="text-zinc-600" size={24}/>}
-                           </div>
-                        </div>
-                     </button>
-                     {isExpanded && (
-                       <div className="p-6 md:p-8 pt-0 border-t border-white/5 bg-black/20 animate-in slide-in-from-top-4">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                             {crew.certData.list.map((c: any, i: number) => (
-                               <div key={i} className={`flex items-center justify-between p-4 rounded-2xl bg-zinc-900 border-l-4 ${c.status === 'ok' ? 'border-l-emerald-500' : c.status === 'expired' ? 'border-l-red-500' : c.status === 'warning' ? 'border-l-amber-500' : 'border-l-zinc-700'}`}>
-                                  <div>
-                                     <p className="text-white text-[11px] font-black leading-tight uppercase">{c.cert_name}</p>
-                                     <p className={`text-[8px] mt-1 font-bold uppercase ${c.status === 'ok' ? 'text-emerald-500' : c.status === 'expired' ? 'text-red-500' : 'text-zinc-500'}`}>{c.uploaded ? `Expiry: ${formatExpiryLabel(c.uploaded.expiry_date)}` : 'Document Missing'}</p>
-                                  </div>
-                                  <div className="flex gap-2 shrink-0">
-                                     {c.uploaded && <a href={c.uploaded.file_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/5 rounded-lg text-orange-500 hover:bg-orange-600 hover:text-white"><Eye size={16}/></a>}
-                                     <button onClick={() => router.push(`/certificates/upload?cert=${encodeURIComponent(c.cert_name)}&crewId=${crew.id}`)} className="p-2 bg-orange-600/10 text-orange-500 rounded-lg hover:bg-orange-600 hover:text-white"><RefreshCcw size={16}/></button>
-                                  </div>
-                               </div>
-                             ))}
-                          </div>
-                          <button onClick={() => router.push(`/admin/settings?tab=crews&id=${crew.id}`)} className="w-full py-4 mt-6 bg-zinc-800 border border-white/5 rounded-2xl text-[9px] font-black uppercase text-zinc-400 hover:text-white transition-all flex items-center justify-center gap-2">Edit Crew Profile <ChevronRight size={14}/></button>
-                       </div>
-                     )}
-                  </div>
-                )
-              })}
-           </div>
-        </div>
+        <CrewCertificatesPanel
+          allCertTypes={allCertTypes}
+          allPositions={allPositions}
+          crewSummary={crewSummary}
+          expandedCrews={expandedCrews}
+          filterMode={filterMode}
+          filterPos={filterPos}
+          filterSpecificCert={filterSpecificCert}
+          filteredCertificateDownloads={filteredCertificateDownloads}
+          finalDisplayCrews={finalDisplayCrews}
+          isDownloadingCerts={isDownloadingCerts}
+          searchTerm={searchTerm}
+          onDownloadFilteredCertificates={handleDownloadFilteredCertificates}
+          onEditCrewProfile={(crewId) => router.push(`/admin/settings?tab=crews&id=${crewId}`)}
+          onExpandedCrewsChange={setExpandedCrews}
+          onFilterModeChange={setFilterMode}
+          onFilterPosChange={setFilterPos}
+          onFilterSpecificCertChange={setFilterSpecificCert}
+          onSearchTermChange={setSearchTerm}
+          onUploadCrewCertificate={(certName, crewId) => router.push(`/certificates/upload?cert=${encodeURIComponent(certName)}&crewId=${crewId}`)}
+        />
       )}
-
       {activeTab === 'ship' && <div className="py-40 text-center animate-pulse text-zinc-700 font-black italic text-xl">COMING SOON: SHIP CERTIFICATES</div>}
     </div>
   )
