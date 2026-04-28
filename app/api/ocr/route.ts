@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { resolveExpiryDate } from '@/lib/certificates';
+import { NO_EXPIRY_DATE, parseBooleanLike, resolveExpiryDate } from '@/lib/certificates';
 
 export const runtime = 'edge';
 
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
        - Example: "DGR Course for Offshore" satisfies "Dangerous Goods Regulations Training".
        - Example: "Basic Fire Fighting" satisfies "Advance Fire" only if the content shows advanced modules (use your knowledge).
        - Training providers often use different titles for the same regulatory requirement (STCW/OPITO). If it serves the same purpose, certTypeMatch = true.
-    3. DATE: Convert Thai years to CE. If no expiry, use "2099-12-31".
+    3. DATE: Convert Thai years to CE. If the document does not clearly show an expiry date, return expiryDate as an empty string. Only use "2099-12-31" when the certificate explicitly states it never expires.
 
     Return ONLY raw JSON:
     {"issueDate": "YYYY-MM-DD or empty", "expiryDate": "YYYY-MM-DD or empty", "detectedPersonName": "text", "detectedCertName": "text", "personNameMatch": true, "certTypeMatch": true, "expiryFoundInDocument": true, "note": "Explain your reasoning briefly in English."}`;
@@ -56,17 +56,27 @@ export async function POST(req: Request) {
     if (!jsonMatch) throw new Error("AI Analysis Error");
 
     const parsed = JSON.parse(jsonMatch[0]);
+    const refreshYearsNumber = Number.isFinite(Number(refreshYears)) ? Number(refreshYears) : null;
+    const noExpiryPolicy = parseBooleanLike(noExpiry);
+    const policyOverrodeNoExpiry =
+      parsed.expiryDate === NO_EXPIRY_DATE &&
+      !noExpiryPolicy &&
+      !!parsed.issueDate &&
+      !!refreshYearsNumber &&
+      refreshYearsNumber > 0;
+
     const resolvedExpiryDate = resolveExpiryDate({
       issueDate: parsed.issueDate,
       expiryDate: parsed.expiryDate,
-      refreshYears: Number.isFinite(Number(refreshYears)) ? Number(refreshYears) : null,
-      noExpiry: Boolean(noExpiry),
+      refreshYears: refreshYearsNumber,
+      noExpiry: noExpiryPolicy,
     });
 
     return NextResponse.json({
       ...parsed,
       expiryDate: resolvedExpiryDate,
-      expiryDerivedFromPolicy: !parsed.expiryDate && !!resolvedExpiryDate,
+      expiryFoundInDocument: policyOverrodeNoExpiry ? false : parsed.expiryFoundInDocument,
+      expiryDerivedFromPolicy: (!parsed.expiryDate || policyOverrodeNoExpiry) && !!resolvedExpiryDate,
       activeModel: modelId,
     });
   } catch (error: any) {

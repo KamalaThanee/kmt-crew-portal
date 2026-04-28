@@ -46,7 +46,7 @@ function UploadContent() {
         ? supabase.from('crews').select('*').eq('id', targetCrewId).maybeSingle()
         : Promise.resolve({ data: user, error: null })
 
-      const certMasterPromise = supabase.from('cert_master').select('*').ilike('cert_name', certName)
+      const certMasterPromise = supabase.from('cert_master').select('*')
 
       const [crewRes, certMasterRes] = await Promise.all([crewPromise, certMasterPromise])
       if (!active) return
@@ -62,7 +62,7 @@ function UploadContent() {
 
       const matchedMasterRow =
         certMasterRes.data?.find((row: any) => normalizeText(row.cert_name) === normalizeText(certName)) ||
-        certMasterRes.data?.[0] ||
+        certMasterRes.data?.find((row: any) => normalizeText(row.cert_name).includes(normalizeText(certName)) || normalizeText(certName).includes(normalizeText(row.cert_name))) ||
         null
 
       setCertPolicy(extractCertPolicy(matchedMasterRow))

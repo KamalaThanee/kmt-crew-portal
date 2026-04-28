@@ -66,7 +66,10 @@ export function resolveExpiryDate(options: {
   refreshYears?: number | null
   noExpiry?: boolean
 }) {
-  if (options.expiryDate) return options.expiryDate
+  const expiryDate = String(options.expiryDate || '')
+  const hasRefreshPolicy = !!options.issueDate && !!options.refreshYears && options.refreshYears > 0
+
+  if (expiryDate && !(expiryDate === NO_EXPIRY_DATE && !options.noExpiry && hasRefreshPolicy)) return expiryDate
   if (options.noExpiry) return NO_EXPIRY_DATE
   if (options.issueDate && options.refreshYears && options.refreshYears > 0) {
     return addYearsToDate(options.issueDate, options.refreshYears)
