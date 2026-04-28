@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { jsPDF } from 'jspdf'
 import { AlertTriangle, CheckCircle, FileText, Loader2, Upload, X } from 'lucide-react'
 import { extractCertPolicy, normalizeText, resolveExpiryDate } from '@/lib/certificates'
 
@@ -202,6 +201,7 @@ function UploadContent() {
     try {
       let fileToUpload: Blob = file as File
       if (file && !file.type.includes('pdf') && preview) {
+        const { jsPDF } = await import('jspdf')
         const pdf = new jsPDF()
         const imgProps = pdf.getImageProperties(preview)
         const pdfWidth = pdf.internal.pageSize.getWidth()
