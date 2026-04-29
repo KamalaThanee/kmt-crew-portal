@@ -1,14 +1,33 @@
 'use client'
 
-import type { ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { HistoryMetricCard } from '@/components/history/HistoryMetricCard'
+import { SearchableSelect } from '@/components/history/SearchableSelect'
+import { StatusPill } from '@/components/history/StatusPill'
+import {
+  PAGE_SIZE,
+  type HistoryRow,
+  filterHistoryRowsByItem,
+  formatDateTime,
+  formatMonthOption,
+  getCrewName,
+  getCrewOptions,
+  getHistoryExportRows,
+  getHistorySummary,
+  getItemSummary,
+  getItemOptions,
+  getMonthOptions,
+  getStatusTimelineMeta,
+  getYearOptions,
+  normalize,
+  runHistoryQuery,
+} from '@/lib/history'
 import { supabase } from '@/lib/supabase'
 import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import {
   CheckCircle2,
-  ChevronDown,
   Clock,
   FileSpreadsheet,
   History,
@@ -19,249 +38,6 @@ import {
   Users,
   XCircle,
 } from 'lucide-react'
-
-type HistoryItem = {
-  item_name?: string
-  color?: string
-  size?: string
-}
-
-type HistoryRow = {
-  id: string
-  created_at: string
-  approved_at?: string | null
-  rejected_at?: string | null
-  received_at?: string | null
-  status?: string | null
-  approved_by?: string | null
-  approved_by_name?: string | null
-  crew_id?: string | null
-  crew_name?: string | null
-  requester_name?: string | null
-  full_name?: string | null
-  admin_remark?: string | null
-  rejection_reason?: string | null
-  reason?: string | null
-  items?: HistoryItem[] | null
-}
-
-type SearchableSelectProps = {
-  icon: ReactNode
-  label: string
-  placeholder: string
-  value: string
-  onChange: (value: string) => void
-  options: string[]
-  toneClassName: string
-}
-
-const normalize = (value: string) => String(value || '').toLowerCase().trim()
-const PAGE_SIZE = 25
-const HISTORY_COLUMNS = [
-  'id',
-  'created_at',
-  'approved_at',
-  'rejected_at',
-  'received_at',
-  'status',
-  'approved_by',
-  'approved_by_name',
-  'crew_id',
-  'crew_name',
-  'requester_name',
-  'full_name',
-  'admin_remark',
-  'rejection_reason',
-  'reason',
-  'items',
-].join(',')
-const LEGACY_HISTORY_COLUMNS = [
-  'id',
-  'created_at',
-  'received_at',
-  'status',
-  'approved_by',
-  'approved_by_name',
-  'crew_id',
-  'crew_name',
-  'admin_remark',
-  'rejection_reason',
-  'reason',
-  'items',
-].join(',')
-const MINIMAL_HISTORY_COLUMNS = [
-  'id',
-  'created_at',
-  'received_at',
-  'status',
-  'approved_by',
-  'crew_id',
-  'crew_name',
-  'admin_remark',
-  'rejection_reason',
-  'reason',
-  'items',
-].join(',')
-
-const formatDateTime = (value?: string | null) => {
-  if (!value) return '-'
-  return new Date(value).toLocaleString('en-GB')
-}
-
-const formatMonthOption = (value: string) => {
-  const monthIndex = Number(value) - 1
-  if (monthIndex < 0 || monthIndex > 11) return value
-  return new Date(2000, monthIndex, 1).toLocaleString('en-US', { month: 'long' })
-}
-
-const getCrewName = (row: HistoryRow) =>
-  row.crew_name || row.requester_name || row.full_name || 'Unknown Crew'
-
-const getStatusMeta = (row: HistoryRow, adminNameMap: Record<string, string>) => {
-  const status = normalize(row.status || 'pending')
-  const actorName =
-    row.approved_by_name ||
-    (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : 'Unknown approver')
-
-  if (status === 'approved') return `Approved by ${actorName}`
-  if (status === 'rejected') return `Rejected by ${actorName}`
-  if (status === 'received') {
-    if (row.received_at) return `Approved by ${actorName} • Received on ${formatDateTime(row.received_at)}`
-    return `Approved by ${actorName} • Received`
-  }
-  return 'Waiting for approval'
-}
-
-const getStatusTimelineMeta = (row: HistoryRow, adminNameMap: Record<string, string>) => {
-  const status = normalize(row.status || 'pending')
-  const actorName =
-    row.approved_by_name ||
-    (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : 'Unknown approver')
-
-  const timeline: string[] = []
-
-  if (row.approved_at || status === 'approved' || status === 'received') {
-    timeline.push(`Approved by ${actorName}${row.approved_at ? ` on ${formatDateTime(row.approved_at)}` : ''}`)
-  }
-
-  if (row.rejected_at || status === 'rejected') {
-    timeline.push(`Rejected by ${actorName}${row.rejected_at ? ` on ${formatDateTime(row.rejected_at)}` : ''}`)
-  }
-
-  if (status === 'received') {
-    timeline.push(`Received${row.received_at ? ` on ${formatDateTime(row.received_at)}` : ''}`)
-  }
-
-  if (status === 'pending') {
-    return 'Waiting for approval'
-  }
-
-  return timeline.length > 0 ? timeline.join(' | ') : '-'
-}
-
-const getItemSummary = (row: HistoryRow) =>
-  (row.items || [])
-    .map((item) => [item.item_name, item.color, item.size].filter(Boolean).join(' | '))
-    .join(', ')
-
-function SearchableSelect({
-  icon,
-  label,
-  placeholder,
-  value,
-  onChange,
-  options,
-  toneClassName,
-}: SearchableSelectProps) {
-  const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState(value)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    setQuery(value)
-  }, [value])
-
-  useEffect(() => {
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handlePointerDown)
-    return () => document.removeEventListener('mousedown', handlePointerDown)
-  }, [])
-
-  const filteredOptions = useMemo(() => {
-    const q = normalize(query)
-    if (!q) return options.slice(0, 12)
-    return options.filter((option) => normalize(option).includes(q)).slice(0, 12)
-  }, [options, query])
-
-  const applyValue = (nextValue: string) => {
-    setQuery(nextValue)
-    onChange(nextValue)
-    setOpen(false)
-  }
-
-  return (
-    <div ref={containerRef} className={`relative ${toneClassName}`}>
-      <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500">
-        {icon}
-      </div>
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => {
-          const nextValue = e.target.value
-          setQuery(nextValue)
-          onChange(nextValue)
-          setOpen(true)
-        }}
-        onFocus={() => setOpen(true)}
-        placeholder={placeholder}
-        className="w-full rounded-2xl border bg-zinc-950/70 py-3 pl-11 pr-12 text-sm font-semibold text-white outline-none transition placeholder:text-zinc-500 focus:bg-zinc-950"
-      />
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-xl p-1 text-zinc-500 transition hover:text-white"
-        aria-label={`Toggle ${label} options`}
-      >
-        <ChevronDown size={16} className={`transition ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 overflow-hidden rounded-2xl border border-white/10 bg-[#090d18] shadow-2xl">
-          <div className="border-b border-white/5 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">
-            {label}
-          </div>
-          <button
-            type="button"
-            onClick={() => applyValue('')}
-            className="block w-full border-b border-white/5 px-4 py-3 text-left text-sm font-semibold text-zinc-400 transition hover:bg-white/5 hover:text-white"
-          >
-            All
-          </button>
-          {filteredOptions.length > 0 ? (
-            filteredOptions.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => applyValue(option)}
-                className="block w-full px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-white/5"
-              >
-                {option}
-              </button>
-            ))
-          ) : (
-            <div className="px-4 py-4 text-sm font-semibold text-zinc-500">No match found</div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
 
 export default function AdminHistoryPage() {
   const router = useRouter()
@@ -337,74 +113,20 @@ export default function AdminHistoryPage() {
 
     let active = true
 
-    const buildHistoryQuery = (
-      columns: string,
-      legacySchema = false,
-      options: { includeStatusFilter?: boolean; paginate?: boolean } = {},
-    ) => {
-      const { includeStatusFilter = true, paginate = true } = options
-      let query = supabase
-        .from('ppe_requests')
-        .select(columns, { count: 'exact' })
-        .order('created_at', { ascending: false })
-
-      if (includeStatusFilter && statusFilter !== 'all') query = query.eq('status', statusFilter)
-      if (yearFilter !== 'all') {
-        const startMonth = monthFilter !== 'all' ? Number(monthFilter) - 1 : 0
-        const endMonth = monthFilter !== 'all' ? startMonth + 1 : 12
-        const start = new Date(Number(yearFilter), startMonth, 1).toISOString()
-        const end = new Date(Number(yearFilter), endMonth, 1).toISOString()
-        query = query.gte('created_at', start).lt('created_at', end)
-      }
-
-      const crewQuery = normalize(searchCrew)
-      if (crewQuery) {
-        const safeCrewQuery = crewQuery.replace(/[,%]/g, ' ')
-        query = legacySchema
-          ? query.ilike('crew_name', `%${safeCrewQuery}%`)
-          : query.or(
-              `crew_name.ilike.%${safeCrewQuery}%,requester_name.ilike.%${safeCrewQuery}%,full_name.ilike.%${safeCrewQuery}%`,
-            )
-      }
-
-      if (!paginate) return query.limit(1000)
-
-      const from = page * PAGE_SIZE
-      const to = from + PAGE_SIZE - 1
-      return query.range(from, to)
-    }
-
-    const isMissingHistoryColumn = (error: unknown) => {
-      const message = String((error as { message?: string })?.message || '').toLowerCase()
-      return (
-        message.includes('column') &&
-        (message.includes('approved_at') ||
-          message.includes('rejected_at') ||
-          message.includes('approved_by_name') ||
-          message.includes('requester_name') ||
-          message.includes('full_name') ||
-          message.includes('schema cache'))
-      )
-    }
-
-    const runHistoryQuery = async (options: { includeStatusFilter?: boolean; paginate?: boolean }) => {
-      let result = await buildHistoryQuery(HISTORY_COLUMNS, false, options)
-      if (result.error && isMissingHistoryColumn(result.error)) {
-        result = await buildHistoryQuery(LEGACY_HISTORY_COLUMNS, true, options)
-      }
-      if (result.error && isMissingHistoryColumn(result.error)) {
-        result = await buildHistoryQuery(MINIMAL_HISTORY_COLUMNS, true, options)
-      }
-
-      return result
-    }
-
     const fetchRows = async () => {
       setIsFetchingRows(true)
+      const queryContext = {
+        supabaseClient: supabase,
+        statusFilter,
+        monthFilter,
+        yearFilter,
+        searchCrew,
+        page,
+      }
 
       const [result, summaryResult] = await Promise.all([
-        runHistoryQuery({ includeStatusFilter: true, paginate: true }),
-        runHistoryQuery({ includeStatusFilter: false, paginate: false }),
+        runHistoryQuery({ ...queryContext, includeStatusFilter: true, paginate: true }),
+        runHistoryQuery({ ...queryContext, includeStatusFilter: false, paginate: false }),
       ])
 
       if (!active) return
@@ -439,12 +161,7 @@ export default function AdminHistoryPage() {
   }, [page, searchCrew, statusFilter, monthFilter, yearFilter])
 
   const contextRows = useMemo(() => {
-    return rows.filter((row) => {
-      const createdAt = row.created_at ? new Date(row.created_at) : null
-      const itemSummary = getItemSummary(row)
-      const matchesItem = !searchItem || normalize(itemSummary).includes(normalize(searchItem))
-      return !!createdAt && matchesItem
-    })
+    return filterHistoryRowsByItem(rows, searchItem)
   }, [rows, searchItem])
 
   const filteredRows = useMemo(() => {
@@ -452,95 +169,31 @@ export default function AdminHistoryPage() {
   }, [contextRows])
 
   const summaryContextRows = useMemo(() => {
-    return summaryRows.filter((row) => {
-      const createdAt = row.created_at ? new Date(row.created_at) : null
-      const itemSummary = getItemSummary(row)
-      const matchesItem = !searchItem || normalize(itemSummary).includes(normalize(searchItem))
-      return !!createdAt && matchesItem
-    })
+    return filterHistoryRowsByItem(summaryRows, searchItem)
   }, [summaryRows, searchItem])
 
   const monthOptions = useMemo(() => {
-    return ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
+    return getMonthOptions()
   }, [])
 
   const yearOptions = useMemo(() => {
-    const currentYear = new Date().getFullYear()
-    return Array.from({ length: 6 }, (_, index) => String(currentYear - index))
+    return getYearOptions()
   }, [])
 
   const crewOptions = useMemo(() => {
-    return [
-      ...new Set([
-        ...Object.values(adminNameMap),
-        ...rows.map((row) => getCrewName(row)).filter(Boolean),
-      ]),
-    ].sort((a, b) => a.localeCompare(b))
+    return getCrewOptions(rows, adminNameMap)
   }, [adminNameMap, rows])
 
   const itemOptions = useMemo(() => {
-    return [...new Set(rows.flatMap((row) => (row.items || []).map((item) => item.item_name || '').filter(Boolean)))].sort(
-      (a, b) => a.localeCompare(b),
-    )
+    return getItemOptions(rows)
   }, [rows])
 
   const summary = useMemo(() => {
-    let pendingCount = 0
-    let approvedCount = 0
-    let rejectedCount = 0
-    let receivedCount = 0
-    const crewCounts = new Map<string, number>()
-    const itemCounts = new Map<string, number>()
-
-    summaryContextRows.forEach((row) => {
-      const status = normalize(row.status || 'pending')
-      if (status === 'approved') approvedCount += 1
-      else if (status === 'rejected') rejectedCount += 1
-      else if (status === 'received') receivedCount += 1
-      else pendingCount += 1
-
-      const crewName = getCrewName(row)
-      crewCounts.set(crewName, (crewCounts.get(crewName) || 0) + 1)
-
-      ;(row.items || []).forEach((item) => {
-        const itemName = item.item_name || 'Unknown Item'
-        itemCounts.set(itemName, (itemCounts.get(itemName) || 0) + 1)
-      })
-    })
-
-    const topCrewEntry = [...crewCounts.entries()].sort((a, b) => b[1] - a[1])[0]
-    const topItemEntry = [...itemCounts.entries()].sort((a, b) => b[1] - a[1])[0]
-
-    return {
-      requestCount: searchItem ? summaryContextRows.length : summaryRowCount,
-      pendingCount,
-      approvedCount,
-      rejectedCount,
-      receivedCount,
-      topCrew: topCrewEntry ? topCrewEntry[0] : '-',
-      topCrewCount: topCrewEntry ? topCrewEntry[1] : 0,
-      topItem: topItemEntry ? topItemEntry[0] : '-',
-      topItemCount: topItemEntry ? topItemEntry[1] : 0,
-    }
+    return getHistorySummary(summaryContextRows, summaryRowCount, searchItem)
   }, [searchItem, summaryContextRows, summaryRowCount])
 
   const exportRows = useMemo(
-    () =>
-      filteredRows.map((row) => ({
-        RequestedAt: formatDateTime(row.created_at),
-        ApprovedAt: formatDateTime(row.approved_at),
-        RejectedAt: formatDateTime(row.rejected_at),
-        ReceivedAt: formatDateTime(row.received_at),
-        DecisionBy:
-          row.approved_by_name ||
-          (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : ''),
-        Crew: getCrewName(row),
-        Items: getItemSummary(row),
-        Status: row.status || 'pending',
-        Detail: getStatusTimelineMeta(row, adminNameMap),
-        RequestReason: row.reason || '',
-        AdminRemark: row.admin_remark || row.rejection_reason || '',
-      })),
+    () => getHistoryExportRows(filteredRows, adminNameMap),
     [filteredRows, adminNameMap],
   )
 
@@ -557,11 +210,6 @@ export default function AdminHistoryPage() {
     const stamp = new Date().toISOString().slice(0, 10)
     XLSX.writeFile(workbook, `kmt-issue-history-${stamp}.xlsx`)
   }
-
-  const cardActiveClass = (targetStatus: string) =>
-    statusFilter === targetStatus
-      ? 'ring-2 ring-white/30'
-      : 'hover:border-white/30'
 
   if (loading) {
     return (
@@ -591,75 +239,66 @@ export default function AdminHistoryPage() {
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <button
-          type="button"
+        <HistoryMetricCard
+          label="Requests"
+          value={summary.requestCount}
+          description="Total rows in the current view"
+          tone="amber"
+          active={statusFilter === 'all'}
           onClick={() => setStatusFilter('all')}
-          className={`rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-amber-950/20 transition-all ${cardActiveClass('all')}`}
-        >
-          <p className="text-[9px] uppercase tracking-widest text-amber-200">Requests</p>
-          <p className="mt-3 text-3xl font-black text-white">{summary.requestCount}</p>
-          <p className="mt-2 text-xs font-semibold text-amber-100/70">Total rows in the current view</p>
-        </button>
-        <button
-          type="button"
+        />
+        <HistoryMetricCard
+          label="Pending"
+          value={summary.pendingCount}
+          description="Waiting for approval"
+          tone="orange"
+          active={statusFilter === 'pending'}
           onClick={() => setStatusFilter('pending')}
-          className={`rounded-[28px] border border-orange-400/20 bg-gradient-to-br from-orange-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-orange-950/20 transition-all ${cardActiveClass('pending')}`}
-        >
-          <p className="text-[9px] uppercase tracking-widest text-orange-200">Pending</p>
-          <p className="mt-3 text-3xl font-black text-white">{summary.pendingCount}</p>
-          <p className="mt-2 text-xs font-semibold text-orange-100/70">Waiting for approval</p>
-        </button>
-        <button
-          type="button"
+        />
+        <HistoryMetricCard
+          label="Approved"
+          value={summary.approvedCount}
+          description="Approved and waiting to receive"
+          tone="emerald"
+          active={statusFilter === 'approved'}
           onClick={() => setStatusFilter('approved')}
-          className={`rounded-[28px] border border-emerald-400/20 bg-gradient-to-br from-emerald-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-emerald-950/20 transition-all ${cardActiveClass('approved')}`}
-        >
-          <p className="text-[9px] uppercase tracking-widest text-emerald-200">Approved</p>
-          <p className="mt-3 text-3xl font-black text-white">{summary.approvedCount}</p>
-          <p className="mt-2 text-xs font-semibold text-emerald-100/70">Approved and waiting to receive</p>
-        </button>
-        <button
-          type="button"
+        />
+        <HistoryMetricCard
+          label="Rejected"
+          value={summary.rejectedCount}
+          description="Rejected requests in this view"
+          tone="rose"
+          active={statusFilter === 'rejected'}
           onClick={() => setStatusFilter('rejected')}
-          className={`rounded-[28px] border border-rose-400/20 bg-gradient-to-br from-rose-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-rose-950/20 transition-all ${cardActiveClass('rejected')}`}
-        >
-          <p className="text-[9px] uppercase tracking-widest text-rose-200">Rejected</p>
-          <p className="mt-3 text-3xl font-black text-white">{summary.rejectedCount}</p>
-          <p className="mt-2 text-xs font-semibold text-rose-100/70">Rejected requests in this view</p>
-        </button>
-        <button
-          type="button"
+        />
+        <HistoryMetricCard
+          label="Received"
+          value={summary.receivedCount}
+          description="Completed and received"
+          tone="sky"
+          active={statusFilter === 'received'}
           onClick={() => setStatusFilter('received')}
-          className={`rounded-[28px] border border-sky-400/20 bg-gradient-to-br from-sky-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-sky-950/20 transition-all ${cardActiveClass('received')}`}
-        >
-          <p className="text-[9px] uppercase tracking-widest text-sky-200">Received</p>
-          <p className="mt-3 text-3xl font-black text-white">{summary.receivedCount}</p>
-          <p className="mt-2 text-xs font-semibold text-sky-100/70">Completed and received</p>
-        </button>
+        />
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className="rounded-[28px] border border-violet-400/20 bg-gradient-to-br from-violet-500/14 to-zinc-950 p-5 shadow-xl shadow-violet-950/20">
-          <div className="flex items-center gap-2 text-violet-200">
-            <Medal size={16} />
-            <p className="text-[9px] uppercase tracking-widest">Top Item</p>
-          </div>
-          <p className="mt-3 text-lg font-black text-white normal-case">{summary.topItem}</p>
-          <p className="mt-2 text-xs font-semibold text-violet-100/70">
-            {summary.topItemCount > 0 ? `${summary.topItemCount} issues in the selected period` : 'No item data in this view'}
-          </p>
-        </div>
+        <HistoryMetricCard
+          label="Top Item"
+          value={summary.topItem}
+          description={summary.topItemCount > 0 ? `${summary.topItemCount} issues in the selected period` : 'No item data in this view'}
+          tone="violet"
+          icon={<Medal size={16} />}
+          valueClassName="text-lg"
+        />
 
-        <div className="rounded-[28px] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/14 to-zinc-950 p-5 shadow-xl shadow-cyan-950/20">
-          <div className="flex items-center gap-2 text-cyan-200">
-            <Users size={16} />
-            <p className="text-[9px] uppercase tracking-widest">Top Crew</p>
-          </div>
-          <p className="mt-3 text-lg font-black text-white normal-case">{summary.topCrew}</p>
-          <p className="mt-2 text-xs font-semibold text-cyan-100/70">
-            {summary.topCrewCount > 0 ? `${summary.topCrewCount} requests in the selected period` : 'No crew activity in this view'}
-          </p>
-        </div>
+        <HistoryMetricCard
+          label="Top Crew"
+          value={summary.topCrew}
+          description={summary.topCrewCount > 0 ? `${summary.topCrewCount} requests in the selected period` : 'No crew activity in this view'}
+          tone="cyan"
+          icon={<Users size={16} />}
+          valueClassName="text-lg"
+        />
       </div>
 
       <div className="mb-8 rounded-[32px] border border-white/6 bg-zinc-950/45 p-4 shadow-xl shadow-black/20">
@@ -762,16 +401,6 @@ export default function AdminHistoryPage() {
           </thead>
           <tbody>
             {filteredRows.map((row, index) => {
-              const status = normalize(row.status || 'pending')
-              const statusTone =
-                status === 'approved'
-                  ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
-                  : status === 'rejected'
-                    ? 'text-rose-300 bg-rose-500/10 border-rose-500/20'
-                    : status === 'received'
-                      ? 'text-sky-300 bg-sky-500/10 border-sky-500/20'
-                      : 'text-amber-300 bg-amber-500/10 border-amber-500/20'
-
               return (
                 <tr
                   key={row.id}
@@ -781,9 +410,7 @@ export default function AdminHistoryPage() {
                   <td className="px-6 py-5 font-black text-white normal-case">{getCrewName(row)}</td>
                   <td className="px-6 py-5 font-semibold text-white normal-case">{getItemSummary(row)}</td>
                   <td className="px-6 py-5">
-                    <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest ${statusTone}`}>
-                      {status}
-                    </span>
+                    <StatusPill status={row.status} />
                   </td>
                   <td className="px-6 py-5 font-semibold text-zinc-300 normal-case">
                     {getStatusTimelineMeta(row, adminNameMap)}
@@ -808,14 +435,6 @@ export default function AdminHistoryPage() {
 
         {filteredRows.map((row) => {
           const status = normalize(row.status || 'pending')
-          const statusTone =
-            status === 'approved'
-              ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
-              : status === 'rejected'
-                ? 'text-rose-300 bg-rose-500/10 border-rose-500/20'
-                : status === 'received'
-                  ? 'text-sky-300 bg-sky-500/10 border-sky-500/20'
-                  : 'text-amber-300 bg-amber-500/10 border-amber-500/20'
 
           return (
             <div key={row.id} className="space-y-4 rounded-[32px] border border-white/6 bg-zinc-950/45 p-5 shadow-xl">
@@ -826,9 +445,7 @@ export default function AdminHistoryPage() {
                     Requested on {formatDateTime(row.created_at)}
                   </p>
                 </div>
-                <div className={`inline-flex w-fit rounded-full border px-4 py-2 text-[10px] font-black uppercase tracking-widest ${statusTone}`}>
-                  {status}
-                </div>
+                <StatusPill status={row.status} className="w-fit px-4 py-2" />
               </div>
 
               <div className="rounded-2xl border border-sky-500/10 bg-sky-500/[0.05] p-4">
