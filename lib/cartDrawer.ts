@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import type { CrewMember } from '@/lib/crewTypes'
 
 export type PpeQuotaCounts = {
   boot: number
@@ -8,7 +9,7 @@ export type PpeQuotaCounts = {
 export const normalizeCartText = (str: unknown) =>
   String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim()
 
-export const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at
+export const isCrewActive = (crew: CrewMember | null | undefined) => crew?.is_active !== false && !crew?.resigned_at
 
 export async function ensureDirectIssueTimeline(requestId: unknown, approverName: string, approvedAt: string) {
   if (!requestId || !approverName) return

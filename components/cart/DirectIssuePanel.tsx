@@ -1,9 +1,10 @@
 'use client'
 
 import { AlertTriangle, Users } from 'lucide-react'
+import type { CrewMember } from '@/lib/crewTypes'
 
 type DirectIssuePanelProps = {
-  crews: any[]
+  crews: CrewMember[]
   enabled: boolean
   targetCrewId: string
   userId?: string
@@ -44,7 +45,7 @@ export function DirectIssuePanel({
             {crews
               .filter((crew) => crew.id !== userId)
               .map((crew) => (
-                <option key={crew.id} value={crew.id}>
+                <option key={crew.id} value={crew.id || ''}>
                   {crew.full_name}
                 </option>
               ))}

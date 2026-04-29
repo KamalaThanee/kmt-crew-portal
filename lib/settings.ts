@@ -1,3 +1,5 @@
+import type { CrewMember } from '@/lib/crewTypes'
+
 export type CrewStatusFilter = 'active' | 'resigned' | 'all'
 
 const SIZE_ORDER = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
@@ -5,7 +7,7 @@ const SIZE_ORDER = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL
 export const normalizeSettingsText = (str: unknown) =>
   String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim()
 
-export const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at
+export const isCrewActive = (crew: CrewMember | null | undefined) => crew?.is_active !== false && !crew?.resigned_at
 
 export function smartSort(values: any[]) {
   return [...values].sort((a, b) => {
