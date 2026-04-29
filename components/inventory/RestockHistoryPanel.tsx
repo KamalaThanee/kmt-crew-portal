@@ -56,7 +56,7 @@ export function RestockHistoryPanel({
                 <div>
                   <p className="text-white font-black text-xl uppercase italic">{batch.do_number}</p>
                   <div className="flex flex-wrap gap-4 mt-2 text-zinc-600 font-bold uppercase text-[10px] tracking-widest">
-                    <span>{new Date(batch.created_at).toLocaleString()}</span>
+                    <span>{batch.created_at ? new Date(batch.created_at).toLocaleString() : '-'}</span>
                     <span>By: {batch.added_by || 'Admin'}</span>
                     <span>{batch.lines.length} lines</span>
                   </div>
@@ -88,7 +88,7 @@ export function RestockHistoryPanel({
                   </div>
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">Received</p>
-                    <p className="mt-1 text-sm font-black text-white">{new Date(batch.created_at).toLocaleString()}</p>
+                    <p className="mt-1 text-sm font-black text-white">{batch.created_at ? new Date(batch.created_at).toLocaleString() : '-'}</p>
                   </div>
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">Received By</p>
@@ -108,7 +108,7 @@ export function RestockHistoryPanel({
                   <span></span>
                 </div>
                 {batch.lines.map((line, index: number) => (
-                  <div key={line.id} className="grid grid-cols-1 md:grid-cols-[80px_1fr_140px_140px_110px_56px] md:items-center gap-3 rounded-2xl bg-white/5 px-5 py-4">
+                  <div key={line.id || `${batch.id}-${index}`} className="grid grid-cols-1 md:grid-cols-[80px_1fr_140px_140px_110px_56px] md:items-center gap-3 rounded-2xl bg-white/5 px-5 py-4">
                     <p className="hidden md:block text-zinc-500 font-black">#{index + 1}</p>
                     <div>
                       <p className="text-white font-black italic">{line.item_name}</p>

@@ -43,7 +43,9 @@ export function IssueLogPanel({
               <span className={`rounded-full px-3 py-1 text-[8px] font-black tracking-widest ${movement.movement_type === 'direct_issue' ? 'bg-orange-500/20 text-orange-300' : 'bg-blue-500/20 text-blue-300'}`}>
                 {String(movement.movement_type || 'issue').replace(/_/g, ' ')}
               </span>
-              <span className="text-zinc-600 text-[10px]">{new Date(movement.created_at).toLocaleString()}</span>
+              <span className="text-zinc-600 text-[10px]">
+                {movement.created_at ? new Date(movement.created_at).toLocaleString() : '-'}
+              </span>
             </div>
             <p className="text-white text-base font-black italic uppercase">
               {movement.item_name || 'Unknown Item'}
