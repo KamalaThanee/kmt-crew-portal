@@ -1,18 +1,19 @@
 'use client'
 
 import { ChevronDown, Download, ExternalLink, FileText, Trash2 } from 'lucide-react'
+import type { RestockBatch, RestockLine } from '@/lib/inventoryTypes'
 
 type RestockHistoryPanelProps = {
-  restockBatches: any[]
+  restockBatches: RestockBatch[]
   restockMonthFilter: string
   restockMonthOptions: string[]
   expandedRestockBatches: string[]
   onMonthFilterChange: (value: string) => void
   onToggleBatch: (batchId: string) => void
   onOpenDoDocument: (receiptUrl: string) => void
-  onExportRestockBatch: (batch: any) => void
-  onDeleteRestockBatch: (batch: any) => void
-  onDeleteRestockLine: (line: any) => void
+  onExportRestockBatch: (batch: RestockBatch) => void
+  onDeleteRestockBatch: (batch: RestockBatch) => void
+  onDeleteRestockLine: (line: RestockLine) => void
 }
 
 export function RestockHistoryPanel({
@@ -44,8 +45,9 @@ export function RestockHistoryPanel({
         <div className="rounded-[40px] border border-white/5 bg-black/40 p-12 text-center text-zinc-600 font-black tracking-widest">
           No restock history in this period
         </div>
-      ) : restockBatches.map((batch: any) => {
+      ) : restockBatches.map((batch) => {
         const expanded = expandedRestockBatches.includes(batch.id)
+        const receiptUrl = batch.receipt_url
 
         return (
           <div key={batch.id} className="bg-black/40 border border-white/5 rounded-[40px] overflow-hidden shadow-xl">
@@ -55,15 +57,15 @@ export function RestockHistoryPanel({
                 <div>
                   <p className="text-white font-black text-xl uppercase italic">{batch.do_number}</p>
                   <div className="flex flex-wrap gap-4 mt-2 text-zinc-600 font-bold uppercase text-[10px] tracking-widest">
-                    <span>{new Date(batch.created_at).toLocaleString()}</span>
+                    <span>{batch.created_at ? new Date(batch.created_at).toLocaleString() : '-'}</span>
                     <span>By: {batch.added_by || 'Admin'}</span>
                     <span>{batch.lines.length} lines</span>
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-3 self-end md:self-auto">
-                {batch.receipt_url && (
-                  <button onClick={(e) => { e.stopPropagation(); onOpenDoDocument(batch.receipt_url) }} className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[10px] font-black text-emerald-300 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
+                {receiptUrl && (
+                  <button onClick={(e) => { e.stopPropagation(); onOpenDoDocument(receiptUrl) }} className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[10px] font-black text-emerald-300 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
                     <ExternalLink size={14}/> View DO
                   </button>
                 )}
@@ -87,7 +89,7 @@ export function RestockHistoryPanel({
                   </div>
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">Received</p>
-                    <p className="mt-1 text-sm font-black text-white">{new Date(batch.created_at).toLocaleString()}</p>
+                    <p className="mt-1 text-sm font-black text-white">{batch.created_at ? new Date(batch.created_at).toLocaleString() : '-'}</p>
                   </div>
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">Received By</p>
@@ -106,8 +108,8 @@ export function RestockHistoryPanel({
                   <span className="text-right">Qty</span>
                   <span></span>
                 </div>
-                {batch.lines.map((line: any, index: number) => (
-                  <div key={line.id} className="grid grid-cols-1 md:grid-cols-[80px_1fr_140px_140px_110px_56px] md:items-center gap-3 rounded-2xl bg-white/5 px-5 py-4">
+                {batch.lines.map((line, index: number) => (
+                  <div key={line.id || `${batch.id}-${index}`} className="grid grid-cols-1 md:grid-cols-[80px_1fr_140px_140px_110px_56px] md:items-center gap-3 rounded-2xl bg-white/5 px-5 py-4">
                     <p className="hidden md:block text-zinc-500 font-black">#{index + 1}</p>
                     <div>
                       <p className="text-white font-black italic">{line.item_name}</p>
