@@ -22,9 +22,9 @@ import { EditItemModal } from '@/components/inventory/EditItemModal'
 import { InventoryControls } from '@/components/inventory/InventoryControls'
 import { InventoryList } from '@/components/inventory/InventoryList'
 import { IssueLogPanel } from '@/components/inventory/IssueLogPanel'
+import { ReceiveShipmentModal } from '@/components/inventory/ReceiveShipmentModal'
 import { RestockEntryPanel } from '@/components/inventory/RestockEntryPanel'
 import { RestockHistoryPanel } from '@/components/inventory/RestockHistoryPanel'
-import { X, Archive } from 'lucide-react'
 
 function InventoryContent() {
   const searchParams = useSearchParams()
@@ -338,58 +338,54 @@ function InventoryContent() {
       )}
 
       {isRestockModalOpen && (
-        <div className="fixed inset-0 z-[2000] bg-black/98 flex items-center justify-center p-4 md:p-6 backdrop-blur-3xl animate-in zoom-in duration-300">
-          <div className="bg-zinc-900 border border-emerald-500/30 rounded-[56px] w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
-            <div className="flex justify-between items-center border-b border-white/5 p-10 shrink-0">
-               <div><h2 className="text-4xl font-black italic uppercase tracking-tighter text-emerald-500 flex items-center gap-4"><Archive size={36}/> Receive Shipment</h2><div className="flex flex-wrap gap-2 mt-6 bg-black/60 p-1.5 rounded-[20px] w-fit"><button onClick={() => setRestockView('entry')} className={`px-8 py-3 rounded-2xl text-xs font-black uppercase transition-all ${restockView === 'entry' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'text-zinc-600'}`}>New Entry</button><button onClick={() => setRestockView('history')} className={`px-8 py-3 rounded-2xl text-xs font-black uppercase transition-all ${restockView === 'history' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'text-zinc-600'}`}>Restock History</button><button onClick={() => setRestockView('issue-log')} className={`px-8 py-3 rounded-2xl text-xs font-black uppercase transition-all ${restockView === 'issue-log' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-zinc-600'}`}>Issue Log</button></div></div>
-               <button onClick={() => { setIsRestockModalOpen(false); router.push('/admin/inventory'); }} className="p-4 bg-white/5 rounded-full hover:bg-red-500 text-white transition-all self-start shadow-xl"><X size={32}/></button>
-            </div>
-            <div className="overflow-y-auto p-10 flex-1 no-scrollbar pb-20">
-              {restockView === 'entry' ? (
-                <RestockEntryPanel
-                  doNumber={doNumber}
-                  doFile={doFile}
-                  inventory={inventory}
-                  isProcessingRestock={isProcessingRestock}
-                  restockEntries={restockEntries}
-                  onAddRow={addRow}
-                  onDoFileChange={setDoFile}
-                  onDoNumberChange={setDoNumber}
-                  onGenerateDoNumber={() => setDoNumber(generateDoNumber())}
-                  onRemoveRow={removeRow}
-                  onRestockSubmit={handleRestockSubmit}
-                  onUpdateRow={updateRow}
-                />
-              ) : restockView === 'history' ? (
-                <RestockHistoryPanel
-                  restockBatches={restockBatches}
-                  restockMonthFilter={restockMonthFilter}
-                  restockMonthOptions={restockMonthOptions}
-                  expandedRestockBatches={expandedRestockBatches}
-                  onMonthFilterChange={setRestockMonthFilter}
-                  onToggleBatch={(batchId) =>
-                    setExpandedRestockBatches(
-                      expandedRestockBatches.includes(batchId)
-                        ? expandedRestockBatches.filter((id) => id !== batchId)
-                        : [...expandedRestockBatches, batchId],
-                    )
-                  }
-                  onOpenDoDocument={openDoDocument}
-                  onExportRestockBatch={handleExportRestockBatch}
-                  onDeleteRestockBatch={deleteRestockBatch}
-                  onDeleteRestockLine={deleteRestockLine}
-                />
-              ) : (
-                <IssueLogPanel
-                  stockTransactions={stockTransactions}
-                  stockTransactionError={stockTransactionError}
-                  isRefreshingTransactions={isRefreshingTransactions}
-                  onRefreshTransactions={() => fetchStockTransactions(true)}
-                />
-              )}
-            </div>
-          </div>
-        </div>
+        <ReceiveShipmentModal
+          restockView={restockView}
+          onClose={() => { setIsRestockModalOpen(false); router.push('/admin/inventory'); }}
+          onViewChange={setRestockView}
+        >
+          {restockView === 'entry' ? (
+            <RestockEntryPanel
+              doNumber={doNumber}
+              doFile={doFile}
+              inventory={inventory}
+              isProcessingRestock={isProcessingRestock}
+              restockEntries={restockEntries}
+              onAddRow={addRow}
+              onDoFileChange={setDoFile}
+              onDoNumberChange={setDoNumber}
+              onGenerateDoNumber={() => setDoNumber(generateDoNumber())}
+              onRemoveRow={removeRow}
+              onRestockSubmit={handleRestockSubmit}
+              onUpdateRow={updateRow}
+            />
+          ) : restockView === 'history' ? (
+            <RestockHistoryPanel
+              restockBatches={restockBatches}
+              restockMonthFilter={restockMonthFilter}
+              restockMonthOptions={restockMonthOptions}
+              expandedRestockBatches={expandedRestockBatches}
+              onMonthFilterChange={setRestockMonthFilter}
+              onToggleBatch={(batchId) =>
+                setExpandedRestockBatches(
+                  expandedRestockBatches.includes(batchId)
+                    ? expandedRestockBatches.filter((id) => id !== batchId)
+                    : [...expandedRestockBatches, batchId],
+                )
+              }
+              onOpenDoDocument={openDoDocument}
+              onExportRestockBatch={handleExportRestockBatch}
+              onDeleteRestockBatch={deleteRestockBatch}
+              onDeleteRestockLine={deleteRestockLine}
+            />
+          ) : (
+            <IssueLogPanel
+              stockTransactions={stockTransactions}
+              stockTransactionError={stockTransactionError}
+              isRefreshingTransactions={isRefreshingTransactions}
+              onRefreshTransactions={() => fetchStockTransactions(true)}
+            />
+          )}
+        </ReceiveShipmentModal>
       )}
     </div>
   )
