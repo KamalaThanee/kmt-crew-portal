@@ -167,6 +167,13 @@ export const formatMonthOption = (value: string) => {
   return new Date(2000, monthIndex, 1).toLocaleString('en-US', { month: 'long' })
 }
 
+export const getMonthOptions = () => ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
+
+export const getYearOptions = () => {
+  const currentYear = new Date().getFullYear()
+  return Array.from({ length: 6 }, (_, index) => String(currentYear - index))
+}
+
 export const getCrewName = (row: HistoryRow) =>
   row.crew_name || row.requester_name || row.full_name || 'Unknown Crew'
 
@@ -201,3 +208,81 @@ export const getItemSummary = (row: HistoryRow) =>
   (row.items || [])
     .map((item) => [item.item_name, item.color, item.size].filter(Boolean).join(' | '))
     .join(', ')
+
+export const filterHistoryRowsByItem = (rows: HistoryRow[], searchItem: string) =>
+  rows.filter((row) => {
+    const createdAt = row.created_at ? new Date(row.created_at) : null
+    const itemSummary = getItemSummary(row)
+    const matchesItem = !searchItem || normalize(itemSummary).includes(normalize(searchItem))
+    return !!createdAt && matchesItem
+  })
+
+export const getCrewOptions = (rows: HistoryRow[], adminNameMap: Record<string, string>) =>
+  [
+    ...new Set([
+      ...Object.values(adminNameMap),
+      ...rows.map((row) => getCrewName(row)).filter(Boolean),
+    ]),
+  ].sort((a, b) => a.localeCompare(b))
+
+export const getItemOptions = (rows: HistoryRow[]) =>
+  [
+    ...new Set(rows.flatMap((row) => (row.items || []).map((item) => item.item_name || '').filter(Boolean))),
+  ].sort((a, b) => a.localeCompare(b))
+
+export const getHistorySummary = (rows: HistoryRow[], rowCount: number, searchItem: string) => {
+  let pendingCount = 0
+  let approvedCount = 0
+  let rejectedCount = 0
+  let receivedCount = 0
+  const crewCounts = new Map<string, number>()
+  const itemCounts = new Map<string, number>()
+
+  rows.forEach((row) => {
+    const status = normalize(row.status || 'pending')
+    if (status === 'approved') approvedCount += 1
+    else if (status === 'rejected') rejectedCount += 1
+    else if (status === 'received') receivedCount += 1
+    else pendingCount += 1
+
+    const crewName = getCrewName(row)
+    crewCounts.set(crewName, (crewCounts.get(crewName) || 0) + 1)
+
+    ;(row.items || []).forEach((item) => {
+      const itemName = item.item_name || 'Unknown Item'
+      itemCounts.set(itemName, (itemCounts.get(itemName) || 0) + 1)
+    })
+  })
+
+  const topCrewEntry = [...crewCounts.entries()].sort((a, b) => b[1] - a[1])[0]
+  const topItemEntry = [...itemCounts.entries()].sort((a, b) => b[1] - a[1])[0]
+
+  return {
+    requestCount: searchItem ? rows.length : rowCount,
+    pendingCount,
+    approvedCount,
+    rejectedCount,
+    receivedCount,
+    topCrew: topCrewEntry ? topCrewEntry[0] : '-',
+    topCrewCount: topCrewEntry ? topCrewEntry[1] : 0,
+    topItem: topItemEntry ? topItemEntry[0] : '-',
+    topItemCount: topItemEntry ? topItemEntry[1] : 0,
+  }
+}
+
+export const getHistoryExportRows = (rows: HistoryRow[], adminNameMap: Record<string, string>) =>
+  rows.map((row) => ({
+    RequestedAt: formatDateTime(row.created_at),
+    ApprovedAt: formatDateTime(row.approved_at),
+    RejectedAt: formatDateTime(row.rejected_at),
+    ReceivedAt: formatDateTime(row.received_at),
+    DecisionBy:
+      row.approved_by_name ||
+      (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : ''),
+    Crew: getCrewName(row),
+    Items: getItemSummary(row),
+    Status: row.status || 'pending',
+    Detail: getStatusTimelineMeta(row, adminNameMap),
+    RequestReason: row.reason || '',
+    AdminRemark: row.admin_remark || row.rejection_reason || '',
+  }))
