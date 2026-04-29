@@ -2,15 +2,16 @@
 
 import { Check, Clock, History, Loader2, User, X } from 'lucide-react'
 import { getApprovalCrewName } from '@/lib/approvals'
+import type { PpeRequest } from '@/lib/approvalTypes'
 
 type ApprovalRequestCardProps = {
-  request: any
+  request: PpeRequest
   contextMap: Record<string, string>
   focusRequestId: string | null
   isSubmitting: boolean
   activeRequestId: string | null
-  onApproveClick: (request: any) => void
-  onRejectClick: (request: any) => void
+  onApproveClick: (request: PpeRequest) => void
+  onRejectClick: (request: PpeRequest) => void
 }
 
 export function ApprovalRequestCard({
@@ -37,7 +38,7 @@ export function ApprovalRequestCard({
           <div>
             <h3 className="text-white font-black text-sm">{getApprovalCrewName(request)}</h3>
             <p className="text-zinc-500 flex items-center gap-1 mt-1">
-              <Clock size={12} /> {new Date(request.created_at).toLocaleString()}
+              <Clock size={12} /> {request.created_at ? new Date(request.created_at).toLocaleString() : '-'}
             </p>
           </div>
         </div>
@@ -64,7 +65,7 @@ export function ApprovalRequestCard({
       )}
 
       <div className="bg-black/30 rounded-2xl p-4 space-y-3">
-        {request.items?.map((item: any, idx: number) => (
+        {request.items?.map((item, idx: number) => (
           <div key={idx} className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-white/5 last:border-0 pb-2">
             <div>
               <p className="text-white text-xs">{item.item_name}</p>

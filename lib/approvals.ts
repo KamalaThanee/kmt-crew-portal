@@ -1,7 +1,9 @@
+import type { PpeRequest } from '@/lib/approvalTypes'
+
 export const isUuid = (value: unknown) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
 
-export const getApprovalCrewName = (request: any) =>
+export const getApprovalCrewName = (request: Partial<PpeRequest> | null | undefined) =>
   request?.crew_name || request?.requester_name || request?.full_name || 'Unknown Crew'
 
 export const isMissingColumnError = (error: unknown, column: string) => {
