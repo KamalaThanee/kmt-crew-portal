@@ -5,8 +5,11 @@ import { supabase } from '@/lib/supabase'
 import { getPpeRequestIdentity } from '@/lib/ppeRequests'
 import { isAdminRole } from '@/lib/roles'
 import { notifyOneSignal } from '@/lib/onesignalClient'
+import { getApprovalCrewName, isApprovedByForeignKeyError, isMissingColumnError, isUuid } from '@/lib/approvals'
+import { ApprovalActionModals } from '@/components/approvals/ApprovalActionModals'
+import { ApprovalRequestCard } from '@/components/approvals/ApprovalRequestCard'
 import { toast } from 'sonner'
-import { Check, X, User, Package, ShieldCheck, Loader2, MessageSquare, History, CheckCircle2, Clock } from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 
 export default function ApprovalsPage() {
   const router = useRouter()
@@ -45,18 +48,6 @@ export default function ApprovalsPage() {
     const params = new URLSearchParams(window.location.search)
     setFocusRequestId(params.get('request'))
   }, [])
-
-  const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
-
-  const isMissingColumnError = (error: unknown, column: string) => {
-    const message = String((error as { message?: string })?.message || '').toLowerCase()
-    return message.includes(column.toLowerCase()) && (message.includes('schema cache') || message.includes('column'))
-  }
-
-  const isApprovedByForeignKeyError = (error: unknown) => {
-    const message = String((error as { message?: string })?.message || '').toLowerCase()
-    return message.includes('approved_by_fkey') || (message.includes('approved_by') && message.includes('foreign key'))
-  }
 
   const updateRequestStatus = async (
     requestId: string,
@@ -190,7 +181,7 @@ export default function ApprovalsPage() {
         type: 'approved',
         requestId: req.id,
         crewId: req.crew_id,
-        crewName: req.crew_name || req.requester_name || req.full_name,
+        crewName: getApprovalCrewName(req),
         itemName: req.items?.[0]?.item_name || 'PPE request',
         actorName: JSON.parse(localStorage.getItem('kmt_user') || '{}')?.full_name,
       })
@@ -244,7 +235,7 @@ export default function ApprovalsPage() {
         type: 'rejected',
         requestId: rejectingReq.id,
         crewId: rejectingReq.crew_id,
-        crewName: rejectingReq.crew_name || rejectingReq.requester_name || rejectingReq.full_name,
+        crewName: getApprovalCrewName(rejectingReq),
         itemName: rejectingReq.items?.[0]?.item_name || 'PPE request',
         actorName: JSON.parse(localStorage.getItem('kmt_user') || '{}')?.full_name,
         reason: rejectReason.trim(),
@@ -282,62 +273,30 @@ export default function ApprovalsPage() {
       <div className="space-y-6">
         {requests.length === 0 && <div className="py-20 text-center bg-zinc-900/50 rounded-[40px] border border-dashed border-white/5 text-zinc-500 font-black">NO PENDING REQUESTS</div>}
         {requests.map(req => (
-          <div
-            id={`approval-card-${req.id}`}
+          <ApprovalRequestCard
             key={req.id}
-            className={`bg-zinc-900/50 border p-6 md:p-8 rounded-[40px] space-y-6 shadow-xl hover:border-orange-500/20 transition-all ${
-              focusRequestId === String(req.id) ? 'border-orange-500 shadow-[0_0_0_1px_rgba(249,115,22,0.45)]' : 'border-white/5'
-            }`}
-          >
-            <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-orange-500/10 rounded-2xl flex items-center justify-center text-orange-500"><User size={24}/></div>
-                <div><h3 className="text-white font-black text-sm">{req.crew_name || req.requester_name || req.full_name || 'Unknown Crew'}</h3><p className="text-zinc-500 flex items-center gap-1 mt-1"><Clock size={12}/> {new Date(req.created_at).toLocaleString()}</p></div>
-              </div>
-              <div className="flex gap-2 w-full md:w-auto">
-                <button disabled={isSubmitting} onClick={() => setRejectingReq(req)} className="flex-1 md:flex-none p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"><X size={20}/></button>
-                <button disabled={isSubmitting} onClick={() => setApprovingReq(req)} className="flex-1 md:flex-none p-3 bg-emerald-500/10 text-emerald-500 rounded-xl hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                  {isSubmitting && activeRequestId === req.id ? <Loader2 size={20} className="animate-spin"/> : <Check size={20}/>}
-                </button>
-              </div>
-            </div>
-            {req.reason && req.reason !== 'No reason provided' && <div className="bg-blue-500/5 border border-blue-500/10 p-4 rounded-xl text-blue-400 italic font-medium">{req.reason}</div>}
-            <div className="bg-black/30 rounded-2xl p-4 space-y-3">
-              {req.items?.map((item: any, idx: number) => (
-                <div key={idx} className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-white/5 last:border-0 pb-2">
-                  <div><p className="text-white text-xs">{item.item_name}</p><p className="text-orange-500">{item.color} | {item.size}</p></div>
-                  <div className="text-[8px] text-zinc-500 bg-black/40 px-2 py-1 rounded flex items-center gap-1"><History size={10}/> {contextMap[`${req.id}:${item.item_name}`] || 'Checking history...'}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+            request={req}
+            contextMap={contextMap}
+            focusRequestId={focusRequestId}
+            isSubmitting={isSubmitting}
+            activeRequestId={activeRequestId}
+            onApproveClick={setApprovingReq}
+            onRejectClick={setRejectingReq}
+          />
         ))}
       </div>
-      {rejectingReq && (
-        <div className="fixed inset-0 z-[1000] bg-black/95 flex items-center justify-center p-6 backdrop-blur-xl animate-in zoom-in">
-          <div className="bg-zinc-900 border border-red-500/20 rounded-[40px] w-full max-w-md p-10 space-y-6">
-            <h2 className="text-2xl font-black italic text-red-500">Reject Request</h2>
-            <textarea rows={4} placeholder="Reason for rejection..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} className="w-full bg-black border border-white/10 p-4 rounded-2xl text-white outline-none focus:border-red-500 text-sm font-bold"/>
-            <div className="flex gap-3"><button onClick={() => setRejectingReq(null)} className="flex-1 py-4 bg-zinc-800 rounded-2xl">Cancel</button><button onClick={handleRejectSubmit} disabled={isSubmitting} className="flex-1 py-4 bg-red-600 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed">{isSubmitting && activeRequestId === rejectingReq.id ? 'Processing...' : 'Confirm Reject'}</button></div>
-          </div>
-        </div>
-      )}
-      {approvingReq && (
-        <div className="fixed inset-0 z-[1000] bg-black/95 flex items-center justify-center p-6 backdrop-blur-xl animate-in zoom-in">
-          <div className="bg-zinc-900 border border-emerald-500/20 rounded-[40px] w-full max-w-md p-10 space-y-6">
-            <h2 className="text-2xl font-black italic text-emerald-500">Approve Request</h2>
-            <div className="rounded-2xl border border-white/10 bg-black/40 p-5 text-sm normal-case text-zinc-200">
-              Approve request for <span className="font-black text-white">{approvingReq.crew_name || approvingReq.requester_name || approvingReq.full_name || 'this crew member'}</span>?
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setApprovingReq(null)} className="flex-1 py-4 bg-zinc-800 rounded-2xl">Cancel</button>
-              <button onClick={() => handleApprove(approvingReq)} disabled={isSubmitting} className="flex-1 py-4 bg-emerald-600 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed">
-                {isSubmitting && activeRequestId === approvingReq.id ? 'Processing...' : 'Confirm Approve'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ApprovalActionModals
+        approvingRequest={approvingReq}
+        rejectingRequest={rejectingReq}
+        rejectReason={rejectReason}
+        isSubmitting={isSubmitting}
+        activeRequestId={activeRequestId}
+        onRejectReasonChange={setRejectReason}
+        onCancelApprove={() => setApprovingReq(null)}
+        onCancelReject={() => setRejectingReq(null)}
+        onConfirmApprove={handleApprove}
+        onConfirmReject={handleRejectSubmit}
+      />
     </div>
   )
 }
