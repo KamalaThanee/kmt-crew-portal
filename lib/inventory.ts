@@ -2,6 +2,15 @@ export const DO_BUCKET = 'receipts'
 
 const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
 
+export type RestockEntryRow = {
+  id: number
+  product_key: string
+  color: string
+  size: string
+  inventory_id: string
+  qty: string
+}
+
 export function compareInventorySize(a: unknown, b: unknown) {
   const sa = String(a || '').trim().toUpperCase()
   const sb = String(b || '').trim().toUpperCase()
@@ -108,6 +117,92 @@ export function getRestockMonthOptions(history: any[]) {
     options.add(new Date(item.created_at).toISOString().slice(0, 7))
   })
   return [...options].sort().reverse()
+}
+
+export function generateDoNumber() {
+  const now = new Date()
+  const date = now.toISOString().slice(0, 10).replace(/-/g, '')
+  const time = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0')
+  return `DO-${date}-${time}`
+}
+
+export function isMissingRestockColumn(error: unknown) {
+  const message = String((error as { message?: string })?.message || '').toLowerCase()
+  return message.includes('schema cache') || message.includes('column')
+}
+
+export function getAtomicDeleteMessage(message: string) {
+  const normalized = message.toLowerCase()
+  if (normalized.includes('delete_restock_history_lines') || normalized.includes('function') || normalized.includes('schema cache')) {
+    return 'Run sql/restock_do_batches.sql in Supabase first, then try deleting again.'
+  }
+  return message || 'Unable to delete restock history'
+}
+
+export function getDoStorageFileRef(value: string) {
+  const directPath = value.match(/^receipts\/(.+)$/)
+  if (directPath) return { bucket: DO_BUCKET, path: directPath[1] }
+
+  const legacyDoFilesPath = value.match(/^do-files\/(.+)$/)
+  if (legacyDoFilesPath) return null
+
+  try {
+    const url = new URL(value)
+    const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/receipts\/(.+)$/)
+    return match?.[1] ? { bucket: DO_BUCKET, path: decodeURIComponent(match[1]) } : null
+  } catch {
+    return null
+  }
+}
+
+export function getDoOpenErrorMessage(message: string) {
+  const normalized = String(message || '').toLowerCase()
+  if (normalized.includes('not found')) {
+    return 'DO file was not found in storage. This older record may point to a file that was never uploaded.'
+  }
+  return message || 'Unable to open DO file'
+}
+
+export function updateRestockEntryRows({
+  entries,
+  inventory,
+  id,
+  field,
+  value,
+}: {
+  entries: RestockEntryRow[]
+  inventory: any[]
+  id: number
+  field: string
+  value: string
+}) {
+  return entries.map((entry) => {
+    if (entry.id !== id) return entry
+    const next = { ...entry, [field]: value }
+
+    if (field === 'product_key') {
+      next.color = ''
+      next.size = ''
+      next.inventory_id = ''
+    }
+
+    if (field === 'color') {
+      next.size = ''
+      next.inventory_id = ''
+    }
+
+    if (field === 'size') {
+      next.inventory_id = ''
+    }
+
+    const productItems = inventory.filter((item) => `${item.category}||${item.item_name}` === next.product_key)
+    let matched = productItems
+    if (next.color) matched = matched.filter((item) => String(item.color || '') === next.color)
+    if (next.size) matched = matched.filter((item) => String(item.size || '') === next.size)
+    if (matched.length === 1) next.inventory_id = String(matched[0].id)
+
+    return next
+  })
 }
 
 export function groupRestockBatches(history: any[], restockMonthFilter: string) {

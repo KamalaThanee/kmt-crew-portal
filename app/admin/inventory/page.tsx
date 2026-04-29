@@ -3,25 +3,29 @@ import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
+import { inventoryCategoryConfig } from '@/lib/inventoryCategories'
 import {
   buildInventoryExportRows,
   buildRestockBatchExportRows,
   DO_BUCKET,
+  generateDoNumber,
   generateInventoryCode,
+  getAtomicDeleteMessage,
+  getDoOpenErrorMessage,
+  getDoStorageFileRef,
   getRestockMonthOptions,
   groupInventoryByCategory,
   groupRestockBatches,
+  isMissingRestockColumn,
+  updateRestockEntryRows,
 } from '@/lib/inventory'
 import { EditItemModal } from '@/components/inventory/EditItemModal'
 import { InventoryControls } from '@/components/inventory/InventoryControls'
 import { InventoryList } from '@/components/inventory/InventoryList'
 import { IssueLogPanel } from '@/components/inventory/IssueLogPanel'
+import { ReceiveShipmentModal } from '@/components/inventory/ReceiveShipmentModal'
 import { RestockEntryPanel } from '@/components/inventory/RestockEntryPanel'
 import { RestockHistoryPanel } from '@/components/inventory/RestockHistoryPanel'
-import {
-  X, Archive,
-  HardHat, Headphones, Eye, Wind, Shirt, Hand, Footprints, MoreHorizontal
-} from 'lucide-react'
 
 function InventoryContent() {
   const searchParams = useSearchParams()
@@ -104,16 +108,7 @@ function InventoryContent() {
     fetchData()
   }, [searchParams])
 
-  const categoryConfig = [
-    { name: 'Head Protection', icon: HardHat, label: 'Head' },
-    { name: 'Ears Protection', icon: Headphones, label: 'Ears' },
-    { name: 'Eyes Protection', icon: Eye, label: 'Eyes' },
-    { name: 'Respiratory Protection', icon: Wind, label: 'Resp' },
-    { name: 'Body Protection', icon: Shirt, label: 'Body' },
-    { name: 'Hands Protection', icon: Hand, label: 'Hands' },
-    { name: 'Foots Protection', icon: Footprints, label: 'Foots' },
-    { name: 'Other', icon: MoreHorizontal, label: 'Other' },
-  ]
+  const categoryConfig = inventoryCategoryConfig
 
   const toggleCat = (catName: string) => {
     setSelectedCats(prev => {
@@ -131,49 +126,11 @@ function InventoryContent() {
   const generateNextCode = (catName: string) => generateInventoryCode(inventory, catName)
 
   const updateRow = (id: number, field: string, value: string) => {
-    setRestockEntries(prev => prev.map(e => {
-      if (e.id !== id) return e
-      const next = { ...e, [field]: value }
-
-      if (field === 'product_key') {
-        next.color = ''
-        next.size = ''
-        next.inventory_id = ''
-      }
-
-      if (field === 'color') {
-        next.size = ''
-        next.inventory_id = ''
-      }
-
-      if (field === 'size') {
-        next.inventory_id = ''
-      }
-
-      const productItems = inventory.filter(i => `${i.category}||${i.item_name}` === next.product_key)
-      let matched = productItems
-      if (next.color) matched = matched.filter(i => String(i.color || '') === next.color)
-      if (next.size) matched = matched.filter(i => String(i.size || '') === next.size)
-      if (matched.length === 1) next.inventory_id = String(matched[0].id)
-
-      return next
-    }))
+    setRestockEntries(prev => updateRestockEntryRows({ entries: prev, inventory, id, field, value }))
   }
 
   const addRow = () => setRestockEntries([...restockEntries, { id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }])
   const removeRow = (id: number) => setRestockEntries(restockEntries.filter(e => e.id !== id))
-
-  const generateDoNumber = () => {
-    const now = new Date()
-    const date = now.toISOString().slice(0, 10).replace(/-/g, '')
-    const time = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0')
-    return `DO-${date}-${time}`
-  }
-
-  const isMissingRestockColumn = (error: unknown) => {
-    const message = String((error as { message?: string })?.message || '').toLowerCase()
-    return message.includes('schema cache') || message.includes('column')
-  }
 
   const insertRestockHistory = async (row: Record<string, any>) => {
     const result = await supabase.from('restock_history').insert(row)
@@ -182,14 +139,6 @@ function InventoryContent() {
 
     const { batch_id: _batchId, do_number: _doNumber, color: _color, size: _size, ...legacyRow } = row
     return supabase.from('restock_history').insert(legacyRow)
-  }
-
-  const getAtomicDeleteMessage = (message: string) => {
-    const normalized = message.toLowerCase()
-    if (normalized.includes('delete_restock_history_lines') || normalized.includes('function') || normalized.includes('schema cache')) {
-      return 'Run sql/restock_do_batches.sql in Supabase first, then try deleting again.'
-    }
-    return message || 'Unable to delete restock history'
   }
 
   const deleteRestockIds = async (ids: string[]) => {
@@ -224,32 +173,12 @@ function InventoryContent() {
   const openDoDocument = async (receiptUrl: string) => {
     if (!receiptUrl) return toast.error('No DO file attached')
 
-    const getStorageFileRef = (value: string) => {
-      const directPath = value.match(/^receipts\/(.+)$/)
-      if (directPath) return { bucket: DO_BUCKET, path: directPath[1] }
-
-      const legacyDoFilesPath = value.match(/^do-files\/(.+)$/)
-      if (legacyDoFilesPath) return null
-
-      try {
-        const url = new URL(value)
-        const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/receipts\/(.+)$/)
-        return match?.[1] ? { bucket: DO_BUCKET, path: decodeURIComponent(match[1]) } : null
-      } catch {
-        return null
-      }
-    }
-
-    const fileRef = getStorageFileRef(receiptUrl)
+    const fileRef = getDoStorageFileRef(receiptUrl)
 
     if (fileRef?.path) {
       const { data, error } = await supabase.storage.from(fileRef.bucket).createSignedUrl(fileRef.path, 60)
       if (error) {
-        const message = String(error.message || '').toLowerCase()
-        if (message.includes('not found')) {
-          return toast.error('DO file was not found in storage. This older record may point to a file that was never uploaded.')
-        }
-        return toast.error(error.message || 'Unable to open DO file')
+        return toast.error(getDoOpenErrorMessage(error.message))
       }
       window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
       return
@@ -384,58 +313,54 @@ function InventoryContent() {
       )}
 
       {isRestockModalOpen && (
-        <div className="fixed inset-0 z-[2000] bg-black/98 flex items-center justify-center p-4 md:p-6 backdrop-blur-3xl animate-in zoom-in duration-300">
-          <div className="bg-zinc-900 border border-emerald-500/30 rounded-[56px] w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
-            <div className="flex justify-between items-center border-b border-white/5 p-10 shrink-0">
-               <div><h2 className="text-4xl font-black italic uppercase tracking-tighter text-emerald-500 flex items-center gap-4"><Archive size={36}/> Receive Shipment</h2><div className="flex flex-wrap gap-2 mt-6 bg-black/60 p-1.5 rounded-[20px] w-fit"><button onClick={() => setRestockView('entry')} className={`px-8 py-3 rounded-2xl text-xs font-black uppercase transition-all ${restockView === 'entry' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'text-zinc-600'}`}>New Entry</button><button onClick={() => setRestockView('history')} className={`px-8 py-3 rounded-2xl text-xs font-black uppercase transition-all ${restockView === 'history' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'text-zinc-600'}`}>Restock History</button><button onClick={() => setRestockView('issue-log')} className={`px-8 py-3 rounded-2xl text-xs font-black uppercase transition-all ${restockView === 'issue-log' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-zinc-600'}`}>Issue Log</button></div></div>
-               <button onClick={() => { setIsRestockModalOpen(false); router.push('/admin/inventory'); }} className="p-4 bg-white/5 rounded-full hover:bg-red-500 text-white transition-all self-start shadow-xl"><X size={32}/></button>
-            </div>
-            <div className="overflow-y-auto p-10 flex-1 no-scrollbar pb-20">
-              {restockView === 'entry' ? (
-                <RestockEntryPanel
-                  doNumber={doNumber}
-                  doFile={doFile}
-                  inventory={inventory}
-                  isProcessingRestock={isProcessingRestock}
-                  restockEntries={restockEntries}
-                  onAddRow={addRow}
-                  onDoFileChange={setDoFile}
-                  onDoNumberChange={setDoNumber}
-                  onGenerateDoNumber={() => setDoNumber(generateDoNumber())}
-                  onRemoveRow={removeRow}
-                  onRestockSubmit={handleRestockSubmit}
-                  onUpdateRow={updateRow}
-                />
-              ) : restockView === 'history' ? (
-                <RestockHistoryPanel
-                  restockBatches={restockBatches}
-                  restockMonthFilter={restockMonthFilter}
-                  restockMonthOptions={restockMonthOptions}
-                  expandedRestockBatches={expandedRestockBatches}
-                  onMonthFilterChange={setRestockMonthFilter}
-                  onToggleBatch={(batchId) =>
-                    setExpandedRestockBatches(
-                      expandedRestockBatches.includes(batchId)
-                        ? expandedRestockBatches.filter((id) => id !== batchId)
-                        : [...expandedRestockBatches, batchId],
-                    )
-                  }
-                  onOpenDoDocument={openDoDocument}
-                  onExportRestockBatch={handleExportRestockBatch}
-                  onDeleteRestockBatch={deleteRestockBatch}
-                  onDeleteRestockLine={deleteRestockLine}
-                />
-              ) : (
-                <IssueLogPanel
-                  stockTransactions={stockTransactions}
-                  stockTransactionError={stockTransactionError}
-                  isRefreshingTransactions={isRefreshingTransactions}
-                  onRefreshTransactions={() => fetchStockTransactions(true)}
-                />
-              )}
-            </div>
-          </div>
-        </div>
+        <ReceiveShipmentModal
+          restockView={restockView}
+          onClose={() => { setIsRestockModalOpen(false); router.push('/admin/inventory'); }}
+          onViewChange={setRestockView}
+        >
+          {restockView === 'entry' ? (
+            <RestockEntryPanel
+              doNumber={doNumber}
+              doFile={doFile}
+              inventory={inventory}
+              isProcessingRestock={isProcessingRestock}
+              restockEntries={restockEntries}
+              onAddRow={addRow}
+              onDoFileChange={setDoFile}
+              onDoNumberChange={setDoNumber}
+              onGenerateDoNumber={() => setDoNumber(generateDoNumber())}
+              onRemoveRow={removeRow}
+              onRestockSubmit={handleRestockSubmit}
+              onUpdateRow={updateRow}
+            />
+          ) : restockView === 'history' ? (
+            <RestockHistoryPanel
+              restockBatches={restockBatches}
+              restockMonthFilter={restockMonthFilter}
+              restockMonthOptions={restockMonthOptions}
+              expandedRestockBatches={expandedRestockBatches}
+              onMonthFilterChange={setRestockMonthFilter}
+              onToggleBatch={(batchId) =>
+                setExpandedRestockBatches(
+                  expandedRestockBatches.includes(batchId)
+                    ? expandedRestockBatches.filter((id) => id !== batchId)
+                    : [...expandedRestockBatches, batchId],
+                )
+              }
+              onOpenDoDocument={openDoDocument}
+              onExportRestockBatch={handleExportRestockBatch}
+              onDeleteRestockBatch={deleteRestockBatch}
+              onDeleteRestockLine={deleteRestockLine}
+            />
+          ) : (
+            <IssueLogPanel
+              stockTransactions={stockTransactions}
+              stockTransactionError={stockTransactionError}
+              isRefreshingTransactions={isRefreshingTransactions}
+              onRefreshTransactions={() => fetchStockTransactions(true)}
+            />
+          )}
+        </ReceiveShipmentModal>
       )}
     </div>
   )
