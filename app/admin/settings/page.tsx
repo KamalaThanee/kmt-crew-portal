@@ -3,14 +3,14 @@ import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { isAdminRole } from '@/lib/roles'
+import { isCrewActive, smartSort, type CrewStatusFilter } from '@/lib/settings'
+import { CrewCard } from '@/components/settings/CrewCard'
+import { CrewStatusFilterTabs } from '@/components/settings/CrewStatusFilterTabs'
 import { toast } from 'sonner'
 import { 
   Settings, Users, Package, SlidersHorizontal, Search, UserPlus,
-  Loader2, Upload, Edit, RefreshCw, X, Save, Box, ChevronRight, User, Trash2
+  Loader2, Upload, Edit, RefreshCw, X, Save, Box, Trash2
 } from 'lucide-react'
-
-const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
 
 function SettingsContent() {
   const router = useRouter();
@@ -23,22 +23,10 @@ function SettingsContent() {
   const [inventory, setInventory] = useState<any[]>([]);
   const [crews, setCrews] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [crewStatusFilter, setCrewStatusFilter] = useState<'active' | 'resigned' | 'all'>('active');
+  const [crewStatusFilter, setCrewStatusFilter] = useState<CrewStatusFilter>('active');
 
   const [editingCrew, setEditingCrew] = useState<any>(null);
   const [isEditCrewOpen, setIsEditCrewOpen] = useState(false);
-
-  const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
-  const smartSort = (arr: any[]) => {
-    return [...arr].sort((a, b) => {
-      const getNum = (s: string) => { const match = String(s).match(/\d+/); return match ? parseInt(match[0]) : null; };
-      const numA = getNum(a); const numB = getNum(b);
-      if (numA !== null && numB !== null) return numA - numB;
-      const idxA = sizeOrder.indexOf(String(a).toUpperCase()); const idxB = sizeOrder.indexOf(String(b).toUpperCase());
-      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-      return String(a).localeCompare(String(b));
-    });
-  }
 
   const fetchData = async () => {
     const [stRes, invRes, crewRes] = await Promise.all([
@@ -210,31 +198,11 @@ function SettingsContent() {
                   <input type="text" placeholder="Search by name..." className="w-full bg-black/50 border border-white/10 p-5 pl-14 rounded-[24px] outline-none text-sm font-bold text-white focus:border-orange-500 transition-all" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 </div>
 
-                <div className="flex flex-wrap gap-3">
-                  {[
-                    ['active', 'Active Crew'],
-                    ['resigned', 'Resigned'],
-                    ['all', 'All Crew'],
-                  ].map(([value, label]) => (
-                    <button key={value} onClick={() => setCrewStatusFilter(value as 'active' | 'resigned' | 'all')} className={`px-5 py-3 rounded-2xl border text-[10px] font-black uppercase transition-all ${crewStatusFilter === value ? 'bg-orange-600 border-orange-400 text-white shadow-lg shadow-orange-600/20' : 'bg-black/40 border-white/10 text-zinc-500 hover:text-orange-400'}`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <CrewStatusFilterTabs value={crewStatusFilter} onChange={setCrewStatusFilter} />
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {filteredCrews.map(crew => (
-                    <div key={crew.id} className={`flex justify-between items-center bg-black/40 p-6 rounded-[32px] border group hover:border-orange-500/50 transition-all cursor-pointer shadow-xl ${isCrewActive(crew) ? 'border-white/5' : 'border-red-500/20 opacity-70'}`} onClick={() => { setEditingCrew(crew); setIsEditCrewOpen(true); }}>
-                      <div className="flex items-center gap-5">
-                        <div className="w-14 h-14 bg-zinc-800 rounded-2xl flex items-center justify-center text-zinc-600 group-hover:text-orange-500 transition-colors border border-white/5"><User size={28}/></div>
-                        <div>
-                          <p className="font-bold text-lg text-white group-hover:text-orange-500 transition-colors leading-tight">{crew.full_name}</p>
-                          <p className="text-xs text-zinc-500 mt-1 uppercase tracking-widest italic">{crew.position}</p>
-                          {!isCrewActive(crew) && <p className="text-[9px] text-red-400 mt-2 uppercase tracking-widest">Resigned {crew.resigned_at ? new Date(crew.resigned_at).toLocaleDateString() : ''}</p>}
-                        </div>
-                      </div>
-                      <ChevronRight size={24} className="text-zinc-800 group-hover:text-orange-500 transition-all" />
-                    </div>
+                    <CrewCard key={crew.id} crew={crew} onClick={(selectedCrew) => { setEditingCrew(selectedCrew); setIsEditCrewOpen(true); }} />
                   ))}
                 </div>
               </div>
