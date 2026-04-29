@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { HistoryMetricCard } from '@/components/history/HistoryMetricCard'
 import { SearchableSelect } from '@/components/history/SearchableSelect'
 import { StatusPill } from '@/components/history/StatusPill'
 import {
@@ -210,11 +211,6 @@ export default function AdminHistoryPage() {
     XLSX.writeFile(workbook, `kmt-issue-history-${stamp}.xlsx`)
   }
 
-  const cardActiveClass = (targetStatus: string) =>
-    statusFilter === targetStatus
-      ? 'ring-2 ring-white/30'
-      : 'hover:border-white/30'
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black text-xs font-black uppercase tracking-widest text-orange-500 animate-pulse">
@@ -243,75 +239,66 @@ export default function AdminHistoryPage() {
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <button
-          type="button"
+        <HistoryMetricCard
+          label="Requests"
+          value={summary.requestCount}
+          description="Total rows in the current view"
+          tone="amber"
+          active={statusFilter === 'all'}
           onClick={() => setStatusFilter('all')}
-          className={`rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-amber-950/20 transition-all ${cardActiveClass('all')}`}
-        >
-          <p className="text-[9px] uppercase tracking-widest text-amber-200">Requests</p>
-          <p className="mt-3 text-3xl font-black text-white">{summary.requestCount}</p>
-          <p className="mt-2 text-xs font-semibold text-amber-100/70">Total rows in the current view</p>
-        </button>
-        <button
-          type="button"
+        />
+        <HistoryMetricCard
+          label="Pending"
+          value={summary.pendingCount}
+          description="Waiting for approval"
+          tone="orange"
+          active={statusFilter === 'pending'}
           onClick={() => setStatusFilter('pending')}
-          className={`rounded-[28px] border border-orange-400/20 bg-gradient-to-br from-orange-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-orange-950/20 transition-all ${cardActiveClass('pending')}`}
-        >
-          <p className="text-[9px] uppercase tracking-widest text-orange-200">Pending</p>
-          <p className="mt-3 text-3xl font-black text-white">{summary.pendingCount}</p>
-          <p className="mt-2 text-xs font-semibold text-orange-100/70">Waiting for approval</p>
-        </button>
-        <button
-          type="button"
+        />
+        <HistoryMetricCard
+          label="Approved"
+          value={summary.approvedCount}
+          description="Approved and waiting to receive"
+          tone="emerald"
+          active={statusFilter === 'approved'}
           onClick={() => setStatusFilter('approved')}
-          className={`rounded-[28px] border border-emerald-400/20 bg-gradient-to-br from-emerald-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-emerald-950/20 transition-all ${cardActiveClass('approved')}`}
-        >
-          <p className="text-[9px] uppercase tracking-widest text-emerald-200">Approved</p>
-          <p className="mt-3 text-3xl font-black text-white">{summary.approvedCount}</p>
-          <p className="mt-2 text-xs font-semibold text-emerald-100/70">Approved and waiting to receive</p>
-        </button>
-        <button
-          type="button"
+        />
+        <HistoryMetricCard
+          label="Rejected"
+          value={summary.rejectedCount}
+          description="Rejected requests in this view"
+          tone="rose"
+          active={statusFilter === 'rejected'}
           onClick={() => setStatusFilter('rejected')}
-          className={`rounded-[28px] border border-rose-400/20 bg-gradient-to-br from-rose-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-rose-950/20 transition-all ${cardActiveClass('rejected')}`}
-        >
-          <p className="text-[9px] uppercase tracking-widest text-rose-200">Rejected</p>
-          <p className="mt-3 text-3xl font-black text-white">{summary.rejectedCount}</p>
-          <p className="mt-2 text-xs font-semibold text-rose-100/70">Rejected requests in this view</p>
-        </button>
-        <button
-          type="button"
+        />
+        <HistoryMetricCard
+          label="Received"
+          value={summary.receivedCount}
+          description="Completed and received"
+          tone="sky"
+          active={statusFilter === 'received'}
           onClick={() => setStatusFilter('received')}
-          className={`rounded-[28px] border border-sky-400/20 bg-gradient-to-br from-sky-500/14 to-zinc-950 p-5 text-left shadow-xl shadow-sky-950/20 transition-all ${cardActiveClass('received')}`}
-        >
-          <p className="text-[9px] uppercase tracking-widest text-sky-200">Received</p>
-          <p className="mt-3 text-3xl font-black text-white">{summary.receivedCount}</p>
-          <p className="mt-2 text-xs font-semibold text-sky-100/70">Completed and received</p>
-        </button>
+        />
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className="rounded-[28px] border border-violet-400/20 bg-gradient-to-br from-violet-500/14 to-zinc-950 p-5 shadow-xl shadow-violet-950/20">
-          <div className="flex items-center gap-2 text-violet-200">
-            <Medal size={16} />
-            <p className="text-[9px] uppercase tracking-widest">Top Item</p>
-          </div>
-          <p className="mt-3 text-lg font-black text-white normal-case">{summary.topItem}</p>
-          <p className="mt-2 text-xs font-semibold text-violet-100/70">
-            {summary.topItemCount > 0 ? `${summary.topItemCount} issues in the selected period` : 'No item data in this view'}
-          </p>
-        </div>
+        <HistoryMetricCard
+          label="Top Item"
+          value={summary.topItem}
+          description={summary.topItemCount > 0 ? `${summary.topItemCount} issues in the selected period` : 'No item data in this view'}
+          tone="violet"
+          icon={<Medal size={16} />}
+          valueClassName="text-lg"
+        />
 
-        <div className="rounded-[28px] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/14 to-zinc-950 p-5 shadow-xl shadow-cyan-950/20">
-          <div className="flex items-center gap-2 text-cyan-200">
-            <Users size={16} />
-            <p className="text-[9px] uppercase tracking-widest">Top Crew</p>
-          </div>
-          <p className="mt-3 text-lg font-black text-white normal-case">{summary.topCrew}</p>
-          <p className="mt-2 text-xs font-semibold text-cyan-100/70">
-            {summary.topCrewCount > 0 ? `${summary.topCrewCount} requests in the selected period` : 'No crew activity in this view'}
-          </p>
-        </div>
+        <HistoryMetricCard
+          label="Top Crew"
+          value={summary.topCrew}
+          description={summary.topCrewCount > 0 ? `${summary.topCrewCount} requests in the selected period` : 'No crew activity in this view'}
+          tone="cyan"
+          icon={<Users size={16} />}
+          valueClassName="text-lg"
+        />
       </div>
 
       <div className="mb-8 rounded-[32px] border border-white/6 bg-zinc-950/45 p-4 shadow-xl shadow-black/20">
