@@ -6,12 +6,8 @@ import {
   ArrowRight,
   Bell,
   CheckCircle2,
-  ClipboardCheck,
   FileBadge,
-  History,
   LogOut,
-  Package,
-  PlusCircle,
   Settings,
   ShieldCheck,
   ShoppingCart,
@@ -20,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getOneSignalStatus, requestOneSignalPermission } from '@/lib/onesignalClient';
+import { getMobileNavLabel, getNavbarMenuItems } from '@/lib/navbar';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { type AdminActionItem, type CrewActionItem, useNavbarNotifications } from '@/hooks/useNavbarNotifications';
 import { toast } from 'sonner';
@@ -46,20 +43,7 @@ export default function Navbar() {
   });
 
   const menuItems = useMemo(
-    () =>
-      isAdmin
-        ? [
-            { name: 'APPROVALS', href: '/admin/approvals', icon: ClipboardCheck },
-            { name: 'HISTORY', href: '/admin/history', icon: History },
-            { name: 'INVENTORY', href: '/admin/inventory', icon: Package },
-            { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
-            { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
-          ]
-        : [
-            { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
-            { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
-            { name: 'MY HISTORY', href: '/my-requests', icon: History },
-          ],
+    () => getNavbarMenuItems(isAdmin),
     [isAdmin],
   );
 
@@ -503,7 +487,7 @@ export default function Navbar() {
             >
               <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
               <span className="text-[7px] font-black uppercase tracking-tighter">
-                {item.name.replace('REQUEST PPE', 'REQUEST').replace('CERTIFICATE', 'CERT').replace('APPROVALS', 'APPROVE')}
+                {getMobileNavLabel(item.name)}
               </span>
               {isActive && <div className="absolute bottom-1 w-5 h-0.5 bg-orange-500 rounded-full shadow-[0_0_10px_#f97316]"></div>}
             </Link>
