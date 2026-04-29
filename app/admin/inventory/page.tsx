@@ -19,13 +19,12 @@ import {
   isMissingRestockColumn,
   updateRestockEntryRows,
 } from '@/lib/inventory'
+import { exportJsonRowsToExcel } from '@/lib/excelExport'
 import { EditItemModal } from '@/components/inventory/EditItemModal'
 import { InventoryControls } from '@/components/inventory/InventoryControls'
 import { InventoryList } from '@/components/inventory/InventoryList'
-import { IssueLogPanel } from '@/components/inventory/IssueLogPanel'
 import { ReceiveShipmentModal } from '@/components/inventory/ReceiveShipmentModal'
-import { RestockEntryPanel } from '@/components/inventory/RestockEntryPanel'
-import { RestockHistoryPanel } from '@/components/inventory/RestockHistoryPanel'
+import { ReceiveShipmentContent } from '@/components/inventory/ReceiveShipmentContent'
 
 function InventoryContent() {
   const searchParams = useSearchParams()
@@ -207,12 +206,8 @@ function InventoryContent() {
       return
     }
 
-    const XLSX = await import('xlsx')
-    const worksheet = XLSX.utils.json_to_sheet(rows)
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory')
     const stamp = new Date().toISOString().slice(0, 10)
-    XLSX.writeFile(workbook, `kmt-inventory-${stamp}.xlsx`)
+    await exportJsonRowsToExcel({ fileName: `kmt-inventory-${stamp}.xlsx`, rows, sheetName: 'Inventory' })
     toast.success(`Exported ${rows.length} inventory rows`)
   }
 
@@ -224,12 +219,8 @@ function InventoryContent() {
       return
     }
 
-    const XLSX = await import('xlsx')
-    const worksheet = XLSX.utils.json_to_sheet(rows)
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'DO Detail')
     const safeDoNumber = String(batch.do_number || 'restock-do').replace(/[^a-zA-Z0-9_-]/g, '_')
-    XLSX.writeFile(workbook, `${safeDoNumber}.xlsx`)
+    await exportJsonRowsToExcel({ fileName: `${safeDoNumber}.xlsx`, rows, sheetName: 'DO Detail' })
     toast.success(`Exported ${batch.do_number || 'DO'} detail`)
   }
 
@@ -318,48 +309,40 @@ function InventoryContent() {
           onClose={() => { setIsRestockModalOpen(false); router.push('/admin/inventory'); }}
           onViewChange={setRestockView}
         >
-          {restockView === 'entry' ? (
-            <RestockEntryPanel
-              doNumber={doNumber}
-              doFile={doFile}
-              inventory={inventory}
-              isProcessingRestock={isProcessingRestock}
-              restockEntries={restockEntries}
-              onAddRow={addRow}
-              onDoFileChange={setDoFile}
-              onDoNumberChange={setDoNumber}
-              onGenerateDoNumber={() => setDoNumber(generateDoNumber())}
-              onRemoveRow={removeRow}
-              onRestockSubmit={handleRestockSubmit}
-              onUpdateRow={updateRow}
-            />
-          ) : restockView === 'history' ? (
-            <RestockHistoryPanel
-              restockBatches={restockBatches}
-              restockMonthFilter={restockMonthFilter}
-              restockMonthOptions={restockMonthOptions}
-              expandedRestockBatches={expandedRestockBatches}
-              onMonthFilterChange={setRestockMonthFilter}
-              onToggleBatch={(batchId) =>
-                setExpandedRestockBatches(
-                  expandedRestockBatches.includes(batchId)
-                    ? expandedRestockBatches.filter((id) => id !== batchId)
-                    : [...expandedRestockBatches, batchId],
-                )
-              }
-              onOpenDoDocument={openDoDocument}
-              onExportRestockBatch={handleExportRestockBatch}
-              onDeleteRestockBatch={deleteRestockBatch}
-              onDeleteRestockLine={deleteRestockLine}
-            />
-          ) : (
-            <IssueLogPanel
-              stockTransactions={stockTransactions}
-              stockTransactionError={stockTransactionError}
-              isRefreshingTransactions={isRefreshingTransactions}
-              onRefreshTransactions={() => fetchStockTransactions(true)}
-            />
-          )}
+          <ReceiveShipmentContent
+            doFile={doFile}
+            doNumber={doNumber}
+            expandedRestockBatches={expandedRestockBatches}
+            inventory={inventory}
+            isProcessingRestock={isProcessingRestock}
+            isRefreshingTransactions={isRefreshingTransactions}
+            restockBatches={restockBatches}
+            restockEntries={restockEntries}
+            restockMonthFilter={restockMonthFilter}
+            restockMonthOptions={restockMonthOptions}
+            restockView={restockView}
+            stockTransactionError={stockTransactionError}
+            stockTransactions={stockTransactions}
+            onAddRow={addRow}
+            onDeleteRestockBatch={deleteRestockBatch}
+            onDeleteRestockLine={deleteRestockLine}
+            onDoFileChange={setDoFile}
+            onDoNumberChange={setDoNumber}
+            onExportRestockBatch={handleExportRestockBatch}
+            onMonthFilterChange={setRestockMonthFilter}
+            onOpenDoDocument={openDoDocument}
+            onRefreshTransactions={() => fetchStockTransactions(true)}
+            onRemoveRow={removeRow}
+            onRestockSubmit={handleRestockSubmit}
+            onToggleBatch={(batchId) =>
+              setExpandedRestockBatches(
+                expandedRestockBatches.includes(batchId)
+                  ? expandedRestockBatches.filter((id) => id !== batchId)
+                  : [...expandedRestockBatches, batchId],
+              )
+            }
+            onUpdateRow={updateRow}
+          />
         </ReceiveShipmentModal>
       )}
     </div>
