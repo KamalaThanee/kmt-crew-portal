@@ -27,7 +27,7 @@ export type AdminActionItem = {
   icon: typeof Clock
 }
 
-type NavbarNotificationData = {
+export type NavbarNotificationData = {
   pending: number
   lowStock: number
   expiredCerts: number
