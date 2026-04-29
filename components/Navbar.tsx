@@ -2,26 +2,20 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { NotificationDropdown } from '@/components/navbar/NotificationDropdown';
+import { ProfileMenu } from '@/components/navbar/ProfileMenu';
+import { PushNudge } from '@/components/navbar/PushNudge';
 import {
-  ArrowRight,
   Bell,
-  CheckCircle2,
-  ClipboardCheck,
-  FileBadge,
-  History,
-  LogOut,
-  Package,
-  PlusCircle,
-  Settings,
   ShieldCheck,
   ShoppingCart,
   User,
-  XCircle,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getOneSignalStatus, requestOneSignalPermission } from '@/lib/onesignalClient';
+import { getMobileNavLabel, getNavbarMenuItems } from '@/lib/navbar';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { type AdminActionItem, type CrewActionItem, useNavbarNotifications } from '@/hooks/useNavbarNotifications';
+import { useNavbarNotifications } from '@/hooks/useNavbarNotifications';
 import { toast } from 'sonner';
 
 export default function Navbar() {
@@ -32,7 +26,6 @@ export default function Navbar() {
   const [showNotif, setShowNotif] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [oneSignalStatus, setOneSignalStatus] = useState<Record<string, string>>({});
-  const [pushActionMessage, setPushActionMessage] = useState('');
   const [showPushNudge, setShowPushNudge] = useState(false);
 
   const profileRef = useRef<HTMLDivElement>(null);
@@ -46,20 +39,7 @@ export default function Navbar() {
   });
 
   const menuItems = useMemo(
-    () =>
-      isAdmin
-        ? [
-            { name: 'APPROVALS', href: '/admin/approvals', icon: ClipboardCheck },
-            { name: 'HISTORY', href: '/admin/history', icon: History },
-            { name: 'INVENTORY', href: '/admin/inventory', icon: Package },
-            { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
-            { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
-          ]
-        : [
-            { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
-            { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
-            { name: 'MY HISTORY', href: '/my-requests', icon: History },
-          ],
+    () => getNavbarMenuItems(isAdmin),
     [isAdmin],
   );
 
@@ -95,62 +75,32 @@ export default function Navbar() {
     };
   }, []);
 
-  const totalPersonalAdminUpdates = (notifData.personalUpdates || []).length;
+  const handleEnablePush = async (hideNudgeOnSuccess = false) => {
+    try {
+      const status = await requestOneSignalPermission();
+      setOneSignalStatus(status);
+      if (status.permission === 'true' && status.optedIn === 'true') {
+        if (hideNudgeOnSuccess) setShowPushNudge(false);
+        toast.success('Push notifications enabled');
+      } else {
+        toast.message(status.message || 'Notification permission was not granted');
+      }
+    } catch (error: any) {
+      const message = error?.message || 'Unable to request push permission';
+      toast.error(message);
+    }
+  };
 
   if (!mounted || ['/login', '/register'].includes(pathname)) return null;
 
   return (
     <>
       {showPushNudge && (
-        <div className="fixed top-20 left-1/2 z-[120] w-[92%] max-w-md -translate-x-1/2 rounded-2xl border border-emerald-500/20 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-xl">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-emerald-500/10 p-2 text-emerald-300">
-              <Bell size={18} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-black uppercase tracking-widest text-white">Enable push notifications</p>
-              <p className="mt-1 text-[10px] leading-relaxed text-zinc-400 normal-case">
-                Get alerts when PPE requests need action or your request is updated.
-              </p>
-              <div className="mt-3 flex gap-2">
-                <button
-                  onClick={async () => {
-                    setPushActionMessage('Requesting permission...');
-                    try {
-                      const status = await requestOneSignalPermission();
-                      setOneSignalStatus(status);
-                      setPushActionMessage(status.message || '');
-                      if (status.optedIn === 'true') {
-                        setShowPushNudge(false);
-                        toast.success('Push notifications enabled');
-                      } else {
-                        toast.message(status.message || 'Notification permission was not granted');
-                      }
-                    } catch (error: any) {
-                      const message = error?.message || 'Unable to request push permission';
-                      setPushActionMessage(message);
-                      toast.error(message);
-                    }
-                  }}
-                  className="rounded-xl bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black"
-                >
-                  Enable
-                </button>
-                <button
-                  onClick={() => {
-                    if (user?.id) {
-                      localStorage.setItem(`kmt_push_nudge_dismissed_${user.id}`, 'true');
-                    }
-                    setShowPushNudge(false);
-                  }}
-                  className="rounded-xl bg-white/5 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-zinc-400"
-                >
-                  Later
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PushNudge
+          userId={user?.id}
+          onEnable={() => handleEnablePush(true)}
+          onDismiss={() => setShowPushNudge(false)}
+        />
       )}
 
       <nav className="fixed top-4 left-1/2 -translate-x-1/2 w-[94%] max-w-6xl h-14 bg-black/80 backdrop-blur-xl border border-orange-500/20 rounded-2xl z-[100] px-4 flex items-center justify-between shadow-2xl">
@@ -197,220 +147,11 @@ export default function Navbar() {
             </button>
 
             {showNotif && (
-              <div className="absolute right-0 top-12 w-80 bg-zinc-900 border border-white/10 rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 z-[110]">
-                <div className="p-5 bg-black/40 border-b border-white/5">
-                  <h3 className="text-white font-black italic uppercase text-lg">Notifications</h3>
-                  <p className="text-orange-500 text-[10px] font-bold tracking-widest mt-1">
-                    {isAdmin ? 'Action Center' : 'Recent Actions'}
-                  </p>
-                </div>
-
-                <div className="p-2 space-y-1 bg-black/20">
-                  {isAdmin ? (
-                    <>
-                      <div className="px-1 pt-2">
-                        <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-amber-300">
-                          PPE Request Feed
-                        </p>
-                        {(notifData.pendingActions || []).length > 0 ? (
-                          <div className="space-y-2">
-                            {(notifData.pendingActions || []).map((item: AdminActionItem) => {
-                              const Icon = item.icon;
-                              return (
-                                <Link
-                                  key={item.id}
-                                  href={item.href}
-                                  onClick={() => setShowNotif(false)}
-                                  className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-amber-500/10 bg-amber-500/[0.04]"
-                                >
-                                  <div className="flex items-center gap-4 min-w-0">
-                                    <div className="p-2 rounded-xl border border-amber-500/20 bg-amber-500/15 text-amber-300">
-                                      <Icon size={16} />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                      <p className="text-[9px] text-zinc-400 mt-1 normal-case">{item.description}</p>
-                                      <p className="text-[9px] text-amber-300 mt-2 normal-case font-black">{item.meta}</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex flex-col items-end gap-2 shrink-0">
-                                    <span className="px-2 py-1 rounded-md text-[9px] font-black bg-amber-400 text-black">
-                                      {item.countLabel || 'NEW'}
-                                    </span>
-                                    <ArrowRight size={14} className="text-zinc-600 group-hover:text-orange-400" />
-                                  </div>
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                            No new PPE requests right now
-                          </div>
-                        )}
-                      </div>
-
-                      {totalPersonalAdminUpdates > 0 && (
-                        <div className="px-1 pt-3">
-                          <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-emerald-300">
-                            Your Request Updates
-                          </p>
-                          <div className="space-y-2">
-                            {(notifData.personalUpdates || []).map((item: CrewActionItem) => {
-                              const approved = item.status === 'approved';
-                              return (
-                                <Link
-                                  key={`personal-${item.id}`}
-                                  href="/my-requests"
-                                  onClick={() => setShowNotif(false)}
-                                  className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-emerald-500/10 bg-emerald-500/[0.04]"
-                                >
-                                  <div className="flex items-center gap-4 min-w-0">
-                                    <div className={`p-2 rounded-xl ${approved ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                                      {approved ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                      <p className="text-[9px] text-zinc-400 mt-1 normal-case line-clamp-2">{item.description}</p>
-                                    </div>
-                                  </div>
-                                  <ArrowRight size={14} className="text-zinc-600 group-hover:text-emerald-400 shrink-0" />
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {(notifData.personalApprovedCount || 0) > 0 && (
-                        <Link
-                          href="/my-requests"
-                          onClick={() => setShowNotif(false)}
-                          className="mx-1 flex items-center justify-between rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3"
-                        >
-                          <div>
-                            <p className="text-[10px] font-black uppercase text-emerald-300">Ready to receive</p>
-                            <p className="text-[9px] text-emerald-100/80 mt-1 normal-case">
-                              {notifData.personalApprovedCount} approved request{notifData.personalApprovedCount > 1 ? 's are' : ' is'} waiting for your confirmation
-                            </p>
-                          </div>
-                          <span className="bg-emerald-400 text-black px-2 py-1 rounded-md text-[9px] font-black">
-                            ACTION
-                          </span>
-                        </Link>
-                      )}
-
-                      {(notifData.personalCertActions || []).length > 0 && (
-                        <div className="px-1 pt-3">
-                          <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-sky-300">
-                            My Certificates
-                          </p>
-                          <div className="space-y-2">
-                            {(notifData.personalCertActions || []).map((item: CrewActionItem) => (
-                              <Link
-                                key={item.id}
-                                href={item.href || '/certificates?tab=personal'}
-                                onClick={() => setShowNotif(false)}
-                                className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-sky-500/10 bg-sky-500/[0.04]"
-                              >
-                                <div className="flex items-center gap-4 min-w-0">
-                                  <div className="p-2 rounded-xl bg-sky-500/20 text-sky-400">
-                                    <FileBadge size={16}/>
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                    <p className="text-[9px] text-zinc-400 mt-1 normal-case line-clamp-2">{item.description}</p>
-                                  </div>
-                                </div>
-                                <ArrowRight size={14} className="text-zinc-600 group-hover:text-sky-400 shrink-0" />
-                              </Link>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                    </>
-                  ) : (
-                    <>
-                      {(notifData.updates || []).map((item: CrewActionItem) => {
-                        const approved = item.status === 'approved';
-                        return (
-                          <Link
-                            key={item.id}
-                            href="/my-requests"
-                            onClick={() => setShowNotif(false)}
-                            className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group"
-                          >
-                            <div className="flex items-center gap-4 min-w-0">
-                              <div className={`p-2 rounded-xl ${approved ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                                {approved ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                <p className="text-[9px] text-zinc-500 mt-1 normal-case line-clamp-2">{item.description}</p>
-                              </div>
-                            </div>
-                            <ArrowRight size={14} className="text-zinc-600 group-hover:text-orange-400 shrink-0" />
-                          </Link>
-                        );
-                      })}
-
-                      {(notifData.personalCertActions || []).length > 0 && (
-                        <div className="pt-2">
-                          <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-sky-300">
-                            My Certificates
-                          </p>
-                          <div className="space-y-2">
-                            {(notifData.personalCertActions || []).map((item: CrewActionItem) => (
-                              <Link
-                                key={item.id}
-                                href={item.href || '/certificates?tab=personal'}
-                                onClick={() => setShowNotif(false)}
-                                className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-sky-500/10 bg-sky-500/[0.04]"
-                              >
-                                <div className="flex items-center gap-4 min-w-0">
-                                  <div className="p-2 rounded-xl bg-sky-500/20 text-sky-400">
-                                    <FileBadge size={16}/>
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                    <p className="text-[9px] text-zinc-400 mt-1 normal-case line-clamp-2">{item.description}</p>
-                                  </div>
-                                </div>
-                                <ArrowRight size={14} className="text-zinc-600 group-hover:text-sky-400 shrink-0" />
-                              </Link>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {notifData.approvedCount > 0 && (
-                        <Link
-                          href="/my-requests"
-                          onClick={() => setShowNotif(false)}
-                          className="flex items-center justify-between rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3"
-                        >
-                          <div>
-                            <p className="text-[10px] font-black uppercase text-emerald-300">Ready to receive</p>
-                            <p className="text-[9px] text-emerald-100/80 mt-1 normal-case">
-                              {notifData.approvedCount} approved request{notifData.approvedCount > 1 ? 's are' : ' is'} waiting for your confirmation
-                            </p>
-                          </div>
-                          <span className="bg-emerald-400 text-black px-2 py-1 rounded-md text-[9px] font-black">
-                            ACTION
-                          </span>
-                        </Link>
-                      )}
-                    </>
-                  )}
-
-                  {notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) === 0 && (notifData.updates || []).length === 0 && (
-                    <div className="text-center p-6 text-zinc-600 text-[10px] uppercase font-black tracking-widest">
-                      No Alerts
-                    </div>
-                  )}
-                </div>
-              </div>
+              <NotificationDropdown
+                isAdmin={isAdmin}
+                notifData={notifData}
+                onClose={() => setShowNotif(false)}
+              />
             )}
           </div>
 
@@ -434,56 +175,17 @@ export default function Navbar() {
             </button>
 
             {showProfile && (
-              <div className="absolute right-0 top-12 w-64 bg-zinc-900 border border-orange-500/20 rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 z-[110]">
-                <div className="p-6 bg-black/40 border-b border-white/5">
-                  <p className="text-white font-bold text-sm truncate">{user?.full_name}</p>
-                  <p className="text-orange-500 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p>
-                </div>
-                <div className="p-2 space-y-1">
-                  {oneSignalStatus.optedIn !== 'true' && (
-                    <button
-                      onClick={async () => {
-                        setPushActionMessage('Requesting permission...');
-                        try {
-                          const status = await requestOneSignalPermission();
-                          setOneSignalStatus(status);
-                          setPushActionMessage(status.message || '');
-                          if (status.permission === 'true' && status.optedIn === 'true') {
-                            toast.success('Push notifications enabled');
-                          } else {
-                            toast.message(status.message || 'Notification permission was not granted');
-                          }
-                        } catch (error: any) {
-                          const message = error?.message || 'Unable to request push permission';
-                          setPushActionMessage(message);
-                          toast.error(message);
-                        }
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-emerald-300 hover:text-white hover:bg-emerald-600/10 rounded-2xl transition-all uppercase tracking-widest"
-                    >
-                      <Bell size={16} /> Enable Push
-                    </button>
-                  )}
-                  {isAdmin && (
-                    <Link
-                      href="/admin/settings"
-                      onClick={() => setShowProfile(false)}
-                      className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-zinc-400 hover:text-white hover:bg-orange-600/10 rounded-2xl transition-all uppercase tracking-widest"
-                    >
-                      <Settings size={16} /> Admin Panel
-                    </Link>
-                  )}
-                  <button
-                    onClick={() => {
-                      logout();
-                      router.push('/login');
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-4 text-xs text-red-400 font-black uppercase tracking-widest hover:bg-red-500/10 rounded-2xl transition-all text-left"
-                  >
-                    <LogOut size={16} /> Logout
-                  </button>
-                </div>
-              </div>
+              <ProfileMenu
+                user={user}
+                isAdmin={isAdmin}
+                pushOptedIn={oneSignalStatus.optedIn === 'true'}
+                onEnablePush={() => handleEnablePush(false)}
+                onClose={() => setShowProfile(false)}
+                onLogout={() => {
+                  logout();
+                  router.push('/login');
+                }}
+              />
             )}
           </div>
         </div>
@@ -503,7 +205,7 @@ export default function Navbar() {
             >
               <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
               <span className="text-[7px] font-black uppercase tracking-tighter">
-                {item.name.replace('REQUEST PPE', 'REQUEST').replace('CERTIFICATE', 'CERT').replace('APPROVALS', 'APPROVE')}
+                {getMobileNavLabel(item.name)}
               </span>
               {isActive && <div className="absolute bottom-1 w-5 h-0.5 bg-orange-500 rounded-full shadow-[0_0_10px_#f97316]"></div>}
             </Link>
