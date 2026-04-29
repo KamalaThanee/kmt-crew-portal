@@ -3,6 +3,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { SearchableSelect } from '@/components/history/SearchableSelect'
+import {
+  HISTORY_COLUMNS,
+  LEGACY_HISTORY_COLUMNS,
+  MINIMAL_HISTORY_COLUMNS,
+  PAGE_SIZE,
+  type HistoryRow,
+  formatDateTime,
+  formatMonthOption,
+  getCrewName,
+  getItemSummary,
+  getStatusTimelineMeta,
+  normalize,
+} from '@/lib/history'
 import { supabase } from '@/lib/supabase'
 import { isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
@@ -18,140 +31,6 @@ import {
   Users,
   XCircle,
 } from 'lucide-react'
-
-type HistoryItem = {
-  item_name?: string
-  color?: string
-  size?: string
-}
-
-type HistoryRow = {
-  id: string
-  created_at: string
-  approved_at?: string | null
-  rejected_at?: string | null
-  received_at?: string | null
-  status?: string | null
-  approved_by?: string | null
-  approved_by_name?: string | null
-  crew_id?: string | null
-  crew_name?: string | null
-  requester_name?: string | null
-  full_name?: string | null
-  admin_remark?: string | null
-  rejection_reason?: string | null
-  reason?: string | null
-  items?: HistoryItem[] | null
-}
-
-const normalize = (value: string) => String(value || '').toLowerCase().trim()
-const PAGE_SIZE = 25
-const HISTORY_COLUMNS = [
-  'id',
-  'created_at',
-  'approved_at',
-  'rejected_at',
-  'received_at',
-  'status',
-  'approved_by',
-  'approved_by_name',
-  'crew_id',
-  'crew_name',
-  'requester_name',
-  'full_name',
-  'admin_remark',
-  'rejection_reason',
-  'reason',
-  'items',
-].join(',')
-const LEGACY_HISTORY_COLUMNS = [
-  'id',
-  'created_at',
-  'received_at',
-  'status',
-  'approved_by',
-  'approved_by_name',
-  'crew_id',
-  'crew_name',
-  'admin_remark',
-  'rejection_reason',
-  'reason',
-  'items',
-].join(',')
-const MINIMAL_HISTORY_COLUMNS = [
-  'id',
-  'created_at',
-  'received_at',
-  'status',
-  'approved_by',
-  'crew_id',
-  'crew_name',
-  'admin_remark',
-  'rejection_reason',
-  'reason',
-  'items',
-].join(',')
-
-const formatDateTime = (value?: string | null) => {
-  if (!value) return '-'
-  return new Date(value).toLocaleString('en-GB')
-}
-
-const formatMonthOption = (value: string) => {
-  const monthIndex = Number(value) - 1
-  if (monthIndex < 0 || monthIndex > 11) return value
-  return new Date(2000, monthIndex, 1).toLocaleString('en-US', { month: 'long' })
-}
-
-const getCrewName = (row: HistoryRow) =>
-  row.crew_name || row.requester_name || row.full_name || 'Unknown Crew'
-
-const getStatusMeta = (row: HistoryRow, adminNameMap: Record<string, string>) => {
-  const status = normalize(row.status || 'pending')
-  const actorName =
-    row.approved_by_name ||
-    (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : 'Unknown approver')
-
-  if (status === 'approved') return `Approved by ${actorName}`
-  if (status === 'rejected') return `Rejected by ${actorName}`
-  if (status === 'received') {
-    if (row.received_at) return `Approved by ${actorName} • Received on ${formatDateTime(row.received_at)}`
-    return `Approved by ${actorName} • Received`
-  }
-  return 'Waiting for approval'
-}
-
-const getStatusTimelineMeta = (row: HistoryRow, adminNameMap: Record<string, string>) => {
-  const status = normalize(row.status || 'pending')
-  const actorName =
-    row.approved_by_name ||
-    (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : 'Unknown approver')
-
-  const timeline: string[] = []
-
-  if (row.approved_at || status === 'approved' || status === 'received') {
-    timeline.push(`Approved by ${actorName}${row.approved_at ? ` on ${formatDateTime(row.approved_at)}` : ''}`)
-  }
-
-  if (row.rejected_at || status === 'rejected') {
-    timeline.push(`Rejected by ${actorName}${row.rejected_at ? ` on ${formatDateTime(row.rejected_at)}` : ''}`)
-  }
-
-  if (status === 'received') {
-    timeline.push(`Received${row.received_at ? ` on ${formatDateTime(row.received_at)}` : ''}`)
-  }
-
-  if (status === 'pending') {
-    return 'Waiting for approval'
-  }
-
-  return timeline.length > 0 ? timeline.join(' | ') : '-'
-}
-
-const getItemSummary = (row: HistoryRow) =>
-  (row.items || [])
-    .map((item) => [item.item_name, item.color, item.size].filter(Boolean).join(' | '))
-    .join(', ')
 
 export default function AdminHistoryPage() {
   const router = useRouter()
