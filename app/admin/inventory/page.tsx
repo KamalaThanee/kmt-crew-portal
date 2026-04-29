@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
+import { inventoryCategoryConfig } from '@/lib/inventoryCategories'
 import {
   buildInventoryExportRows,
   buildRestockBatchExportRows,
@@ -18,10 +19,7 @@ import { InventoryList } from '@/components/inventory/InventoryList'
 import { IssueLogPanel } from '@/components/inventory/IssueLogPanel'
 import { RestockEntryPanel } from '@/components/inventory/RestockEntryPanel'
 import { RestockHistoryPanel } from '@/components/inventory/RestockHistoryPanel'
-import {
-  X, Archive,
-  HardHat, Headphones, Eye, Wind, Shirt, Hand, Footprints, MoreHorizontal
-} from 'lucide-react'
+import { X, Archive } from 'lucide-react'
 
 function InventoryContent() {
   const searchParams = useSearchParams()
@@ -104,16 +102,7 @@ function InventoryContent() {
     fetchData()
   }, [searchParams])
 
-  const categoryConfig = [
-    { name: 'Head Protection', icon: HardHat, label: 'Head' },
-    { name: 'Ears Protection', icon: Headphones, label: 'Ears' },
-    { name: 'Eyes Protection', icon: Eye, label: 'Eyes' },
-    { name: 'Respiratory Protection', icon: Wind, label: 'Resp' },
-    { name: 'Body Protection', icon: Shirt, label: 'Body' },
-    { name: 'Hands Protection', icon: Hand, label: 'Hands' },
-    { name: 'Foots Protection', icon: Footprints, label: 'Foots' },
-    { name: 'Other', icon: MoreHorizontal, label: 'Other' },
-  ]
+  const categoryConfig = inventoryCategoryConfig
 
   const toggleCat = (catName: string) => {
     setSelectedCats(prev => {
