@@ -2,6 +2,15 @@ export const DO_BUCKET = 'receipts'
 
 const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
 
+export type RestockEntryRow = {
+  id: number
+  product_key: string
+  color: string
+  size: string
+  inventory_id: string
+  qty: string
+}
+
 export function compareInventorySize(a: unknown, b: unknown) {
   const sa = String(a || '').trim().toUpperCase()
   const sb = String(b || '').trim().toUpperCase()
@@ -152,6 +161,48 @@ export function getDoOpenErrorMessage(message: string) {
     return 'DO file was not found in storage. This older record may point to a file that was never uploaded.'
   }
   return message || 'Unable to open DO file'
+}
+
+export function updateRestockEntryRows({
+  entries,
+  inventory,
+  id,
+  field,
+  value,
+}: {
+  entries: RestockEntryRow[]
+  inventory: any[]
+  id: number
+  field: string
+  value: string
+}) {
+  return entries.map((entry) => {
+    if (entry.id !== id) return entry
+    const next = { ...entry, [field]: value }
+
+    if (field === 'product_key') {
+      next.color = ''
+      next.size = ''
+      next.inventory_id = ''
+    }
+
+    if (field === 'color') {
+      next.size = ''
+      next.inventory_id = ''
+    }
+
+    if (field === 'size') {
+      next.inventory_id = ''
+    }
+
+    const productItems = inventory.filter((item) => `${item.category}||${item.item_name}` === next.product_key)
+    let matched = productItems
+    if (next.color) matched = matched.filter((item) => String(item.color || '') === next.color)
+    if (next.size) matched = matched.filter((item) => String(item.size || '') === next.size)
+    if (matched.length === 1) next.inventory_id = String(matched[0].id)
+
+    return next
+  })
 }
 
 export function groupRestockBatches(history: any[], restockMonthFilter: string) {

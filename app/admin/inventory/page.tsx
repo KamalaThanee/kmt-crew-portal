@@ -17,6 +17,7 @@ import {
   groupInventoryByCategory,
   groupRestockBatches,
   isMissingRestockColumn,
+  updateRestockEntryRows,
 } from '@/lib/inventory'
 import { EditItemModal } from '@/components/inventory/EditItemModal'
 import { InventoryControls } from '@/components/inventory/InventoryControls'
@@ -125,33 +126,7 @@ function InventoryContent() {
   const generateNextCode = (catName: string) => generateInventoryCode(inventory, catName)
 
   const updateRow = (id: number, field: string, value: string) => {
-    setRestockEntries(prev => prev.map(e => {
-      if (e.id !== id) return e
-      const next = { ...e, [field]: value }
-
-      if (field === 'product_key') {
-        next.color = ''
-        next.size = ''
-        next.inventory_id = ''
-      }
-
-      if (field === 'color') {
-        next.size = ''
-        next.inventory_id = ''
-      }
-
-      if (field === 'size') {
-        next.inventory_id = ''
-      }
-
-      const productItems = inventory.filter(i => `${i.category}||${i.item_name}` === next.product_key)
-      let matched = productItems
-      if (next.color) matched = matched.filter(i => String(i.color || '') === next.color)
-      if (next.size) matched = matched.filter(i => String(i.size || '') === next.size)
-      if (matched.length === 1) next.inventory_id = String(matched[0].id)
-
-      return next
-    }))
+    setRestockEntries(prev => updateRestockEntryRows({ entries: prev, inventory, id, field, value }))
   }
 
   const addRow = () => setRestockEntries([...restockEntries, { id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }])
