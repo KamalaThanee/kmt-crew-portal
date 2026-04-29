@@ -164,14 +164,12 @@ export default function ApprovalsPage() {
       if (error) {
         setActionMessage(`Approve failed: ${error.message}`)
         toast.error(`Approve failed: ${error.message}`)
-        alert(`Approve failed: ${error.message}`)
         return
       }
       if (!data) {
         const message = 'Approve failed: no rows updated'
         setActionMessage(message)
         toast.error(message)
-        alert(message)
         return
       }
 
@@ -195,7 +193,6 @@ export default function ApprovalsPage() {
     } catch (error: any) {
       setActionMessage(`Approve failed: ${error?.message || 'Unknown error'}`)
       toast.error(`Approve failed: ${error?.message || 'Unknown error'}`)
-      alert(`Approve failed: ${error?.message || 'Unknown error'}`)
     } finally {
       setIsSubmitting(false)
       setActiveRequestId(null)
@@ -218,14 +215,12 @@ export default function ApprovalsPage() {
       if (error) {
         setActionMessage(`Reject failed: ${error.message}`)
         toast.error(`Reject failed: ${error.message}`)
-        alert(`Reject failed: ${error.message}`)
         return
       }
       if (!data) {
         const message = 'Reject failed: no rows updated'
         setActionMessage(message)
         toast.error(message)
-        alert(message)
         return
       }
 
@@ -251,7 +246,6 @@ export default function ApprovalsPage() {
     } catch (error: any) {
       setActionMessage(`Reject failed: ${error?.message || 'Unknown error'}`)
       toast.error(`Reject failed: ${error?.message || 'Unknown error'}`)
-      alert(`Reject failed: ${error?.message || 'Unknown error'}`)
     } finally {
       setIsSubmitting(false)
       setActiveRequestId(null)
