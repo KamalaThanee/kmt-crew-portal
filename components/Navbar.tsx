@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { NotificationLinkItem } from '@/components/navbar/NotificationLinkItem';
 import { ProfileMenu } from '@/components/navbar/ProfileMenu';
 import { PushNudge } from '@/components/navbar/PushNudge';
 import {
-  ArrowRight,
   Bell,
   CheckCircle2,
   FileBadge,
@@ -175,29 +175,17 @@ export default function Navbar() {
                             {(notifData.pendingActions || []).map((item: AdminActionItem) => {
                               const Icon = item.icon;
                               return (
-                                <Link
+                                <NotificationLinkItem
                                   key={item.id}
                                   href={item.href}
                                   onClick={() => setShowNotif(false)}
-                                  className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-amber-500/10 bg-amber-500/[0.04]"
-                                >
-                                  <div className="flex items-center gap-4 min-w-0">
-                                    <div className="p-2 rounded-xl border border-amber-500/20 bg-amber-500/15 text-amber-300">
-                                      <Icon size={16} />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                      <p className="text-[9px] text-zinc-400 mt-1 normal-case">{item.description}</p>
-                                      <p className="text-[9px] text-amber-300 mt-2 normal-case font-black">{item.meta}</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex flex-col items-end gap-2 shrink-0">
-                                    <span className="px-2 py-1 rounded-md text-[9px] font-black bg-amber-400 text-black">
-                                      {item.countLabel || 'NEW'}
-                                    </span>
-                                    <ArrowRight size={14} className="text-zinc-600 group-hover:text-orange-400" />
-                                  </div>
-                                </Link>
+                                  title={item.title}
+                                  description={item.description}
+                                  meta={item.meta}
+                                  badge={item.countLabel || 'NEW'}
+                                  icon={<Icon size={16} />}
+                                  tone="amber"
+                                />
                               );
                             })}
                           </div>
@@ -217,23 +205,16 @@ export default function Navbar() {
                             {(notifData.personalUpdates || []).map((item: CrewActionItem) => {
                               const approved = item.status === 'approved';
                               return (
-                                <Link
+                                <NotificationLinkItem
                                   key={`personal-${item.id}`}
                                   href="/my-requests"
                                   onClick={() => setShowNotif(false)}
-                                  className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-emerald-500/10 bg-emerald-500/[0.04]"
-                                >
-                                  <div className="flex items-center gap-4 min-w-0">
-                                    <div className={`p-2 rounded-xl ${approved ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                                      {approved ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                      <p className="text-[9px] text-zinc-400 mt-1 normal-case line-clamp-2">{item.description}</p>
-                                    </div>
-                                  </div>
-                                  <ArrowRight size={14} className="text-zinc-600 group-hover:text-emerald-400 shrink-0" />
-                                </Link>
+                                  title={item.title}
+                                  description={item.description}
+                                  icon={approved ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
+                                  tone={approved ? 'emerald' : 'red'}
+                                  arrowToneClassName={approved ? 'group-hover:text-emerald-400' : 'group-hover:text-orange-400'}
+                                />
                               );
                             })}
                           </div>
@@ -265,23 +246,15 @@ export default function Navbar() {
                           </p>
                           <div className="space-y-2">
                             {(notifData.personalCertActions || []).map((item: CrewActionItem) => (
-                              <Link
+                              <NotificationLinkItem
                                 key={item.id}
                                 href={item.href || '/certificates?tab=personal'}
                                 onClick={() => setShowNotif(false)}
-                                className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-sky-500/10 bg-sky-500/[0.04]"
-                              >
-                                <div className="flex items-center gap-4 min-w-0">
-                                  <div className="p-2 rounded-xl bg-sky-500/20 text-sky-400">
-                                    <FileBadge size={16}/>
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                    <p className="text-[9px] text-zinc-400 mt-1 normal-case line-clamp-2">{item.description}</p>
-                                  </div>
-                                </div>
-                                <ArrowRight size={14} className="text-zinc-600 group-hover:text-sky-400 shrink-0" />
-                              </Link>
+                                title={item.title}
+                                description={item.description}
+                                icon={<FileBadge size={16}/>}
+                                tone="sky"
+                              />
                             ))}
                           </div>
                         </div>
@@ -293,23 +266,16 @@ export default function Navbar() {
                       {(notifData.updates || []).map((item: CrewActionItem) => {
                         const approved = item.status === 'approved';
                         return (
-                          <Link
+                          <NotificationLinkItem
                             key={item.id}
                             href="/my-requests"
                             onClick={() => setShowNotif(false)}
-                            className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group"
-                          >
-                            <div className="flex items-center gap-4 min-w-0">
-                              <div className={`p-2 rounded-xl ${approved ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                                {approved ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                <p className="text-[9px] text-zinc-500 mt-1 normal-case line-clamp-2">{item.description}</p>
-                              </div>
-                            </div>
-                            <ArrowRight size={14} className="text-zinc-600 group-hover:text-orange-400 shrink-0" />
-                          </Link>
+                            title={item.title}
+                            description={item.description}
+                            icon={approved ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
+                            tone={approved ? 'emerald' : 'red'}
+                            arrowToneClassName={approved ? 'group-hover:text-emerald-400' : 'group-hover:text-orange-400'}
+                          />
                         );
                       })}
 
@@ -320,23 +286,15 @@ export default function Navbar() {
                           </p>
                           <div className="space-y-2">
                             {(notifData.personalCertActions || []).map((item: CrewActionItem) => (
-                              <Link
+                              <NotificationLinkItem
                                 key={item.id}
                                 href={item.href || '/certificates?tab=personal'}
                                 onClick={() => setShowNotif(false)}
-                                className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 rounded-2xl transition-all group border border-sky-500/10 bg-sky-500/[0.04]"
-                              >
-                                <div className="flex items-center gap-4 min-w-0">
-                                  <div className="p-2 rounded-xl bg-sky-500/20 text-sky-400">
-                                    <FileBadge size={16}/>
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-bold text-white uppercase truncate">{item.title}</p>
-                                    <p className="text-[9px] text-zinc-400 mt-1 normal-case line-clamp-2">{item.description}</p>
-                                  </div>
-                                </div>
-                                <ArrowRight size={14} className="text-zinc-600 group-hover:text-sky-400 shrink-0" />
-                              </Link>
+                                title={item.title}
+                                description={item.description}
+                                icon={<FileBadge size={16}/>}
+                                tone="sky"
+                              />
                             ))}
                           </div>
                         </div>
