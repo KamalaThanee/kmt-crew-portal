@@ -11,6 +11,8 @@ import {
   generateDoNumber,
   generateInventoryCode,
   getAtomicDeleteMessage,
+  getDoOpenErrorMessage,
+  getDoStorageFileRef,
   getRestockMonthOptions,
   groupInventoryByCategory,
   groupRestockBatches,
@@ -196,32 +198,12 @@ function InventoryContent() {
   const openDoDocument = async (receiptUrl: string) => {
     if (!receiptUrl) return toast.error('No DO file attached')
 
-    const getStorageFileRef = (value: string) => {
-      const directPath = value.match(/^receipts\/(.+)$/)
-      if (directPath) return { bucket: DO_BUCKET, path: directPath[1] }
-
-      const legacyDoFilesPath = value.match(/^do-files\/(.+)$/)
-      if (legacyDoFilesPath) return null
-
-      try {
-        const url = new URL(value)
-        const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/receipts\/(.+)$/)
-        return match?.[1] ? { bucket: DO_BUCKET, path: decodeURIComponent(match[1]) } : null
-      } catch {
-        return null
-      }
-    }
-
-    const fileRef = getStorageFileRef(receiptUrl)
+    const fileRef = getDoStorageFileRef(receiptUrl)
 
     if (fileRef?.path) {
       const { data, error } = await supabase.storage.from(fileRef.bucket).createSignedUrl(fileRef.path, 60)
       if (error) {
-        const message = String(error.message || '').toLowerCase()
-        if (message.includes('not found')) {
-          return toast.error('DO file was not found in storage. This older record may point to a file that was never uploaded.')
-        }
-        return toast.error(error.message || 'Unable to open DO file')
+        return toast.error(getDoOpenErrorMessage(error.message))
       }
       window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
       return

@@ -130,6 +130,30 @@ export function getAtomicDeleteMessage(message: string) {
   return message || 'Unable to delete restock history'
 }
 
+export function getDoStorageFileRef(value: string) {
+  const directPath = value.match(/^receipts\/(.+)$/)
+  if (directPath) return { bucket: DO_BUCKET, path: directPath[1] }
+
+  const legacyDoFilesPath = value.match(/^do-files\/(.+)$/)
+  if (legacyDoFilesPath) return null
+
+  try {
+    const url = new URL(value)
+    const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/receipts\/(.+)$/)
+    return match?.[1] ? { bucket: DO_BUCKET, path: decodeURIComponent(match[1]) } : null
+  } catch {
+    return null
+  }
+}
+
+export function getDoOpenErrorMessage(message: string) {
+  const normalized = String(message || '').toLowerCase()
+  if (normalized.includes('not found')) {
+    return 'DO file was not found in storage. This older record may point to a file that was never uploaded.'
+  }
+  return message || 'Unable to open DO file'
+}
+
 export function groupRestockBatches(history: any[], restockMonthFilter: string) {
   const filtered = history.filter((item) => {
     if (restockMonthFilter === 'all') return true
