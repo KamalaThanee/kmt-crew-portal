@@ -2,14 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { ProfileMenu } from '@/components/navbar/ProfileMenu';
 import { PushNudge } from '@/components/navbar/PushNudge';
 import {
   ArrowRight,
   Bell,
   CheckCircle2,
   FileBadge,
-  LogOut,
-  Settings,
   ShieldCheck,
   ShoppingCart,
   User,
@@ -393,40 +392,17 @@ export default function Navbar() {
             </button>
 
             {showProfile && (
-              <div className="absolute right-0 top-12 w-64 bg-zinc-900 border border-orange-500/20 rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 z-[110]">
-                <div className="p-6 bg-black/40 border-b border-white/5">
-                  <p className="text-white font-bold text-sm truncate">{user?.full_name}</p>
-                  <p className="text-orange-500 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p>
-                </div>
-                <div className="p-2 space-y-1">
-                  {oneSignalStatus.optedIn !== 'true' && (
-                    <button
-                      onClick={() => handleEnablePush(false)}
-                      className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-emerald-300 hover:text-white hover:bg-emerald-600/10 rounded-2xl transition-all uppercase tracking-widest"
-                    >
-                      <Bell size={16} /> Enable Push
-                    </button>
-                  )}
-                  {isAdmin && (
-                    <Link
-                      href="/admin/settings"
-                      onClick={() => setShowProfile(false)}
-                      className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-zinc-400 hover:text-white hover:bg-orange-600/10 rounded-2xl transition-all uppercase tracking-widest"
-                    >
-                      <Settings size={16} /> Admin Panel
-                    </Link>
-                  )}
-                  <button
-                    onClick={() => {
-                      logout();
-                      router.push('/login');
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-4 text-xs text-red-400 font-black uppercase tracking-widest hover:bg-red-500/10 rounded-2xl transition-all text-left"
-                  >
-                    <LogOut size={16} /> Logout
-                  </button>
-                </div>
-              </div>
+              <ProfileMenu
+                user={user}
+                isAdmin={isAdmin}
+                pushOptedIn={oneSignalStatus.optedIn === 'true'}
+                onEnablePush={() => handleEnablePush(false)}
+                onClose={() => setShowProfile(false)}
+                onLogout={() => {
+                  logout();
+                  router.push('/login');
+                }}
+              />
             )}
           </div>
         </div>
