@@ -1,32 +1,14 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ShoppingCart, X, Trash2, PackageCheck, Save, Users, ShieldAlert, AlertTriangle, Loader2, Lock, History as HistoryIcon, XCircle } from 'lucide-react';
+import { ShoppingCart, X, Trash2, PackageCheck, Save, ShieldAlert, Loader2, Lock, History as HistoryIcon, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter, insertPpeRequest } from '@/lib/ppeRequests';
 import { deductPpeStock } from '@/lib/ppeStock';
 import { notifyOneSignal } from '@/lib/onesignalClient';
 import { isAdminRole } from '@/lib/roles';
-
-const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
-
-async function ensureDirectIssueTimeline(requestId: unknown, approverName: string, approvedAt: string) {
-  if (!requestId || !approverName) return;
-
-  const { error } = await supabase
-    .from('ppe_requests')
-    .update({
-      approved_by_name: approverName,
-      approved_at: approvedAt,
-      received_at: approvedAt,
-    })
-    .eq('id', requestId);
-
-  if (error) {
-    console.warn('Unable to persist direct issue timeline metadata:', error.message);
-  }
-}
+import { ensureDirectIssueTimeline, getPersonalQuotaViolation, isCrewActive, normalizeCartText as normalize } from '@/lib/cartDrawer';
+import { DirectIssuePanel } from '@/components/cart/DirectIssuePanel';
 
 export default function CartDrawer() {
   const [isOpen, setIsOpen] = useState(false);
@@ -106,6 +88,7 @@ export default function CartDrawer() {
   }, [loadData]);
 
   const personalViolation = useMemo(() => {
+    return getPersonalQuotaViolation({ cartItems, onBehalf, personalQuotas, user });
     if (onBehalf) return null;
     let violation = "";
     let suitInCart = 0; let bootInCart = 0;
@@ -218,21 +201,14 @@ export default function CartDrawer() {
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
           {user && isAdmin && (
-             <div className={`p-5 rounded-[32px] border transition-all ${onBehalf ? 'bg-orange-500 border-orange-400' : 'bg-zinc-900 border-white/5 shadow-xl'}`}>
-                <div className="flex items-center justify-between">
-                   <div className={`flex items-center gap-2 font-black text-[10px] uppercase tracking-widest ${onBehalf ? 'text-black' : 'text-orange-500'}`}><Users size={16}/> Direct Issue Mode</div>
-                   <input type="checkbox" checked={onBehalf} onChange={(e) => setOnBehalf(e.target.checked)} className="w-6 h-6 accent-black rounded-lg cursor-pointer" />
-                </div>
-                {onBehalf && (
-                   <div className="animate-in slide-in-from-top-2 mt-4 space-y-3">
-                      <select value={targetCrewId} onChange={(e) => setTargetCrewId(e.target.value)} className="w-full bg-black/50 border border-white/20 p-4 rounded-xl text-white text-xs font-bold outline-none focus:border-white">
-                         <option value="">-- Choose Member --</option>
-                         {crews.filter(c => c.id !== user.id).map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                      </select>
-                      <p className="text-[8px] text-black font-black uppercase tracking-tighter flex items-center gap-1"><AlertTriangle size={10}/> This action bypasses user quotas and deducts stock instantly.</p>
-                   </div>
-                )}
-             </div>
+            <DirectIssuePanel
+              crews={crews}
+              enabled={onBehalf}
+              targetCrewId={targetCrewId}
+              userId={user.id}
+              onEnabledChange={setOnBehalf}
+              onTargetCrewChange={setTargetCrewId}
+            />
           )}
 
           <div className="space-y-4">
