@@ -47,6 +47,7 @@ export function RestockHistoryPanel({
         </div>
       ) : restockBatches.map((batch) => {
         const expanded = expandedRestockBatches.includes(batch.id)
+        const receiptUrl = batch.receipt_url
 
         return (
           <div key={batch.id} className="bg-black/40 border border-white/5 rounded-[40px] overflow-hidden shadow-xl">
@@ -63,8 +64,8 @@ export function RestockHistoryPanel({
                 </div>
               </div>
               <div className="flex items-center gap-3 self-end md:self-auto">
-                {batch.receipt_url && (
-                  <button onClick={(e) => { e.stopPropagation(); onOpenDoDocument(batch.receipt_url) }} className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[10px] font-black text-emerald-300 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
+                {receiptUrl && (
+                  <button onClick={(e) => { e.stopPropagation(); onOpenDoDocument(receiptUrl) }} className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-[10px] font-black text-emerald-300 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
                     <ExternalLink size={14}/> View DO
                   </button>
                 )}
