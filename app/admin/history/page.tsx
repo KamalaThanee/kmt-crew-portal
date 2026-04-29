@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { SearchableSelect } from '@/components/history/SearchableSelect'
+import { StatusPill } from '@/components/history/StatusPill'
 import {
   PAGE_SIZE,
   type HistoryRow,
@@ -413,16 +414,6 @@ export default function AdminHistoryPage() {
           </thead>
           <tbody>
             {filteredRows.map((row, index) => {
-              const status = normalize(row.status || 'pending')
-              const statusTone =
-                status === 'approved'
-                  ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
-                  : status === 'rejected'
-                    ? 'text-rose-300 bg-rose-500/10 border-rose-500/20'
-                    : status === 'received'
-                      ? 'text-sky-300 bg-sky-500/10 border-sky-500/20'
-                      : 'text-amber-300 bg-amber-500/10 border-amber-500/20'
-
               return (
                 <tr
                   key={row.id}
@@ -432,9 +423,7 @@ export default function AdminHistoryPage() {
                   <td className="px-6 py-5 font-black text-white normal-case">{getCrewName(row)}</td>
                   <td className="px-6 py-5 font-semibold text-white normal-case">{getItemSummary(row)}</td>
                   <td className="px-6 py-5">
-                    <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest ${statusTone}`}>
-                      {status}
-                    </span>
+                    <StatusPill status={row.status} />
                   </td>
                   <td className="px-6 py-5 font-semibold text-zinc-300 normal-case">
                     {getStatusTimelineMeta(row, adminNameMap)}
@@ -459,14 +448,6 @@ export default function AdminHistoryPage() {
 
         {filteredRows.map((row) => {
           const status = normalize(row.status || 'pending')
-          const statusTone =
-            status === 'approved'
-              ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
-              : status === 'rejected'
-                ? 'text-rose-300 bg-rose-500/10 border-rose-500/20'
-                : status === 'received'
-                  ? 'text-sky-300 bg-sky-500/10 border-sky-500/20'
-                  : 'text-amber-300 bg-amber-500/10 border-amber-500/20'
 
           return (
             <div key={row.id} className="space-y-4 rounded-[32px] border border-white/6 bg-zinc-950/45 p-5 shadow-xl">
@@ -477,9 +458,7 @@ export default function AdminHistoryPage() {
                     Requested on {formatDateTime(row.created_at)}
                   </p>
                 </div>
-                <div className={`inline-flex w-fit rounded-full border px-4 py-2 text-[10px] font-black uppercase tracking-widest ${statusTone}`}>
-                  {status}
-                </div>
+                <StatusPill status={row.status} className="w-fit px-4 py-2" />
               </div>
 
               <div className="rounded-2xl border border-sky-500/10 bg-sky-500/[0.05] p-4">
