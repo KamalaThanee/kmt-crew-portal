@@ -1,11 +1,12 @@
 'use client'
 
 import { ChevronRight, User } from 'lucide-react'
+import type { CrewMember } from '@/lib/crewTypes'
 import { isCrewActive } from '@/lib/settings'
 
 type CrewCardProps = {
-  crew: any
-  onClick: (crew: any) => void
+  crew: CrewMember
+  onClick: (crew: CrewMember) => void
 }
 
 export function CrewCard({ crew, onClick }: CrewCardProps) {
