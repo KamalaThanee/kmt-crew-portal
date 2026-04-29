@@ -4,27 +4,28 @@ import { generateDoNumber } from '@/lib/inventory'
 import { IssueLogPanel } from '@/components/inventory/IssueLogPanel'
 import { RestockEntryPanel } from '@/components/inventory/RestockEntryPanel'
 import { RestockHistoryPanel } from '@/components/inventory/RestockHistoryPanel'
+import type { InventoryItem, RestockBatch, RestockEntryRow, RestockLine, StockTransaction } from '@/lib/inventoryTypes'
 
 type ReceiveShipmentContentProps = {
   doFile: File | null
   doNumber: string
   expandedRestockBatches: string[]
-  inventory: any[]
+  inventory: InventoryItem[]
   isProcessingRestock: boolean
   isRefreshingTransactions: boolean
-  restockBatches: any[]
-  restockEntries: any[]
+  restockBatches: RestockBatch[]
+  restockEntries: RestockEntryRow[]
   restockMonthFilter: string
   restockMonthOptions: string[]
   restockView: 'entry' | 'history' | 'issue-log'
   stockTransactionError: string
-  stockTransactions: any[]
+  stockTransactions: StockTransaction[]
   onAddRow: () => void
-  onDeleteRestockBatch: (batch: any) => void
-  onDeleteRestockLine: (line: any) => void
+  onDeleteRestockBatch: (batch: RestockBatch) => void
+  onDeleteRestockLine: (line: RestockLine) => void
   onDoFileChange: (file: File | null) => void
   onDoNumberChange: (value: string) => void
-  onExportRestockBatch: (batch: any) => void
+  onExportRestockBatch: (batch: RestockBatch) => void
   onMonthFilterChange: (value: string) => void
   onOpenDoDocument: (receiptUrl: string) => void
   onRefreshTransactions: () => void

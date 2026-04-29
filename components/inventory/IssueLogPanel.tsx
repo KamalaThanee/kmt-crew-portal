@@ -1,5 +1,7 @@
+import type { StockTransaction } from '@/lib/inventoryTypes'
+
 type IssueLogPanelProps = {
-  stockTransactions: any[]
+  stockTransactions: StockTransaction[]
   stockTransactionError: string
   isRefreshingTransactions: boolean
   onRefreshTransactions: () => void

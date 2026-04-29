@@ -1,18 +1,19 @@
 'use client'
 
 import { ChevronDown, Download, ExternalLink, FileText, Trash2 } from 'lucide-react'
+import type { RestockBatch, RestockLine } from '@/lib/inventoryTypes'
 
 type RestockHistoryPanelProps = {
-  restockBatches: any[]
+  restockBatches: RestockBatch[]
   restockMonthFilter: string
   restockMonthOptions: string[]
   expandedRestockBatches: string[]
   onMonthFilterChange: (value: string) => void
   onToggleBatch: (batchId: string) => void
   onOpenDoDocument: (receiptUrl: string) => void
-  onExportRestockBatch: (batch: any) => void
-  onDeleteRestockBatch: (batch: any) => void
-  onDeleteRestockLine: (line: any) => void
+  onExportRestockBatch: (batch: RestockBatch) => void
+  onDeleteRestockBatch: (batch: RestockBatch) => void
+  onDeleteRestockLine: (line: RestockLine) => void
 }
 
 export function RestockHistoryPanel({
@@ -44,7 +45,7 @@ export function RestockHistoryPanel({
         <div className="rounded-[40px] border border-white/5 bg-black/40 p-12 text-center text-zinc-600 font-black tracking-widest">
           No restock history in this period
         </div>
-      ) : restockBatches.map((batch: any) => {
+      ) : restockBatches.map((batch) => {
         const expanded = expandedRestockBatches.includes(batch.id)
 
         return (
@@ -106,7 +107,7 @@ export function RestockHistoryPanel({
                   <span className="text-right">Qty</span>
                   <span></span>
                 </div>
-                {batch.lines.map((line: any, index: number) => (
+                {batch.lines.map((line, index: number) => (
                   <div key={line.id} className="grid grid-cols-1 md:grid-cols-[80px_1fr_140px_140px_110px_56px] md:items-center gap-3 rounded-2xl bg-white/5 px-5 py-4">
                     <p className="hidden md:block text-zinc-500 font-black">#{index + 1}</p>
                     <div>

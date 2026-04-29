@@ -1,9 +1,10 @@
 import { Box, ChevronDown, ChevronRight, Edit } from 'lucide-react'
+import type { InventoryItem } from '@/lib/inventoryTypes'
 
 type InventoryListProps = {
   expandedCats: string[]
-  groupedInventory: Record<string, any[]>
-  onEditItem: (item: any) => void
+  groupedInventory: Record<string, InventoryItem[]>
+  onEditItem: (item: InventoryItem) => void
   onExpandedCatsChange: (categories: string[]) => void
 }
 
@@ -36,7 +37,7 @@ export function InventoryList({
                   </thead>
                   <tbody>
                     {items.map((item) => {
-                      const isLow = item.quantity <= item.threshold
+                      const isLow = Number(item.quantity || 0) <= Number(item.threshold || 0)
 
                       return (
                         <tr key={item.id} className="bg-white/5 hover:bg-orange-600/10 transition-all rounded-2xl group">
