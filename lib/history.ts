@@ -75,6 +75,87 @@ export const MINIMAL_HISTORY_COLUMNS = [
 
 export const normalize = (value: string) => String(value || '').toLowerCase().trim()
 
+type HistoryQueryOptions = {
+  supabaseClient: any
+  statusFilter: string
+  monthFilter: string
+  yearFilter: string
+  searchCrew: string
+  page: number
+  includeStatusFilter?: boolean
+  paginate?: boolean
+}
+
+const isMissingHistoryColumn = (error: unknown) => {
+  const message = String((error as { message?: string })?.message || '').toLowerCase()
+  return (
+    message.includes('column') &&
+    (message.includes('approved_at') ||
+      message.includes('rejected_at') ||
+      message.includes('approved_by_name') ||
+      message.includes('requester_name') ||
+      message.includes('full_name') ||
+      message.includes('schema cache'))
+  )
+}
+
+const buildHistoryQuery = (
+  columns: string,
+  legacySchema: boolean,
+  {
+    supabaseClient,
+    statusFilter,
+    monthFilter,
+    yearFilter,
+    searchCrew,
+    page,
+    includeStatusFilter = true,
+    paginate = true,
+  }: HistoryQueryOptions,
+) => {
+  let query = supabaseClient
+    .from('ppe_requests')
+    .select(columns, { count: 'exact' })
+    .order('created_at', { ascending: false })
+
+  if (includeStatusFilter && statusFilter !== 'all') query = query.eq('status', statusFilter)
+  if (yearFilter !== 'all') {
+    const startMonth = monthFilter !== 'all' ? Number(monthFilter) - 1 : 0
+    const endMonth = monthFilter !== 'all' ? startMonth + 1 : 12
+    const start = new Date(Number(yearFilter), startMonth, 1).toISOString()
+    const end = new Date(Number(yearFilter), endMonth, 1).toISOString()
+    query = query.gte('created_at', start).lt('created_at', end)
+  }
+
+  const crewQuery = normalize(searchCrew)
+  if (crewQuery) {
+    const safeCrewQuery = crewQuery.replace(/[,%]/g, ' ')
+    query = legacySchema
+      ? query.ilike('crew_name', `%${safeCrewQuery}%`)
+      : query.or(
+          `crew_name.ilike.%${safeCrewQuery}%,requester_name.ilike.%${safeCrewQuery}%,full_name.ilike.%${safeCrewQuery}%`,
+        )
+  }
+
+  if (!paginate) return query.limit(1000)
+
+  const from = page * PAGE_SIZE
+  const to = from + PAGE_SIZE - 1
+  return query.range(from, to)
+}
+
+export const runHistoryQuery = async (options: HistoryQueryOptions) => {
+  let result = await buildHistoryQuery(HISTORY_COLUMNS, false, options)
+  if (result.error && isMissingHistoryColumn(result.error)) {
+    result = await buildHistoryQuery(LEGACY_HISTORY_COLUMNS, true, options)
+  }
+  if (result.error && isMissingHistoryColumn(result.error)) {
+    result = await buildHistoryQuery(MINIMAL_HISTORY_COLUMNS, true, options)
+  }
+
+  return result
+}
+
 export const formatDateTime = (value?: string | null) => {
   if (!value) return '-'
   return new Date(value).toLocaleString('en-GB')

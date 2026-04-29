@@ -4,9 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { SearchableSelect } from '@/components/history/SearchableSelect'
 import {
-  HISTORY_COLUMNS,
-  LEGACY_HISTORY_COLUMNS,
-  MINIMAL_HISTORY_COLUMNS,
   PAGE_SIZE,
   type HistoryRow,
   formatDateTime,
@@ -15,6 +12,7 @@ import {
   getItemSummary,
   getStatusTimelineMeta,
   normalize,
+  runHistoryQuery,
 } from '@/lib/history'
 import { supabase } from '@/lib/supabase'
 import { isAdminRole } from '@/lib/roles'
@@ -106,74 +104,20 @@ export default function AdminHistoryPage() {
 
     let active = true
 
-    const buildHistoryQuery = (
-      columns: string,
-      legacySchema = false,
-      options: { includeStatusFilter?: boolean; paginate?: boolean } = {},
-    ) => {
-      const { includeStatusFilter = true, paginate = true } = options
-      let query = supabase
-        .from('ppe_requests')
-        .select(columns, { count: 'exact' })
-        .order('created_at', { ascending: false })
-
-      if (includeStatusFilter && statusFilter !== 'all') query = query.eq('status', statusFilter)
-      if (yearFilter !== 'all') {
-        const startMonth = monthFilter !== 'all' ? Number(monthFilter) - 1 : 0
-        const endMonth = monthFilter !== 'all' ? startMonth + 1 : 12
-        const start = new Date(Number(yearFilter), startMonth, 1).toISOString()
-        const end = new Date(Number(yearFilter), endMonth, 1).toISOString()
-        query = query.gte('created_at', start).lt('created_at', end)
-      }
-
-      const crewQuery = normalize(searchCrew)
-      if (crewQuery) {
-        const safeCrewQuery = crewQuery.replace(/[,%]/g, ' ')
-        query = legacySchema
-          ? query.ilike('crew_name', `%${safeCrewQuery}%`)
-          : query.or(
-              `crew_name.ilike.%${safeCrewQuery}%,requester_name.ilike.%${safeCrewQuery}%,full_name.ilike.%${safeCrewQuery}%`,
-            )
-      }
-
-      if (!paginate) return query.limit(1000)
-
-      const from = page * PAGE_SIZE
-      const to = from + PAGE_SIZE - 1
-      return query.range(from, to)
-    }
-
-    const isMissingHistoryColumn = (error: unknown) => {
-      const message = String((error as { message?: string })?.message || '').toLowerCase()
-      return (
-        message.includes('column') &&
-        (message.includes('approved_at') ||
-          message.includes('rejected_at') ||
-          message.includes('approved_by_name') ||
-          message.includes('requester_name') ||
-          message.includes('full_name') ||
-          message.includes('schema cache'))
-      )
-    }
-
-    const runHistoryQuery = async (options: { includeStatusFilter?: boolean; paginate?: boolean }) => {
-      let result = await buildHistoryQuery(HISTORY_COLUMNS, false, options)
-      if (result.error && isMissingHistoryColumn(result.error)) {
-        result = await buildHistoryQuery(LEGACY_HISTORY_COLUMNS, true, options)
-      }
-      if (result.error && isMissingHistoryColumn(result.error)) {
-        result = await buildHistoryQuery(MINIMAL_HISTORY_COLUMNS, true, options)
-      }
-
-      return result
-    }
-
     const fetchRows = async () => {
       setIsFetchingRows(true)
+      const queryContext = {
+        supabaseClient: supabase,
+        statusFilter,
+        monthFilter,
+        yearFilter,
+        searchCrew,
+        page,
+      }
 
       const [result, summaryResult] = await Promise.all([
-        runHistoryQuery({ includeStatusFilter: true, paginate: true }),
-        runHistoryQuery({ includeStatusFilter: false, paginate: false }),
+        runHistoryQuery({ ...queryContext, includeStatusFilter: true, paginate: true }),
+        runHistoryQuery({ ...queryContext, includeStatusFilter: false, paginate: false }),
       ])
 
       if (!active) return
