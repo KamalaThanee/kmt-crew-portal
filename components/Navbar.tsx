@@ -80,6 +80,24 @@ export default function Navbar() {
   }, []);
 
   const totalPersonalAdminUpdates = (notifData.personalUpdates || []).length;
+  const handleEnablePush = async (hideNudgeOnSuccess = false) => {
+    setPushActionMessage('Requesting permission...');
+    try {
+      const status = await requestOneSignalPermission();
+      setOneSignalStatus(status);
+      setPushActionMessage(status.message || '');
+      if (status.permission === 'true' && status.optedIn === 'true') {
+        if (hideNudgeOnSuccess) setShowPushNudge(false);
+        toast.success('Push notifications enabled');
+      } else {
+        toast.message(status.message || 'Notification permission was not granted');
+      }
+    } catch (error: any) {
+      const message = error?.message || 'Unable to request push permission';
+      setPushActionMessage(message);
+      toast.error(message);
+    }
+  };
 
   if (!mounted || ['/login', '/register'].includes(pathname)) return null;
 
@@ -98,24 +116,7 @@ export default function Navbar() {
               </p>
               <div className="mt-3 flex gap-2">
                 <button
-                  onClick={async () => {
-                    setPushActionMessage('Requesting permission...');
-                    try {
-                      const status = await requestOneSignalPermission();
-                      setOneSignalStatus(status);
-                      setPushActionMessage(status.message || '');
-                      if (status.optedIn === 'true') {
-                        setShowPushNudge(false);
-                        toast.success('Push notifications enabled');
-                      } else {
-                        toast.message(status.message || 'Notification permission was not granted');
-                      }
-                    } catch (error: any) {
-                      const message = error?.message || 'Unable to request push permission';
-                      setPushActionMessage(message);
-                      toast.error(message);
-                    }
-                  }}
+                  onClick={() => handleEnablePush(true)}
                   className="rounded-xl bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black"
                 >
                   Enable
@@ -426,23 +427,7 @@ export default function Navbar() {
                 <div className="p-2 space-y-1">
                   {oneSignalStatus.optedIn !== 'true' && (
                     <button
-                      onClick={async () => {
-                        setPushActionMessage('Requesting permission...');
-                        try {
-                          const status = await requestOneSignalPermission();
-                          setOneSignalStatus(status);
-                          setPushActionMessage(status.message || '');
-                          if (status.permission === 'true' && status.optedIn === 'true') {
-                            toast.success('Push notifications enabled');
-                          } else {
-                            toast.message(status.message || 'Notification permission was not granted');
-                          }
-                        } catch (error: any) {
-                          const message = error?.message || 'Unable to request push permission';
-                          setPushActionMessage(message);
-                          toast.error(message);
-                        }
-                      }}
+                      onClick={() => handleEnablePush(false)}
                       className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-emerald-300 hover:text-white hover:bg-emerald-600/10 rounded-2xl transition-all uppercase tracking-widest"
                     >
                       <Bell size={16} /> Enable Push
