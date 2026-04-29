@@ -110,6 +110,26 @@ export function getRestockMonthOptions(history: any[]) {
   return [...options].sort().reverse()
 }
 
+export function generateDoNumber() {
+  const now = new Date()
+  const date = now.toISOString().slice(0, 10).replace(/-/g, '')
+  const time = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0')
+  return `DO-${date}-${time}`
+}
+
+export function isMissingRestockColumn(error: unknown) {
+  const message = String((error as { message?: string })?.message || '').toLowerCase()
+  return message.includes('schema cache') || message.includes('column')
+}
+
+export function getAtomicDeleteMessage(message: string) {
+  const normalized = message.toLowerCase()
+  if (normalized.includes('delete_restock_history_lines') || normalized.includes('function') || normalized.includes('schema cache')) {
+    return 'Run sql/restock_do_batches.sql in Supabase first, then try deleting again.'
+  }
+  return message || 'Unable to delete restock history'
+}
+
 export function groupRestockBatches(history: any[], restockMonthFilter: string) {
   const filtered = history.filter((item) => {
     if (restockMonthFilter === 'all') return true

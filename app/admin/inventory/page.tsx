@@ -8,10 +8,13 @@ import {
   buildInventoryExportRows,
   buildRestockBatchExportRows,
   DO_BUCKET,
+  generateDoNumber,
   generateInventoryCode,
+  getAtomicDeleteMessage,
   getRestockMonthOptions,
   groupInventoryByCategory,
   groupRestockBatches,
+  isMissingRestockColumn,
 } from '@/lib/inventory'
 import { EditItemModal } from '@/components/inventory/EditItemModal'
 import { InventoryControls } from '@/components/inventory/InventoryControls'
@@ -152,18 +155,6 @@ function InventoryContent() {
   const addRow = () => setRestockEntries([...restockEntries, { id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }])
   const removeRow = (id: number) => setRestockEntries(restockEntries.filter(e => e.id !== id))
 
-  const generateDoNumber = () => {
-    const now = new Date()
-    const date = now.toISOString().slice(0, 10).replace(/-/g, '')
-    const time = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0')
-    return `DO-${date}-${time}`
-  }
-
-  const isMissingRestockColumn = (error: unknown) => {
-    const message = String((error as { message?: string })?.message || '').toLowerCase()
-    return message.includes('schema cache') || message.includes('column')
-  }
-
   const insertRestockHistory = async (row: Record<string, any>) => {
     const result = await supabase.from('restock_history').insert(row)
     if (!result.error) return result
@@ -171,14 +162,6 @@ function InventoryContent() {
 
     const { batch_id: _batchId, do_number: _doNumber, color: _color, size: _size, ...legacyRow } = row
     return supabase.from('restock_history').insert(legacyRow)
-  }
-
-  const getAtomicDeleteMessage = (message: string) => {
-    const normalized = message.toLowerCase()
-    if (normalized.includes('delete_restock_history_lines') || normalized.includes('function') || normalized.includes('schema cache')) {
-      return 'Run sql/restock_do_batches.sql in Supabase first, then try deleting again.'
-    }
-    return message || 'Unable to delete restock history'
   }
 
   const deleteRestockIds = async (ids: string[]) => {
