@@ -3,9 +3,11 @@ import { useEffect, useMemo, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { AlertTriangle, CheckCircle, FileText, Loader2, Upload, X } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
 import { extractCertPolicy, normalizeText, resolveExpiryDate } from '@/lib/certificates'
+import { CertificateScanReview } from '@/components/certificates/CertificateScanReview'
+import { CertificateUploadDropzone } from '@/components/certificates/CertificateUploadDropzone'
 
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at
 
@@ -236,22 +238,7 @@ function UploadContent() {
       </div>
 
       <div className="space-y-6">
-        <label className="flex flex-col items-center justify-center w-full h-72 border-2 border-dashed border-white/10 rounded-[40px] cursor-pointer hover:bg-white/5 transition-all relative overflow-hidden bg-slate-900">
-          {preview ? (
-            <img src={preview} className="absolute inset-0 w-full h-full object-contain p-6" alt="Certificate preview" />
-          ) : file ? (
-            <div className="text-center p-6">
-              <FileText size={48} className="mx-auto text-emerald-500 mb-2" />
-              <p className="text-emerald-500 font-bold text-xs truncate max-w-xs">{file.name}</p>
-            </div>
-          ) : (
-            <div className="text-center">
-              <Upload className="mx-auto text-blue-500 mb-4" size={32} />
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tap to Scan Certificate</p>
-            </div>
-          )}
-          <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleFileChange} />
-        </label>
+        <CertificateUploadDropzone file={file} preview={preview} onFileChange={handleFileChange} />
 
         {isScanning && (
           <div className="flex flex-col items-center justify-center gap-3 p-8 bg-blue-600/5 border border-blue-500/10 rounded-[32px] animate-pulse">
@@ -261,87 +248,15 @@ function UploadContent() {
         )}
 
         {file && !isScanning && (
-          <div className="bg-slate-900 border border-white/10 rounded-[40px] p-8 space-y-6 animate-in slide-in-from-bottom-4 shadow-2xl">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Issue Date</label>
-                <input
-                  type="date"
-                  className="w-full bg-black border border-white/10 p-4 rounded-2xl outline-none focus:border-blue-500 text-white font-bold"
-                  value={finalData.issueDate}
-                  onChange={(e) =>
-                    setFinalData((prev) => ({
-                      ...prev,
-                      issueDate: e.target.value,
-                      expiryDate: scanResult?.expiryFoundInDocument
-                        ? prev.expiryDate
-                        : resolveExpiryDate({
-                            issueDate: e.target.value,
-                            expiryDate: '',
-                            refreshYears: certPolicy.refreshYears,
-                            noExpiry: certPolicy.noExpiry,
-                          }),
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Expiry Date</label>
-                <input
-                  type="date"
-                  className="w-full bg-black border border-white/10 p-4 rounded-2xl outline-none focus:border-blue-500 text-white font-bold"
-                  value={finalData.expiryDate}
-                  onChange={(e) => setFinalData((prev) => ({ ...prev, expiryDate: e.target.value }))}
-                />
-              </div>
-            </div>
-
-            {scanResult && (
-              <>
-                <div className={`p-5 rounded-3xl flex items-start gap-4 border ${scanResult.personNameMatch ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
-                  {scanResult.personNameMatch ? <CheckCircle className="text-emerald-500 shrink-0" /> : <AlertTriangle className="text-red-500 shrink-0" />}
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-black uppercase text-white">{scanResult.personNameMatch ? 'Crew Name Matched' : 'Crew Name Mismatch'}</p>
-                    <p className="text-[10px] text-slate-400 font-bold leading-relaxed">
-                      Detected: {scanResult.detectedPersonName || 'Unknown'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className={`p-5 rounded-3xl flex items-start gap-4 border ${scanResult.certTypeMatch ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
-                  {scanResult.certTypeMatch ? <CheckCircle className="text-emerald-500 shrink-0" /> : <AlertTriangle className="text-red-500 shrink-0" />}
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-black uppercase text-white">{scanResult.certTypeMatch ? 'Certificate Type Matched' : 'Certificate Type Mismatch'}</p>
-                    <p className="text-[10px] text-slate-400 font-bold leading-relaxed">
-                      Detected: {scanResult.detectedCertName || 'Unknown'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-5 rounded-3xl border border-white/10 bg-black/30">
-                  <p className="text-[10px] font-black uppercase text-white">AI Note</p>
-                  <p className="text-[10px] text-slate-400 font-bold leading-relaxed mt-2">{scanResult.note}</p>
-                  {scanResult.expiryDerivedFromPolicy && (
-                    <p className="text-[10px] text-amber-400 font-bold mt-3">
-                      Expiry was derived from `cert_master.refresh_years` / no-expiry policy because the document did not clearly provide one.
-                    </p>
-                  )}
-                  {certPolicy.noExpiry && (
-                    <p className="text-[10px] text-blue-400 font-bold mt-3">This certificate is configured as no-expiry.</p>
-                  )}
-                </div>
-              </>
-            )}
-
-            <button
-              onClick={handleSave}
-              disabled={isSaving || !canSave}
-              className="w-full py-5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-3xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all"
-            >
-              {isSaving ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />}
-              Confirm & Save
-            </button>
-          </div>
+          <CertificateScanReview
+            canSave={canSave}
+            certPolicy={certPolicy}
+            finalData={finalData}
+            isSaving={isSaving}
+            scanResult={scanResult}
+            onFinalDataChange={setFinalData}
+            onSave={handleSave}
+          />
         )}
       </div>
     </div>
