@@ -10,25 +10,40 @@ import { ApprovalActionModals } from '@/components/approvals/ApprovalActionModal
 import { ApprovalRequestCard } from '@/components/approvals/ApprovalRequestCard'
 import { toast } from 'sonner'
 import { ShieldCheck } from 'lucide-react'
+import type { PpeRequest, PpeRequestUpdateResult } from '@/lib/approvalTypes'
+
+type StoredCrewUser = {
+  id?: string
+  full_name?: string
+  position?: string
+}
+
+const readStoredUser = (): StoredCrewUser => {
+  try {
+    return JSON.parse(localStorage.getItem('kmt_user') || '{}') as StoredCrewUser
+  } catch {
+    return {}
+  }
+}
 
 export default function ApprovalsPage() {
   const router = useRouter()
-  const [requests, setRequests] = useState<any[]>([])
+  const [requests, setRequests] = useState<PpeRequest[]>([])
   const [loading, setLoading] = useState(true)
-  const [approvingReq, setApprovingReq] = useState<any>(null)
-  const [rejectingReq, setRejectingReq] = useState<any>(null)
+  const [approvingReq, setApprovingReq] = useState<PpeRequest | null>(null)
+  const [rejectingReq, setRejectingReq] = useState<PpeRequest | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
-  const [pastHistory, setPastHistory] = useState<any[]>([])
+  const [pastHistory, setPastHistory] = useState<PpeRequest[]>([])
   const [focusRequestId, setFocusRequestId] = useState<string | null>(null)
 
   const fetchData = async () => {
     const { data: reqs } = await supabase.from('ppe_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false })
-    if (reqs) setRequests(reqs)
+    if (reqs) setRequests(reqs as PpeRequest[])
     const { data: past } = await supabase.from('ppe_requests').select('*').neq('status', 'pending').order('created_at', { ascending: false })
-    if (past) setPastHistory(past)
+    if (past) setPastHistory(past as PpeRequest[])
     setLoading(false)
   }
 
@@ -36,7 +51,7 @@ export default function ApprovalsPage() {
     const checkAuth = async () => {
       const userStr = localStorage.getItem('kmt_user')
       if (!userStr) { router.replace('/login'); return; }
-      const user = JSON.parse(userStr)
+      const user = JSON.parse(userStr) as StoredCrewUser
       if (!isAdminRole(user.position)) { router.replace('/ppe'); return; }
       fetchData();
     }
@@ -52,16 +67,16 @@ export default function ApprovalsPage() {
   const updateRequestStatus = async (
     requestId: string,
     status: 'approved' | 'rejected',
-    extra: Record<string, any> = {},
+    extra: Partial<PpeRequest> = {},
   ) => {
-    const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
-    const payload = { status, ...extra } as Record<string, any>
+    const admin = readStoredUser()
+    const payload = { status, ...extra } as Record<string, unknown>
     if (isUuid(admin.id)) payload.approved_by = admin.id
     if (admin.full_name) payload.approved_by_name = admin.full_name
     if (status === 'approved') payload.approved_at = new Date().toISOString()
     if (status === 'rejected') payload.rejected_at = new Date().toISOString()
 
-    const variants: Record<string, any>[] = [payload]
+    const variants: Record<string, unknown>[] = [payload]
     let shrinkingPayload = { ...payload }
     for (const column of ['approved_by', 'approved_at', 'rejected_at', 'approved_by_name']) {
       if (!(column in shrinkingPayload)) continue
@@ -70,7 +85,7 @@ export default function ApprovalsPage() {
       variants.push(shrinkingPayload)
     }
 
-    let lastResult: any = null
+    let lastResult: PpeRequestUpdateResult = { data: null, error: null }
     const seen = new Set<string>()
     for (const variant of variants) {
       const key = JSON.stringify(Object.keys(variant).sort())
@@ -101,14 +116,14 @@ export default function ApprovalsPage() {
     return lastResult
   }
 
-  const getSmartContext = async (req: any, itemName: string) => {
+  const getSmartContext = async (req: PpeRequest, itemName: string) => {
     const requestIdentity = await getPpeRequestIdentity(req)
 
     for (const past of pastHistory) {
       const pastIdentity = await getPpeRequestIdentity(past)
       if (pastIdentity === requestIdentity && past.status !== 'rejected') {
-        const found = past.items?.find((i: any) => i.item_name === itemName)
-        if (found) return `Last issued: ${new Date(past.created_at).toLocaleDateString('en-GB')}`
+        const found = past.items?.find((item) => item.item_name === itemName)
+        if (found) return `Last issued: ${past.created_at ? new Date(past.created_at).toLocaleDateString('en-GB') : '-'}`
       }
     }
     return "First time request"
@@ -122,9 +137,10 @@ export default function ApprovalsPage() {
     const buildContextMap = async () => {
       const entries = await Promise.all(
         requests.flatMap((req) =>
-          (req.items || []).map(async (item: any) => {
-            const key = `${req.id}:${item.item_name}`
-            const value = await getSmartContext(req, item.item_name)
+          (req.items || []).map(async (item) => {
+            const itemName = item.item_name || 'Unknown Item'
+            const key = `${req.id}:${itemName}`
+            const value = await getSmartContext(req, itemName)
             return [key, value] as const
           }),
         ),
@@ -149,14 +165,14 @@ export default function ApprovalsPage() {
     target.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [focusRequestId, requests])
 
-  const handleApprove = async (req: any) => {
+  const handleApprove = async (req: PpeRequest) => {
     setIsSubmitting(true)
     setActiveRequestId(req.id)
     setActionMessage(`Approving request ${String(req.id).slice(0, 8)}...`)
     try {
       const response = await Promise.race([
         updateRequestStatus(req.id, 'approved'),
-        new Promise<{ data: null; error: Error }>((resolve) =>
+        new Promise<PpeRequestUpdateResult>((resolve) =>
           setTimeout(() => resolve({ data: null, error: new Error('Request timed out after 10 seconds') }), 10000),
         ),
       ])
@@ -181,7 +197,7 @@ export default function ApprovalsPage() {
         crewId: req.crew_id,
         crewName: getApprovalCrewName(req),
         itemName: req.items?.[0]?.item_name || 'PPE request',
-        actorName: JSON.parse(localStorage.getItem('kmt_user') || '{}')?.full_name,
+        actorName: readStoredUser().full_name,
       })
       if (!pushResult?.ok || pushResult?.data?.skipped) {
         toast.warning(`Push not sent: ${pushResult?.error || pushResult?.data?.reason || 'check OneSignal logs'}`)
@@ -190,9 +206,10 @@ export default function ApprovalsPage() {
       toast.success('Request Approved!')
       setApprovingReq(null)
       fetchData()
-    } catch (error: any) {
-      setActionMessage(`Approve failed: ${error?.message || 'Unknown error'}`)
-      toast.error(`Approve failed: ${error?.message || 'Unknown error'}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      setActionMessage(`Approve failed: ${message}`)
+      toast.error(`Approve failed: ${message}`)
     } finally {
       setIsSubmitting(false)
       setActiveRequestId(null)
@@ -201,13 +218,14 @@ export default function ApprovalsPage() {
 
   const handleRejectSubmit = async () => {
     if (!rejectReason.trim()) return toast.error('Please provide a reason');
+    if (!rejectingReq) return toast.error('No request selected')
     setIsSubmitting(true)
     setActiveRequestId(rejectingReq.id)
     setActionMessage(`Rejecting request ${String(rejectingReq.id).slice(0, 8)}...`)
     try {
       const response = await Promise.race([
         updateRequestStatus(rejectingReq.id, 'rejected', { admin_remark: rejectReason.trim() }),
-        new Promise<{ data: null; error: Error }>((resolve) =>
+        new Promise<PpeRequestUpdateResult>((resolve) =>
           setTimeout(() => resolve({ data: null, error: new Error('Request timed out after 10 seconds') }), 10000),
         ),
       ])
@@ -232,7 +250,7 @@ export default function ApprovalsPage() {
         crewId: rejectingReq.crew_id,
         crewName: getApprovalCrewName(rejectingReq),
         itemName: rejectingReq.items?.[0]?.item_name || 'PPE request',
-        actorName: JSON.parse(localStorage.getItem('kmt_user') || '{}')?.full_name,
+        actorName: readStoredUser().full_name,
         reason: rejectReason.trim(),
       })
       if (!pushResult?.ok || pushResult?.data?.skipped) {
@@ -243,9 +261,10 @@ export default function ApprovalsPage() {
       setRejectingReq(null)
       setRejectReason('')
       fetchData()
-    } catch (error: any) {
-      setActionMessage(`Reject failed: ${error?.message || 'Unknown error'}`)
-      toast.error(`Reject failed: ${error?.message || 'Unknown error'}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      setActionMessage(`Reject failed: ${message}`)
+      toast.error(`Reject failed: ${message}`)
     } finally {
       setIsSubmitting(false)
       setActiveRequestId(null)

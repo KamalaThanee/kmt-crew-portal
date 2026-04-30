@@ -1,17 +1,18 @@
 'use client'
 
 import { getApprovalCrewName } from '@/lib/approvals'
+import type { PpeRequest } from '@/lib/approvalTypes'
 
 type ApprovalActionModalsProps = {
-  approvingRequest: any
-  rejectingRequest: any
+  approvingRequest: PpeRequest | null
+  rejectingRequest: PpeRequest | null
   rejectReason: string
   isSubmitting: boolean
   activeRequestId: string | null
   onRejectReasonChange: (value: string) => void
   onCancelApprove: () => void
   onCancelReject: () => void
-  onConfirmApprove: (request: any) => void
+  onConfirmApprove: (request: PpeRequest) => void
   onConfirmReject: () => void
 }
 
