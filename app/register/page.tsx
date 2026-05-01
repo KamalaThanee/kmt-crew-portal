@@ -18,8 +18,6 @@ export default function RegisterPage() {
   
   const [searchTerm, setSearchTerm] = useState('')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  const [profileFile, setProfileFile] = useState<File | null>(null)
-  const [profilePreviewUrl, setProfilePreviewUrl] = useState('')
   const [formData, setFormData] = useState({
     id: null as number | null,
     full_name: '',
@@ -27,7 +25,6 @@ export default function RegisterPage() {
     pin: '',
     email: '',
     phone: '',
-    profile_image_url: '',
     suit_color: '',
     suit_size: '',
     boot_size: ''
@@ -51,16 +48,6 @@ export default function RegisterPage() {
     init()
   }, [])
 
-  useEffect(() => {
-    if (!profileFile) {
-      setProfilePreviewUrl('')
-      return
-    }
-    const previewUrl = URL.createObjectURL(profileFile)
-    setProfilePreviewUrl(previewUrl)
-    return () => URL.revokeObjectURL(previewUrl)
-  }, [profileFile])
-
   const filtered = crewList.filter(c => c.full_name.toLowerCase().includes(searchTerm.toLowerCase()))
 
   const sortSizes = (arr: any[]) => {
@@ -82,26 +69,10 @@ export default function RegisterPage() {
       return
     }
 
-    let profileUrl = formData.profile_image_url.trim()
-
-    if (profileFile) {
-      const fileExt = profileFile.name.split('.').pop() || 'jpg'
-      const filePath = `crew-${formData.id}-${Date.now()}.${fileExt}`
-      const { error: uploadError } = await supabase.storage.from('profiles').upload(filePath, profileFile, { upsert: true })
-      if (uploadError) {
-        toast.error(`Upload failed: ${uploadError.message}`)
-        setSaving(false)
-        return
-      }
-      const { data: publicData } = supabase.storage.from('profiles').getPublicUrl(filePath)
-      profileUrl = publicData.publicUrl
-    }
-
     const { data, error } = await supabase.from('crews').update({
       pin: formData.pin,
       email: formData.email.trim(),
       phone: formData.phone.trim(),
-      profile_url: profileUrl,
       suit_color: formData.suit_color,
       suit_size: formData.suit_size,
       boot_size: formData.boot_size,
@@ -155,15 +126,7 @@ export default function RegisterPage() {
               <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Phone Number</label>
               <input type="tel" inputMode="numeric" placeholder="08xxxxxxxx" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value.replace(/[^\d+\-\s]/g, '')})} className="w-full bg-zinc-900 border border-white/10 p-4 rounded-2xl outline-none focus:border-orange-500 font-bold text-sm" />
             </div>
-            <div className="space-y-4">
-              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Profile Image</label>
-              <input type="file" accept="image/*" onChange={(e) => setProfileFile(e.target.files?.[0] || null)} className="w-full bg-zinc-900 border border-white/10 p-3 rounded-2xl outline-none focus:border-orange-500 font-bold text-sm file:mr-3 file:rounded-xl file:border-0 file:bg-orange-600 file:px-3 file:py-2 file:text-white" />
-              <input type="url" placeholder="or paste image URL (optional)" value={formData.profile_image_url} onChange={(e) => setFormData({...formData, profile_image_url: e.target.value})} className="w-full bg-zinc-900 border border-white/10 p-4 rounded-2xl outline-none focus:border-orange-500 font-bold text-sm" />
-              {(profilePreviewUrl || formData.profile_image_url) && (
-                <img src={profilePreviewUrl || formData.profile_image_url} alt="Profile Preview" className="w-20 h-20 rounded-full object-cover border border-white/10 bg-zinc-900" />
-              )}
-            </div>
-            <button disabled={!formData.full_name || formData.pin.length !== 6 || !isValidEmail(formData.email) || formData.phone.trim().length < 9 || (!profileFile && !formData.profile_image_url.trim())} onClick={() => setStep(2)} className="w-full py-5 bg-orange-600 rounded-3xl font-black uppercase text-xs shadow-xl shadow-orange-600/20 active:scale-95 transition-all disabled:opacity-50">Next Step</button>
+            <button disabled={!formData.full_name || formData.pin.length !== 6 || !isValidEmail(formData.email) || formData.phone.trim().length < 9} onClick={() => setStep(2)} className="w-full py-5 bg-orange-600 rounded-3xl font-black uppercase text-xs shadow-xl shadow-orange-600/20 active:scale-95 transition-all disabled:opacity-50">Next Step</button>
           </div>
         )}
 
