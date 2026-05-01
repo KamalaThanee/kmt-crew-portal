@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CalendarClock, FileBadge, Search, ShipWheel } from 'lucide-react'
+import { AlertTriangle, CalendarClock, ExternalLink, FileBadge, Search, ShipWheel, UploadCloud, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { canViewShipCertificates } from '@/lib/roles'
-import { readCurrentUser } from '@/lib/currentUser'
+import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
+import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import {
   daysUntil,
   formatShipDate,
@@ -21,15 +21,40 @@ import {
 
 const categories = ['all', 'Flag', 'Class', 'Insurance', 'Permit', 'GMDSS', 'FFE', 'LSA']
 const statusFilters: Array<'all' | ShipCertificateStatus> = ['all', 'expired', 'due-30', 'due-60', 'due-90', 'due-180', 'valid', 'no-expiry']
+const SHIP_CERT_BUCKET = 'ship-certificates'
+
+type ShipCertificateForm = {
+  issue_by: string
+  issued_date: string
+  expiry_date: string
+  last_survey_date: string
+  next_survey_date: string
+  remark: string
+}
+
+const buildFormFromCert = (row: ShipCertificate): ShipCertificateForm => ({
+  issue_by: row.issue_by || '',
+  issued_date: row.issued_date || '',
+  expiry_date: row.expiry_date || '',
+  last_survey_date: row.last_survey_date || '',
+  next_survey_date: row.next_survey_date || '',
+  remark: row.remark || '',
+})
 
 export default function ShipCertificatesPage() {
   const router = useRouter()
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
+  const [canEdit, setCanEdit] = useState(false)
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<ShipCertificate[]>([])
   const [errorMessage, setErrorMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [editingCert, setEditingCert] = useState<ShipCertificate | null>(null)
+  const [editForm, setEditForm] = useState<ShipCertificateForm | null>(null)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
     const user = readCurrentUser()
@@ -37,30 +62,101 @@ export default function ShipCertificatesPage() {
       router.replace('/login')
       return
     }
+    setCurrentUser(user)
+    setCanEdit(isAdminRole(user.position))
     if (!canViewShipCertificates(user.position)) {
       router.replace('/dashboard')
       return
     }
 
-    const fetchData = async () => {
-      setLoading(true)
-      setErrorMessage('')
-      const { data, error } = await supabase
-        .from('ship_certificates')
-        .select('*')
-        .order('sort_order', { ascending: true })
-
-      if (error) {
-        setErrorMessage(error.message)
-        setRows([])
-      } else {
-        setRows((data || []) as ShipCertificate[])
-      }
-      setLoading(false)
-    }
-
     fetchData()
   }, [router])
+
+  const fetchData = async () => {
+    setLoading(true)
+    setErrorMessage('')
+    const { data, error } = await supabase
+      .from('ship_certificates')
+      .select('*')
+      .order('sort_order', { ascending: true })
+
+    if (error) {
+      setErrorMessage(error.message)
+      setRows([])
+    } else {
+      setRows((data || []) as ShipCertificate[])
+    }
+    setLoading(false)
+  }
+
+  const openEditModal = (row: ShipCertificate) => {
+    setEditingCert(row)
+    setEditForm(buildFormFromCert(row))
+    setUploadFile(null)
+  }
+
+  const closeEditModal = () => {
+    setEditingCert(null)
+    setEditForm(null)
+    setUploadFile(null)
+  }
+
+  const saveCertificateUpdate = async () => {
+    if (!editingCert?.id || !editForm) return
+    setIsSaving(true)
+    setErrorMessage('')
+
+    let fileUrl = editingCert.file_url || null
+    if (uploadFile) {
+      const safeCode = String(editingCert.code || 'ship-cert').replace(/[^a-z0-9_-]/gi, '_')
+      const fileExt = uploadFile.name.split('.').pop() || 'pdf'
+      const filePath = `${safeCode}/${Date.now()}.${fileExt}`
+      const { error: uploadError } = await supabase.storage.from(SHIP_CERT_BUCKET).upload(filePath, uploadFile, { upsert: true })
+      if (uploadError) {
+        setErrorMessage(`Upload failed: ${uploadError.message}`)
+        setIsSaving(false)
+        return
+      }
+      const { data: publicData } = supabase.storage.from(SHIP_CERT_BUCKET).getPublicUrl(filePath)
+      fileUrl = publicData.publicUrl
+    }
+
+    const nextData = {
+      issue_by: editForm.issue_by.trim() || null,
+      issued_date: editForm.issued_date || null,
+      expiry_date: editForm.expiry_date || null,
+      last_survey_date: editForm.last_survey_date || null,
+      next_survey_date: editForm.next_survey_date || null,
+      remark: editForm.remark.trim() || null,
+      file_url: fileUrl,
+      updated_at: new Date().toISOString(),
+    }
+
+    const { data, error } = await supabase
+      .from('ship_certificates')
+      .update(nextData)
+      .eq('id', editingCert.id)
+      .select('*')
+      .single()
+
+    if (error) {
+      setErrorMessage(`Save failed: ${error.message}`)
+      setIsSaving(false)
+      return
+    }
+
+    await supabase.from('ship_cert_history').insert({
+      ship_certificate_id: editingCert.id,
+      action: uploadFile ? 'renew_upload' : 'manual_update',
+      old_data: editingCert,
+      new_data: data,
+      actor_name: currentUser?.full_name || currentUser?.position || 'Unknown user',
+    })
+
+    setRows((prev) => prev.map((row) => (row.id === editingCert.id ? data as ShipCertificate : row)))
+    setIsSaving(false)
+    closeEditModal()
+  }
 
   const filteredRows = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
@@ -161,7 +257,7 @@ export default function ShipCertificatesPage() {
         </p>
 
         <section className="overflow-hidden rounded-[34px] border border-white/10 bg-black/30">
-          <div className="hidden grid-cols-[90px_130px_1fr_150px_150px_170px_170px] gap-4 border-b border-white/10 px-6 py-5 text-[9px] font-black uppercase tracking-widest text-zinc-500 md:grid">
+          <div className="hidden grid-cols-[90px_130px_1fr_150px_150px_170px_170px_120px] gap-4 border-b border-white/10 px-6 py-5 text-[9px] font-black uppercase tracking-widest text-zinc-500 md:grid">
             <span>Code</span>
             <span>Category</span>
             <span>Certificate</span>
@@ -169,16 +265,30 @@ export default function ShipCertificatesPage() {
             <span>Status</span>
             <span>Survey</span>
             <span>Remark</span>
+            <span>Action</span>
           </div>
           {filteredRows.length === 0 ? (
             <div className="p-12 text-center text-sm font-black uppercase tracking-widest text-zinc-600">
               No ship certificates found
             </div>
           ) : filteredRows.map((row) => (
-            <ShipCertificateRow key={row.id || `${row.category}-${row.code}-${row.cert_name}`} row={row} />
+            <ShipCertificateRow key={row.id || `${row.category}-${row.code}-${row.cert_name}`} row={row} canEdit={canEdit} onEdit={openEditModal} />
           ))}
         </section>
       </div>
+
+      {editingCert && editForm && (
+        <ShipCertificateModal
+          certificate={editingCert}
+          form={editForm}
+          uploadFile={uploadFile}
+          isSaving={isSaving}
+          onFormChange={setEditForm}
+          onFileChange={setUploadFile}
+          onClose={closeEditModal}
+          onSave={saveCertificateUpdate}
+        />
+      )}
     </div>
   )
 }
@@ -201,14 +311,94 @@ function SummaryCard({ label, value, detail, tone }: { label: string; value: num
   )
 }
 
-function ShipCertificateRow({ row }: { row: ShipCertificate }) {
+function ShipCertificateModal({
+  certificate,
+  form,
+  uploadFile,
+  isSaving,
+  onFormChange,
+  onFileChange,
+  onClose,
+  onSave,
+}: {
+  certificate: ShipCertificate
+  form: ShipCertificateForm
+  uploadFile: File | null
+  isSaving: boolean
+  onFormChange: (form: ShipCertificateForm) => void
+  onFileChange: (file: File | null) => void
+  onClose: () => void
+  onSave: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl">
+      <div className="w-full max-w-3xl overflow-hidden rounded-[40px] border border-cyan-500/20 bg-zinc-950 shadow-2xl">
+        <div className="flex items-start justify-between border-b border-white/10 p-6">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-300">Renew / Update Ship Certificate</p>
+            <h2 className="mt-2 text-2xl font-black italic text-white">{certificate.code} · {certificate.cert_name}</h2>
+            <p className="mt-1 text-xs normal-case text-zinc-500">Manual confirm first. Hybrid OCR + AI reading will come in the next phase.</p>
+          </div>
+          <button onClick={onClose} className="rounded-2xl bg-white/5 p-3 text-zinc-400 hover:bg-white/10 hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="grid max-h-[70vh] gap-4 overflow-y-auto p-6 md:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Issue By</span>
+            <input value={form.issue_by} onChange={(event) => onFormChange({ ...form, issue_by: event.target.value })} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+          </label>
+          <label className="space-y-2">
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Certificate File</span>
+            <input type="file" accept="application/pdf,image/*" onChange={(event) => onFileChange(event.target.files?.[0] || null)} className="w-full rounded-2xl border border-white/10 bg-black p-3 text-xs font-bold text-white file:mr-3 file:rounded-xl file:border-0 file:bg-cyan-600 file:px-3 file:py-2 file:text-white" />
+            {uploadFile && <p className="text-[10px] normal-case text-cyan-200">{uploadFile.name}</p>}
+          </label>
+          <DateInput label="Issued Date" value={form.issued_date} onChange={(value) => onFormChange({ ...form, issued_date: value })} />
+          <DateInput label="Expiry Date" value={form.expiry_date} onChange={(value) => onFormChange({ ...form, expiry_date: value })} />
+          <DateInput label="Last Survey Date" value={form.last_survey_date} onChange={(value) => onFormChange({ ...form, last_survey_date: value })} />
+          <DateInput label="Next Survey Date" value={form.next_survey_date} onChange={(value) => onFormChange({ ...form, next_survey_date: value })} />
+          <label className="space-y-2 md:col-span-2">
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Remark / Certificate No.</span>
+            <textarea value={form.remark} onChange={(event) => onFormChange({ ...form, remark: event.target.value })} rows={3} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+          </label>
+          {certificate.file_url && (
+            <a href={certificate.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-cyan-300 hover:text-white md:col-span-2">
+              <ExternalLink size={14} /> View current file
+            </a>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-white/10 p-6 md:flex-row">
+          <button onClick={onClose} className="flex-1 rounded-2xl bg-white/5 py-4 text-xs font-black uppercase tracking-widest text-zinc-300 hover:bg-white/10">
+            Cancel
+          </button>
+          <button onClick={onSave} disabled={isSaving} className="flex-1 rounded-2xl bg-cyan-600 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-cyan-600/20 disabled:cursor-wait disabled:opacity-50">
+            {isSaving ? 'Saving...' : 'Confirm & Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DateInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="space-y-2">
+      <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">{label}</span>
+      <input type="date" value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+    </label>
+  )
+}
+
+function ShipCertificateRow({ row, canEdit, onEdit }: { row: ShipCertificate; canEdit: boolean; onEdit: (row: ShipCertificate) => void }) {
   const status = getShipCertificateStatus(row)
   const surveyStatus = getShipSurveyStatus(row)
   const expiryDays = daysUntil(row.expiry_date)
   const surveyDays = daysUntil(row.next_survey_date)
 
   return (
-    <article className="grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-5 last:border-0 md:grid-cols-[90px_130px_1fr_150px_150px_170px_170px] md:items-center md:px-6">
+    <article className="grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-5 last:border-0 md:grid-cols-[90px_130px_1fr_150px_150px_170px_170px_120px] md:items-center md:px-6">
       <div>
         <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 md:hidden">Code</p>
         <p className="font-black text-cyan-200">{row.code || '-'}</p>
@@ -247,6 +437,18 @@ function ShipCertificateRow({ row }: { row: ShipCertificate }) {
           <FileBadge size={13} className="text-zinc-600" />
           <span>{row.remark || '-'}</span>
         </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {row.file_url && (
+          <a href={row.file_url} target="_blank" rel="noreferrer" className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-cyan-300 hover:bg-cyan-500 hover:text-white">
+            <ExternalLink size={15} />
+          </a>
+        )}
+        {canEdit && (
+          <button onClick={() => onEdit(row)} className="flex items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-3 text-[9px] font-black uppercase tracking-widest text-orange-300 hover:bg-orange-500 hover:text-white">
+            <UploadCloud size={15} /> Renew
+          </button>
+        )}
       </div>
     </article>
   )
