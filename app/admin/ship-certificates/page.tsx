@@ -528,24 +528,24 @@ export default function ShipCertificatesPage() {
             </p>
           </div>
           <div className="flex flex-col gap-3 md:items-end">
-            <div className="grid w-full grid-cols-3 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[560px]">
+            <div className="grid w-full grid-cols-3 rounded-[30px] border border-cyan-400/20 bg-cyan-950/10 p-1.5 text-[10px] font-black uppercase tracking-tight text-cyan-100/45 shadow-2xl shadow-cyan-950/20 backdrop-blur md:w-[560px]">
               <button
                 type="button"
                 onClick={() => router.push('/certificates?tab=personal')}
-                className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white"
+                className="rounded-[22px] px-4 py-4 transition-all hover:bg-cyan-400/10 hover:text-cyan-100"
               >
                 My Certs
               </button>
               <button
                 type="button"
                 onClick={() => router.push('/certificates?tab=crew')}
-                className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white"
+                className="rounded-[22px] px-4 py-4 transition-all hover:bg-cyan-400/10 hover:text-cyan-100"
               >
                 Crew Certificates
               </button>
               <button
                 type="button"
-                className="rounded-[22px] bg-orange-600 px-4 py-4 text-white shadow-lg shadow-orange-600/25"
+                className="rounded-[22px] bg-cyan-400 px-4 py-4 text-black shadow-lg shadow-cyan-400/25"
               >
                 Ship Certs
               </button>
