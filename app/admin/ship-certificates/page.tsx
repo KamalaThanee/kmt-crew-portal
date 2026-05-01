@@ -23,6 +23,7 @@ import {
 const categories = ['all', 'Flag', 'Class', 'Insurance', 'Permit', 'GMDSS', 'FFE', 'LSA']
 const statusFilters: Array<'all' | ShipCertificateStatus> = ['all', 'expired', 'due-30', 'due-60', 'due-90', 'due-180', 'valid', 'no-expiry']
 const SHIP_CERT_BUCKET = 'ship-certificates'
+type DashboardFilter = 'all' | 'expired' | 'due30' | 'due90' | 'surveyDue'
 
 type ShipCertificateForm = {
   issue_by: string
@@ -112,6 +113,7 @@ export default function ShipCertificatesPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [dashboardFilter, setDashboardFilter] = useState<DashboardFilter>('all')
   const [editingCert, setEditingCert] = useState<ShipCertificate | null>(null)
   const [editForm, setEditForm] = useState<ShipCertificateForm | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
@@ -299,18 +301,28 @@ export default function ShipCertificatesPage() {
     const query = searchTerm.trim().toLowerCase()
     return rows.filter((row) => {
       const status = getShipCertificateStatus(row)
+      const survey = getShipSurveyStatus(row)
       const text = [row.code, row.cert_name, row.issue_by, row.remark, row.category].filter(Boolean).join(' ').toLowerCase()
+      const matchesDashboard =
+        dashboardFilter === 'all' ||
+        (dashboardFilter === 'expired' && status === 'expired') ||
+        (dashboardFilter === 'due30' && status === 'due-30') ||
+        (dashboardFilter === 'due90' && ['due-30', 'due-60', 'due-90'].includes(status)) ||
+        (dashboardFilter === 'surveyDue' && ['survey-overdue', 'survey-due-30', 'survey-due-60', 'survey-due-90'].includes(survey))
+
       return (
         (!query || text.includes(query)) &&
         (categoryFilter === 'all' || row.category === categoryFilter) &&
-        (statusFilter === 'all' || status === statusFilter)
+        (statusFilter === 'all' || status === statusFilter) &&
+        matchesDashboard
       )
     })
-  }, [categoryFilter, rows, searchTerm, statusFilter])
+  }, [categoryFilter, dashboardFilter, rows, searchTerm, statusFilter])
 
   const summary = useMemo(() => {
+    const scopedRows = categoryFilter === 'all' ? rows : rows.filter((row) => row.category === categoryFilter)
     const counts = {
-      total: rows.length,
+      total: scopedRows.length,
       expired: 0,
       due30: 0,
       due90: 0,
@@ -318,7 +330,7 @@ export default function ShipCertificatesPage() {
       noExpiry: 0,
     }
 
-    for (const row of rows) {
+    for (const row of scopedRows) {
       const status = getShipCertificateStatus(row)
       const survey = getShipSurveyStatus(row)
       if (status === 'expired') counts.expired += 1
@@ -329,7 +341,7 @@ export default function ShipCertificatesPage() {
     }
 
     return counts
-  }, [rows])
+  }, [categoryFilter, rows])
 
   if (loading) {
     return <div className="min-h-screen bg-black pt-32 text-center text-orange-500 font-black animate-pulse">LOADING SHIP CERTIFICATES...</div>
@@ -362,15 +374,42 @@ export default function ShipCertificatesPage() {
         )}
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-5">
-          <SummaryCard label="Total" value={summary.total} tone="cyan" detail="All ship records" />
-          <SummaryCard label="Expired" value={summary.expired} tone="red" detail="Needs immediate action" />
-          <SummaryCard label="Due 30d" value={summary.due30} tone="orange" detail="Renew now" />
-          <SummaryCard label="Due 90d" value={summary.due90} tone="amber" detail="Planning window" />
-          <SummaryCard label="Survey Due" value={summary.surveyDue} tone="purple" detail="Class endorsement" />
+          <SummaryCard label="Total" value={summary.total} tone="cyan" detail="Current category" active={dashboardFilter === 'all' && statusFilter === 'all'} onClick={() => { setDashboardFilter('all'); setStatusFilter('all') }} />
+          <SummaryCard label="Expired" value={summary.expired} tone="red" detail="Needs immediate action" active={dashboardFilter === 'expired'} onClick={() => { setDashboardFilter('expired'); setStatusFilter('all') }} />
+          <SummaryCard label="Due 30d" value={summary.due30} tone="orange" detail="Renew now" active={dashboardFilter === 'due30'} onClick={() => { setDashboardFilter('due30'); setStatusFilter('all') }} />
+          <SummaryCard label="Due 90d" value={summary.due90} tone="amber" detail="Planning window" active={dashboardFilter === 'due90'} onClick={() => { setDashboardFilter('due90'); setStatusFilter('all') }} />
+          <SummaryCard label="Survey Due" value={summary.surveyDue} tone="purple" detail="Class endorsement" active={dashboardFilter === 'surveyDue'} onClick={() => { setDashboardFilter('surveyDue'); setStatusFilter('all') }} />
+        </section>
+
+        <section className="overflow-x-auto rounded-[28px] border border-cyan-500/10 bg-black/25 p-2">
+          <div className="flex min-w-max gap-2">
+            {categories.map((category) => {
+              const count = category === 'all' ? rows.length : rows.filter((row) => row.category === category).length
+              const active = categoryFilter === category
+              return (
+                <button
+                  key={category}
+                  onClick={() => {
+                    setCategoryFilter(category)
+                    setDashboardFilter('all')
+                    setStatusFilter('all')
+                  }}
+                  className={`rounded-2xl border px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                    active
+                      ? 'border-cyan-300 bg-cyan-400 text-black shadow-lg shadow-cyan-500/20'
+                      : 'border-white/10 bg-white/5 text-zinc-400 hover:border-cyan-400/40 hover:text-cyan-100'
+                  }`}
+                >
+                  {category === 'all' ? 'All' : category}
+                  <span className={`ml-2 rounded-full px-2 py-1 ${active ? 'bg-black/20 text-black' : 'bg-black/40 text-zinc-500'}`}>{count}</span>
+                </button>
+              )
+            })}
+          </div>
         </section>
 
         <section className="rounded-[34px] border border-white/10 bg-black/30 p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_180px]">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px]">
             <label className="flex items-center gap-3 rounded-2xl border border-cyan-500/20 bg-black/40 px-4">
               <Search size={16} className="text-cyan-300" />
               <input
@@ -380,17 +419,21 @@ export default function ShipCertificatesPage() {
                 className="h-14 w-full bg-transparent text-sm font-bold text-white outline-none placeholder:text-zinc-600"
               />
             </label>
-            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="h-14 rounded-2xl border border-cyan-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none">
-              {categories.map((category) => <option key={category} value={category}>{category === 'all' ? 'All Categories' : category}</option>)}
-            </select>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-14 rounded-2xl border border-cyan-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none">
+            <select
+              value={statusFilter}
+              onChange={(event) => {
+                setStatusFilter(event.target.value)
+                setDashboardFilter('all')
+              }}
+              className="h-14 rounded-2xl border border-cyan-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+            >
               {statusFilters.map((status) => <option key={status} value={status}>{status === 'all' ? 'All Status' : getShipStatusLabel(status)}</option>)}
             </select>
           </div>
         </section>
 
         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-          {filteredRows.length} shown / {rows.length} total records
+          {filteredRows.length} shown / {summary.total} records in {categoryFilter === 'all' ? 'all categories' : categoryFilter}
         </p>
 
         <section className="overflow-x-auto rounded-[34px] border border-white/10 bg-black/30">
@@ -438,7 +481,21 @@ export default function ShipCertificatesPage() {
   )
 }
 
-function SummaryCard({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: 'cyan' | 'red' | 'orange' | 'amber' | 'purple' }) {
+function SummaryCard({
+  label,
+  value,
+  detail,
+  tone,
+  active,
+  onClick,
+}: {
+  label: string
+  value: number
+  detail: string
+  tone: 'cyan' | 'red' | 'orange' | 'amber' | 'purple'
+  active: boolean
+  onClick: () => void
+}) {
   const tones = {
     cyan: 'border-cyan-500/20 bg-cyan-500/10 text-cyan-200',
     red: 'border-red-500/20 bg-red-500/10 text-red-200',
@@ -448,7 +505,12 @@ function SummaryCard({ label, value, detail, tone }: { label: string; value: num
   }
 
   return (
-    <button className={`rounded-[32px] border p-6 text-left shadow-xl transition-all hover:-translate-y-0.5 ${tones[tone]}`}>
+    <button
+      onClick={onClick}
+      className={`rounded-[32px] border p-6 text-left shadow-xl transition-all hover:-translate-y-0.5 ${
+        active ? `${tones[tone]} ring-2 ring-white/70` : `${tones[tone]} opacity-80 hover:opacity-100`
+      }`}
+    >
       <p className="text-[9px] font-black uppercase tracking-[0.3em]">{label}</p>
       <p className="mt-5 text-4xl font-black text-white">{value}</p>
       <p className="mt-2 text-xs normal-case text-zinc-300">{detail}</p>
