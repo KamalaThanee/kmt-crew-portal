@@ -161,23 +161,32 @@ export default function AdminDashboard() {
                  <div><p className="text-sm font-black uppercase text-white truncate">{vessel.lastRestockDate}</p><p className="text-emerald-500 uppercase text-[8px]">Last Intake History</p></div>
               </Link>
 
-              <Link href="/certificates?tab=crew&filter=action" className="col-span-2 md:col-span-4 bg-zinc-900/40 border border-purple-500/20 p-8 rounded-[40px] flex flex-col md:flex-row items-center justify-between shadow-2xl hover:border-purple-500 transition-all gap-6">
-                 <div className="flex items-center gap-6">
-                    <div className="w-20 h-20 bg-purple-500/10 rounded-[32px] flex items-center justify-center text-purple-500 font-black text-2xl border border-purple-500/20 shadow-inner">{vessel.compliance}%</div>
-                    <div><p className="text-xl font-black text-white italic uppercase">Fleet Readiness</p><p className="text-zinc-500 mt-1 uppercase text-[8px]">Overall Certificate Compliance</p></div>
+              <div className="col-span-2 md:col-span-4 rounded-[40px] border border-purple-500/20 bg-zinc-900/40 p-6 shadow-2xl">
+                 <div className="grid gap-4 md:grid-cols-[1fr_1.2fr]">
+                    <Link href="/certificates?tab=crew&filter=action" className="group flex items-center gap-6 rounded-[32px] border border-purple-500/10 bg-purple-500/5 p-5 transition-all hover:border-purple-500/50 hover:bg-purple-500/10">
+                       <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[32px] border border-purple-500/20 bg-purple-500/10 text-2xl font-black text-purple-500 shadow-inner">{vessel.compliance}%</div>
+                       <div className="min-w-0">
+                          <p className="text-xl font-black italic uppercase text-white">Fleet Readiness</p>
+                          <p className="mt-1 text-[8px] uppercase text-zinc-500">Overall Certificate Compliance</p>
+                       </div>
+                       <ChevronRight size={18} className="ml-auto text-zinc-700 group-hover:text-purple-400"/>
+                    </Link>
+                    <Link href="/admin/ship-certificates" className="group flex flex-col gap-4 rounded-[32px] border border-cyan-500/10 bg-cyan-500/5 p-5 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/10 md:flex-row md:items-center md:justify-between">
+                       <div className="flex items-center gap-5">
+                          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[32px] border border-cyan-500/20 bg-cyan-500/10 text-2xl font-black text-cyan-400 shadow-inner">{vessel.shipExpired + vessel.shipDue90 + vessel.shipSurveyDue}</div>
+                          <div>
+                             <p className="text-xl font-black italic uppercase text-white">Ship Certificate Watch</p>
+                             <p className="mt-1 text-[8px] uppercase text-zinc-500">Expired, due 90 days, and survey due</p>
+                          </div>
+                       </div>
+                       <div className="grid grid-cols-3 gap-2 text-center">
+                          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3"><p className="text-lg text-red-400">{vessel.shipExpired}</p><p className="text-[7px] text-zinc-500">EXP</p></div>
+                          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3"><p className="text-lg text-amber-300">{vessel.shipDue90}</p><p className="text-[7px] text-zinc-500">90D</p></div>
+                          <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3"><p className="text-lg text-cyan-300">{vessel.shipSurveyDue}</p><p className="text-[7px] text-zinc-500">SURVEY</p></div>
+                       </div>
+                    </Link>
                  </div>
-              </Link>
-              <Link href="/certificates?tab=ship" className="col-span-2 md:col-span-4 bg-zinc-900/40 border border-cyan-500/20 p-8 rounded-[40px] flex flex-col md:flex-row items-center justify-between shadow-2xl hover:border-cyan-500 transition-all gap-6">
-                 <div className="flex items-center gap-6">
-                    <div className="w-20 h-20 bg-cyan-500/10 rounded-[32px] flex items-center justify-center text-cyan-400 font-black text-2xl border border-cyan-500/20 shadow-inner">{vessel.shipExpired + vessel.shipDue90 + vessel.shipSurveyDue}</div>
-                    <div><p className="text-xl font-black text-white italic uppercase">Ship Certificate Watch</p><p className="text-zinc-500 mt-1 uppercase text-[8px]">Expired, due 90 days, and survey due</p></div>
-                 </div>
-                 <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3"><p className="text-red-400 text-lg">{vessel.shipExpired}</p><p className="text-[7px] text-zinc-500">EXP</p></div>
-                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3"><p className="text-amber-300 text-lg">{vessel.shipDue90}</p><p className="text-[7px] text-zinc-500">90D</p></div>
-                    <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3"><p className="text-cyan-300 text-lg">{vessel.shipSurveyDue}</p><p className="text-[7px] text-zinc-500">SURVEY</p></div>
-                 </div>
-              </Link>
+              </div>
            </div>
         </div>
       </div>

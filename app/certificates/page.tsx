@@ -8,7 +8,7 @@ import { createZipBlob, getFileExtension, safeFileName, triggerDownload } from '
 import { isNoExpiryDate } from '@/lib/certificates'
 import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
-import { ArrowRight, ShipWheel, ShieldCheck } from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
@@ -67,7 +67,7 @@ function CertificatesContent() {
 
     if (tab === 'crew' && canManageCertificates) setActiveTab('crew')
     if (tab === 'personal') setActiveTab('personal')
-    if (tab === 'ship' && canOpenShipCertificates) setActiveTab('ship')
+    if (tab === 'ship' && canOpenShipCertificates) router.replace('/admin/ship-certificates')
 
     if (crewFilter && ['all', 'ready', 'warning', 'expired', 'action'].includes(crewFilter)) {
       setFilterMode(crewFilter)
@@ -76,7 +76,7 @@ function CertificatesContent() {
     if (personal && ['all', 'ok', 'warning', 'expired', 'missing'].includes(personal)) {
       setPersonalFilter(personal)
     }
-  }, [canManageCertificates, canOpenShipCertificates, searchParams])
+  }, [canManageCertificates, canOpenShipCertificates, router, searchParams])
 
   useEffect(() => {
     if (currentUser) fetchData();
@@ -237,7 +237,7 @@ function CertificatesContent() {
           <div className="flex bg-zinc-900 p-1.5 rounded-2xl border border-white/5 w-fit shadow-2xl">
             <button onClick={() => setActiveTab('personal')} className={`px-8 py-3 rounded-xl transition-all ${activeTab === 'personal' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-zinc-500 hover:text-white'}`}>My Certs</button>
             <button onClick={() => setActiveTab('crew')} className={`px-8 py-3 rounded-xl transition-all ${activeTab === 'crew' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-zinc-500 hover:text-white'}`}>Crew Certificates</button>
-            {canOpenShipCertificates && <button onClick={() => setActiveTab('ship')} className={`px-8 py-3 rounded-xl transition-all ${activeTab === 'ship' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-zinc-500 hover:text-white'}`}>Ship Certs</button>}
+            {canOpenShipCertificates && <button onClick={() => router.push('/admin/ship-certificates')} className="px-8 py-3 rounded-xl text-zinc-500 transition-all hover:text-white">Ship Certs</button>}
           </div>
         )}
       </div>
@@ -273,23 +273,6 @@ function CertificatesContent() {
           onSearchTermChange={setSearchTerm}
           onUploadCrewCertificate={(certName, crewId) => router.push(`/certificates/upload?cert=${encodeURIComponent(certName)}&crewId=${crewId}`)}
         />
-      )}
-      {activeTab === 'ship' && canOpenShipCertificates && (
-        <button
-          onClick={() => router.push('/admin/ship-certificates')}
-          className="group grid w-full gap-6 rounded-[42px] border border-cyan-500/20 bg-cyan-500/10 p-8 text-left shadow-2xl shadow-cyan-950/30 transition-all hover:-translate-y-1 hover:border-cyan-300 md:grid-cols-[auto_1fr_auto] md:items-center"
-        >
-          <div className="flex h-20 w-20 items-center justify-center rounded-[28px] border border-cyan-400/20 bg-black/40 text-cyan-300">
-            <ShipWheel size={34} />
-          </div>
-          <div>
-            <p className="text-2xl font-black italic text-white">Ship Certificates</p>
-            <p className="mt-2 text-xs normal-case text-cyan-100/70">Vessel compliance, expiry, annual survey, and document upload control.</p>
-          </div>
-          <div className="flex items-center gap-2 rounded-2xl bg-cyan-500 px-5 py-4 text-xs font-black uppercase tracking-widest text-black">
-            Open Ship Certs <ArrowRight size={16} />
-          </div>
-        </button>
       )}
     </div>
   )
