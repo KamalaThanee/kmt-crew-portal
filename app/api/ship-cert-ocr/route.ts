@@ -41,17 +41,21 @@ RULES:
    - GMDSS/LSA/FFE documents may include equipment lists, service certificates, inspection certificates, or shore-based maintenance certificates.
 3. Do not approve a lower-level or unrelated document for a higher/specific checklist item. If uncertain, certTypeMatch=false and explain why.
 4. Convert all dates to YYYY-MM-DD. Convert Thai Buddhist years to CE.
-5. For class/statutory certificates, annual/intermediate survey endorsement dates may appear on later pages. Extract the latest annual/intermediate/class survey endorsement date when visible. If the provided page is an annual survey endorsement page, focus on handwritten/stamped endorsement dates even if the handwriting is imperfect.
-6. For equipment service/inspection certificates in FFE, LSA, or GMDSS categories, apply practical vessel certificate control rules when the document gives an inspection/service/issued date but does not print an expiry/next due date:
-   - Annual inspection/service/test certificates are normally due at the next annual cycle. Set expiryDate and nextSurveyDate to one day before the same date next year.
-   - Examples: fixed foam test system, fire extinguisher inspection, CO2 system inspection, life raft inspection, GMDSS annual test, EPIRB/SART/AIS/SSAS annual test.
-   - Mention in note that the date is rule-derived from inspection/service date.
-7. For class/statutory certificates, do not invent dates unless the certificate or endorsement gives a clear window/anniversary rule. If uncertain, leave empty and explain.
-8. If a field is not visible and no applicable rule above exists, return an empty string.
-9. If the uploaded document clearly does not match the selected checklist item, set certTypeMatch=false.
+5. Act as an expert document controller, not just an OCR reader. If the certificate does not explicitly print a due/expiry date, infer the expected renewal/survey interval from the certificate type, IMO/SOLAS/MARPOL/ISM/ISPS/MLC context, flag/class practice, and marine service certificate norms. The uploader can edit later, so provide your best professional estimate rather than leaving common intervals blank.
+6. For class/statutory certificates, annual/intermediate survey endorsement dates may appear on later pages. Extract the latest annual/intermediate/class survey endorsement date when visible. If the provided page is an annual survey endorsement page, focus on handwritten/stamped endorsement dates even if the handwriting is imperfect.
+7. Use these expert interval guidelines when the document itself is silent:
+   - Annual service/inspection/test certificates in FFE, LSA, or GMDSS: surveyIntervalMonths=12 and nextSurveyDate/expiryDate = one day before the same date next year.
+   - Fixed firefighting systems, fixed foam systems, fire detection/alarm, portable fire extinguisher inspection, EEBD/SCBA/medical oxygen cylinder service: usually annual inspection/service unless the certificate states a longer hydrostatic interval.
+   - Hydrostatic pressure test certificates for cylinders/CO2/SCBA/EEBD/fire extinguishers: often 60 months unless the document or local rule states otherwise.
+   - Life raft/service station inspection: usually annual service.
+   - EPIRB/SART/AIS/SSAS/GMDSS annual radio test: usually annual.
+   - Class/statutory certificates with 5-year validity and annual endorsements: expiryIntervalMonths=60, surveyIntervalMonths=12, nextSurveyDate should follow the annual endorsement/anniversary window when derivable.
+8. If you infer any interval/date rather than reading it directly, clearly state that in ruleBasis and note.
+9. If genuinely impossible to infer a common maritime interval, leave date empty but still explain why in ruleBasis.
+10. If the uploaded document clearly does not match the selected checklist item, set certTypeMatch=false.
 
 Return ONLY raw JSON:
-{"issueBy":"issuer/class/authority or empty","issuedDate":"YYYY-MM-DD or empty","expiryDate":"YYYY-MM-DD or empty","lastSurveyDate":"YYYY-MM-DD or empty","nextSurveyDate":"YYYY-MM-DD or empty","detectedCertName":"text","certificateNumber":"text or empty","certTypeMatch":true,"note":"short English reasoning"}
+{"issueBy":"issuer/class/authority or empty","issuedDate":"YYYY-MM-DD or empty","expiryDate":"YYYY-MM-DD or empty","lastSurveyDate":"YYYY-MM-DD or empty","nextSurveyDate":"YYYY-MM-DD or empty","surveyIntervalMonths":12,"expiryIntervalMonths":12,"ruleBasis":"short rule/regulatory/practice basis used, or empty","detectedCertName":"text","certificateNumber":"text or empty","certTypeMatch":true,"note":"short English reasoning"}
 
 ${hasExtractedText ? `EXTRACTED TEXT:\n${extractedText?.slice(0, 18000)}` : ''}`
 

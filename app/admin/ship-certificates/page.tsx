@@ -64,6 +64,9 @@ type ShipCertScanResult = {
   expiryDate?: string
   lastSurveyDate?: string
   nextSurveyDate?: string
+  surveyIntervalMonths?: number | string
+  expiryIntervalMonths?: number | string
+  ruleBasis?: string
   detectedCertName?: string
   certificateNumber?: string
   certTypeMatch?: boolean
@@ -165,10 +168,16 @@ const getFriendlyAiError = (value: unknown) => {
 }
 
 const addAnnualDueDate = (dateValue?: string) => {
+  return addMonthsDueDate(dateValue, 12)
+}
+
+const addMonthsDueDate = (dateValue?: string, months?: number) => {
   if (!dateValue) return ''
+  const interval = Number(months || 0)
+  if (!Number.isFinite(interval) || interval <= 0) return ''
   const date = new Date(`${dateValue}T00:00:00`)
   if (Number.isNaN(date.getTime())) return ''
-  date.setFullYear(date.getFullYear() + 1)
+  date.setMonth(date.getMonth() + interval)
   date.setDate(date.getDate() - 1)
   return date.toISOString().slice(0, 10)
 }
@@ -334,9 +343,13 @@ export default function ShipCertificatesPage() {
           const nextRemark = currentRemark || detectedNumber
           const detectedName = isAddingCert && result.detectedCertName ? result.detectedCertName : editForm.cert_name
           const baseAnnualDate = result.lastSurveyDate || result.issuedDate || editForm.last_survey_date || editForm.issued_date
+          const surveyIntervalMonths = Number(result.surveyIntervalMonths || 0)
+          const expiryIntervalMonths = Number(result.expiryIntervalMonths || 0)
+          const aiDerivedSurveyDue = addMonthsDueDate(baseAnnualDate, surveyIntervalMonths)
+          const aiDerivedExpiryDue = addMonthsDueDate(result.issuedDate || baseAnnualDate, expiryIntervalMonths)
           const derivedAnnualDue = shouldDeriveAnnualDueDate(editForm.category, detectedName) ? addAnnualDueDate(baseAnnualDate) : ''
-          const nextExpiryDate = result.expiryDate || editForm.expiry_date || derivedAnnualDue
-          const nextSurveyDate = result.nextSurveyDate || editForm.next_survey_date || derivedAnnualDue
+          const nextExpiryDate = result.expiryDate || editForm.expiry_date || aiDerivedExpiryDue || derivedAnnualDue
+          const nextSurveyDate = result.nextSurveyDate || editForm.next_survey_date || aiDerivedSurveyDue || derivedAnnualDue
 
           setScanResult(result)
           setEditForm({
@@ -790,7 +803,16 @@ function ShipCertificateModal({
                     <p>Detected: <span className="font-bold text-white">{scanResult.detectedCertName || '-'}</span></p>
                     <p>Cert No: <span className="font-bold text-white">{scanResult.certificateNumber || '-'}</span></p>
                     <p>Mode: <span className="font-bold text-cyan-200">AI Vision</span></p>
+                    {(scanResult.surveyIntervalMonths || scanResult.expiryIntervalMonths) && (
+                      <p>
+                        Interval:{' '}
+                        <span className="font-bold text-white">
+                          Survey {scanResult.surveyIntervalMonths || '-'} mo / Expiry {scanResult.expiryIntervalMonths || '-'} mo
+                        </span>
+                      </p>
+                    )}
                     <p>Match: <span className={scanResult.certTypeMatch ? 'font-bold text-emerald-300' : 'font-bold text-red-300'}>{scanResult.certTypeMatch ? 'Looks matched' : 'Needs manual review'}</span></p>
+                    {scanResult.ruleBasis && <p className="pt-1 text-zinc-400">Rule basis: {scanResult.ruleBasis}</p>}
                     {scanResult.note && <p className="pt-1 text-zinc-400">AI note: {scanResult.note}</p>}
                   </div>
                 )}
