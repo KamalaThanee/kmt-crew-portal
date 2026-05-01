@@ -515,56 +515,51 @@ export default function ShipCertificatesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050817] px-4 pb-32 pt-20 text-white md:px-8">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <header className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+      <div className="space-y-8">
+        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="flex items-center gap-3">
-              <ShipWheel className="text-orange-500" size={36} />
-              <h1 className="text-3xl font-black italic tracking-tight md:text-4xl">Ship Certificate</h1>
-            </div>
-            <p className="mt-2 text-[10px] font-black uppercase tracking-[0.28em] text-zinc-500">
-              Vessel compliance, expiry, and class survey control
-            </p>
+            <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><ShipWheel className="text-orange-500" size={36}/> Ship Certificate</h1>
+            <p className="text-zinc-500 mt-1 tracking-widest">Vessel Compliance, Expiry, and Class Survey Control</p>
           </div>
-          <div className="flex flex-col gap-3 md:items-end">
-            <div className="grid w-full grid-cols-3 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[560px]">
-              <button
-                type="button"
-                onClick={() => router.push('/certificates?tab=personal')}
-                className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white"
-              >
-                My Certs
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push('/certificates?tab=crew')}
-                className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white"
-              >
-                Crew Certificates
-              </button>
-              <button
-                type="button"
-                className="rounded-[22px] bg-orange-600 px-4 py-4 text-white shadow-lg shadow-orange-600/25"
-              >
-                Ship Certs
-              </button>
-            </div>
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
-              <div className="rounded-3xl border border-orange-500/20 bg-orange-500/10 px-5 py-4 text-xs normal-case text-orange-100">
-                Phase 1: checklist foundation from document 11.62
-              </div>
-              {canEdit && (
-                <button
-                  onClick={openAddCertModal}
-                  className="inline-flex items-center justify-center gap-2 rounded-3xl border border-orange-400/30 bg-orange-600 px-5 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 hover:bg-orange-500"
-                >
-                  <PlusCircle size={16} /> Add New Cert
-                </button>
-              )}
-            </div>
+
+          <div className="grid w-full max-w-xl grid-cols-3 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[560px]">
+            <button
+              type="button"
+              onClick={() => router.push('/certificates?tab=personal')}
+              className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white"
+            >
+              My Certs
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/certificates?tab=crew')}
+              className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white"
+            >
+              Crew Certificates
+            </button>
+            <button
+              type="button"
+              className="rounded-[22px] bg-orange-600 px-4 py-4 text-white shadow-lg shadow-orange-600/25"
+            >
+              Ship Certs
+            </button>
           </div>
-        </header>
+        </div>
+
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
+          <div className="rounded-3xl border border-orange-500/20 bg-orange-500/10 px-5 py-4 text-xs normal-case text-orange-100">
+            Phase 1: checklist foundation from document 11.62
+          </div>
+          {canEdit && (
+            <button
+              onClick={openAddCertModal}
+              className="inline-flex items-center justify-center gap-2 rounded-3xl border border-orange-400/30 bg-orange-600 px-5 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 hover:bg-orange-500"
+            >
+              <PlusCircle size={16} /> Add New Cert
+            </button>
+          )}
+        </div>
 
         {errorMessage && (
           <div className="rounded-[32px] border border-orange-500/30 bg-orange-500/10 p-6 text-sm normal-case text-orange-100">
