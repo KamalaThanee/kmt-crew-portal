@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { AlertTriangle, CalendarClock, ExternalLink, FileBadge, Loader2, PlusCircle, Search, ShipWheel, UploadCloud, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { compressImage } from '@/lib/certificateUpload'
-import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
+import { canViewShipCertificates } from '@/lib/roles'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import {
   daysUntil,
@@ -240,12 +240,12 @@ export default function ShipCertificatesPage() {
       router.replace('/login')
       return
     }
-    setCurrentUser(user)
-    setCanEdit(isAdminRole(user.position))
     if (!canViewShipCertificates(user.position)) {
       router.replace('/dashboard')
       return
     }
+    setCurrentUser(user)
+    setCanEdit(canViewShipCertificates(user.position))
 
     fetchData()
   }, [router])
@@ -517,7 +517,7 @@ export default function ShipCertificatesPage() {
   return (
     <div className="min-h-screen bg-[#050817] px-4 pb-32 pt-24 text-white md:px-8">
       <div className="mx-auto max-w-7xl space-y-8">
-        <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="flex items-center gap-3">
               <ShipWheel className="text-cyan-300" size={34} />
@@ -527,18 +527,42 @@ export default function ShipCertificatesPage() {
               Vessel compliance, expiry, and class survey control
             </p>
           </div>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 px-5 py-4 text-xs normal-case text-cyan-100">
-              Phase 1: checklist foundation from document 11.62
-            </div>
-            {canEdit && (
+          <div className="flex flex-col gap-3 md:items-end">
+            <div className="grid w-full grid-cols-3 rounded-3xl border border-white/10 bg-zinc-900 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl md:w-[470px]">
               <button
-                onClick={openAddCertModal}
-                className="inline-flex items-center justify-center gap-2 rounded-3xl border border-emerald-400/30 bg-emerald-500 px-5 py-4 text-xs font-black uppercase tracking-widest text-black shadow-lg shadow-emerald-500/20 hover:bg-emerald-300"
+                type="button"
+                onClick={() => router.push('/certificates?tab=personal')}
+                className="rounded-2xl px-3 py-3 transition-all hover:bg-white/5 hover:text-white"
               >
-                <PlusCircle size={16} /> Add New Cert
+                My Certs
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => router.push('/certificates?tab=crew')}
+                className="rounded-2xl px-3 py-3 transition-all hover:bg-white/5 hover:text-white"
+              >
+                Crew Certificates
+              </button>
+              <button
+                type="button"
+                className="rounded-2xl bg-orange-600 px-3 py-3 text-white shadow-lg shadow-orange-600/20"
+              >
+                Ship Certs
+              </button>
+            </div>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 px-5 py-4 text-xs normal-case text-cyan-100">
+                Phase 1: checklist foundation from document 11.62
+              </div>
+              {canEdit && (
+                <button
+                  onClick={openAddCertModal}
+                  className="inline-flex items-center justify-center gap-2 rounded-3xl border border-emerald-400/30 bg-emerald-500 px-5 py-4 text-xs font-black uppercase tracking-widest text-black shadow-lg shadow-emerald-500/20 hover:bg-emerald-300"
+                >
+                  <PlusCircle size={16} /> Add New Cert
+                </button>
+              )}
+            </div>
           </div>
         </header>
 

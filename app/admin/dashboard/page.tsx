@@ -162,12 +162,25 @@ export default function AdminDashboard() {
               </Link>
 
               <div className="col-span-2 md:col-span-4 rounded-[40px] border border-purple-500/20 bg-zinc-900/40 p-6 shadow-2xl">
-                 <div className="grid gap-4 md:grid-cols-[1fr_1.2fr]">
-                    <Link href="/certificates?tab=crew&filter=action" className="group flex items-center gap-6 rounded-[32px] border border-purple-500/10 bg-purple-500/5 p-5 transition-all hover:border-purple-500/50 hover:bg-purple-500/10">
+                 <div className="grid gap-4 lg:grid-cols-[1fr_1fr_1.25fr]">
+                    <Link href="/certificates?tab=personal" className="group flex items-center gap-5 rounded-[32px] border border-blue-500/10 bg-blue-500/5 p-5 transition-all hover:border-blue-500/50 hover:bg-blue-500/10">
+                       <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[32px] border border-blue-500/20 bg-blue-500/10 text-2xl font-black text-blue-400 shadow-inner">{personal.progress}%</div>
+                       <div className="min-w-0">
+                          <p className="text-lg font-black italic uppercase text-white">My Certificates</p>
+                          <p className="mt-1 text-[8px] uppercase text-zinc-500">{personal.okCount}/{personal.reqCount} mandatory valid</p>
+                          <div className="mt-3 flex gap-2 text-center">
+                             <span className="rounded-xl bg-red-500/10 px-3 py-2 text-[7px] text-red-300">{personal.expired} EXP</span>
+                             <span className="rounded-xl bg-amber-500/10 px-3 py-2 text-[7px] text-amber-300">{personal.warning} 90D</span>
+                             <span className="rounded-xl bg-zinc-800 px-3 py-2 text-[7px] text-zinc-400">{personal.missing} Missing</span>
+                          </div>
+                       </div>
+                       <ChevronRight size={18} className="ml-auto text-zinc-700 group-hover:text-blue-400"/>
+                    </Link>
+                    <Link href="/certificates?tab=crew&filter=action" className="group flex items-center gap-5 rounded-[32px] border border-purple-500/10 bg-purple-500/5 p-5 transition-all hover:border-purple-500/50 hover:bg-purple-500/10">
                        <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[32px] border border-purple-500/20 bg-purple-500/10 text-2xl font-black text-purple-500 shadow-inner">{vessel.compliance}%</div>
                        <div className="min-w-0">
-                          <p className="text-xl font-black italic uppercase text-white">Fleet Readiness</p>
-                          <p className="mt-1 text-[8px] uppercase text-zinc-500">Overall Certificate Compliance</p>
+                          <p className="text-lg font-black italic uppercase text-white">Crew Certificates</p>
+                          <p className="mt-1 text-[8px] uppercase text-zinc-500">Fleet readiness by crew matrix</p>
                        </div>
                        <ChevronRight size={18} className="ml-auto text-zinc-700 group-hover:text-purple-400"/>
                     </Link>
@@ -175,7 +188,7 @@ export default function AdminDashboard() {
                        <div className="flex items-center gap-5">
                           <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[32px] border border-cyan-500/20 bg-cyan-500/10 text-2xl font-black text-cyan-400 shadow-inner">{vessel.shipExpired + vessel.shipDue90 + vessel.shipSurveyDue}</div>
                           <div>
-                             <p className="text-xl font-black italic uppercase text-white">Ship Certificate Watch</p>
+                             <p className="text-lg font-black italic uppercase text-white">Ship Certificate Watch</p>
                              <p className="mt-1 text-[8px] uppercase text-zinc-500">Expired, due 90 days, and survey due</p>
                           </div>
                        </div>
