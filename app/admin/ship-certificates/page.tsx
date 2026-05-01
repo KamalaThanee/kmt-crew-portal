@@ -164,6 +164,40 @@ const getFriendlyAiError = (value: unknown) => {
   return raw.slice(0, 240) || 'AI scan failed. Please fill manually.'
 }
 
+const addAnnualDueDate = (dateValue?: string) => {
+  if (!dateValue) return ''
+  const date = new Date(`${dateValue}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return ''
+  date.setFullYear(date.getFullYear() + 1)
+  date.setDate(date.getDate() - 1)
+  return date.toISOString().slice(0, 10)
+}
+
+const shouldDeriveAnnualDueDate = (category?: string, certName?: string) => {
+  const normalizedCategory = String(category || '').toLowerCase()
+  const normalizedName = String(certName || '').toLowerCase()
+  const annualCategories = ['ffe', 'lsa', 'gmdss']
+  const annualKeywords = [
+    'annual',
+    'inspection',
+    'test',
+    'testing',
+    'service',
+    'servicing',
+    'fixed foam',
+    'foam test',
+    'fire extinguisher',
+    'co2',
+    'life raft',
+    'epirb',
+    'sart',
+    'ais',
+    'ssas',
+  ]
+
+  return annualCategories.includes(normalizedCategory) && annualKeywords.some((keyword) => normalizedName.includes(keyword))
+}
+
 const readFileAsDataUrl = (file: File) =>
   new Promise<string>((resolve) => {
     const reader = new FileReader()
@@ -298,16 +332,23 @@ export default function ShipCertificatesPage() {
           const currentRemark = editForm.remark.trim()
           const detectedNumber = String(result.certificateNumber || '').trim()
           const nextRemark = currentRemark || detectedNumber
+          const detectedName = isAddingCert && result.detectedCertName ? result.detectedCertName : editForm.cert_name
+          const baseAnnualDate = result.lastSurveyDate || result.issuedDate || editForm.last_survey_date || editForm.issued_date
+          const derivedAnnualDue = shouldDeriveAnnualDueDate(editForm.category, detectedName) ? addAnnualDueDate(baseAnnualDate) : ''
+          const nextExpiryDate = result.expiryDate || editForm.expiry_date || derivedAnnualDue
+          const nextSurveyDate = result.nextSurveyDate || editForm.next_survey_date || derivedAnnualDue
 
           setScanResult(result)
           setEditForm({
             ...editForm,
-            cert_name: isAddingCert && result.detectedCertName ? result.detectedCertName : editForm.cert_name,
+            cert_name: detectedName,
             issue_by: result.issueBy || editForm.issue_by,
             issued_date: result.issuedDate || editForm.issued_date,
-            expiry_date: result.expiryDate || editForm.expiry_date,
+            expiry_date: nextExpiryDate,
             last_survey_date: result.lastSurveyDate || editForm.last_survey_date,
-            next_survey_date: result.nextSurveyDate || editForm.next_survey_date,
+            next_survey_date: nextSurveyDate,
+            has_expiry: editForm.has_expiry || !!nextExpiryDate,
+            has_survey: editForm.has_survey || !!nextSurveyDate,
             remark: cleanCertificateRemark(nextRemark),
           })
           setScanMessage(`AI Vision analyzed by: ${model.label}`)

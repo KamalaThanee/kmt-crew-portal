@@ -42,8 +42,13 @@ RULES:
 3. Do not approve a lower-level or unrelated document for a higher/specific checklist item. If uncertain, certTypeMatch=false and explain why.
 4. Convert all dates to YYYY-MM-DD. Convert Thai Buddhist years to CE.
 5. For class/statutory certificates, annual/intermediate survey endorsement dates may appear on later pages. Extract the latest annual/intermediate/class survey endorsement date when visible. If the provided page is an annual survey endorsement page, focus on handwritten/stamped endorsement dates even if the handwriting is imperfect.
-6. If a field is not visible, return an empty string. Do not invent dates.
-7. If the uploaded document clearly does not match the selected checklist item, set certTypeMatch=false.
+6. For equipment service/inspection certificates in FFE, LSA, or GMDSS categories, apply practical vessel certificate control rules when the document gives an inspection/service/issued date but does not print an expiry/next due date:
+   - Annual inspection/service/test certificates are normally due at the next annual cycle. Set expiryDate and nextSurveyDate to one day before the same date next year.
+   - Examples: fixed foam test system, fire extinguisher inspection, CO2 system inspection, life raft inspection, GMDSS annual test, EPIRB/SART/AIS/SSAS annual test.
+   - Mention in note that the date is rule-derived from inspection/service date.
+7. For class/statutory certificates, do not invent dates unless the certificate or endorsement gives a clear window/anniversary rule. If uncertain, leave empty and explain.
+8. If a field is not visible and no applicable rule above exists, return an empty string.
+9. If the uploaded document clearly does not match the selected checklist item, set certTypeMatch=false.
 
 Return ONLY raw JSON:
 {"issueBy":"issuer/class/authority or empty","issuedDate":"YYYY-MM-DD or empty","expiryDate":"YYYY-MM-DD or empty","lastSurveyDate":"YYYY-MM-DD or empty","nextSurveyDate":"YYYY-MM-DD or empty","detectedCertName":"text","certificateNumber":"text or empty","certTypeMatch":true,"note":"short English reasoning"}
