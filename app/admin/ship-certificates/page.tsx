@@ -125,8 +125,11 @@ export default function ShipCertificatesPage() {
   const [editingCert, setEditingCert] = useState<ShipCertificate | null>(null)
   const [editForm, setEditForm] = useState<ShipCertificateForm | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [ocrText, setOcrText] = useState('')
+  const [ocrMessage, setOcrMessage] = useState('')
   const [scanResult, setScanResult] = useState<ShipCertScanResult | null>(null)
   const [scanMessage, setScanMessage] = useState('')
+  const [isExtractingOcr, setIsExtractingOcr] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -167,6 +170,8 @@ export default function ShipCertificatesPage() {
     setEditingCert(row)
     setEditForm(buildFormFromCert(row))
     setUploadFile(null)
+    setOcrText('')
+    setOcrMessage('')
     setScanResult(null)
     setScanMessage('')
   }
@@ -175,28 +180,60 @@ export default function ShipCertificatesPage() {
     setEditingCert(null)
     setEditForm(null)
     setUploadFile(null)
+    setOcrText('')
+    setOcrMessage('')
     setScanResult(null)
     setScanMessage('')
+  }
+
+  const handleShipOcrExtract = async () => {
+    if (!uploadFile) return
+    setIsExtractingOcr(true)
+    setOcrMessage('Reading text from file...')
+    setOcrText('')
+    setScanResult(null)
+    setScanMessage('')
+    setErrorMessage('')
+
+    try {
+      const isPdf = uploadFile.type === 'application/pdf' || uploadFile.name.toLowerCase().endsWith('.pdf')
+      if (!isPdf) {
+        setOcrMessage('Image file selected. Browser OCR is not available, so the next step will use AI Vision fallback.')
+        return
+      }
+
+      const extractedText = await extractPdfText(uploadFile)
+      setOcrText(extractedText)
+      setOcrMessage(
+        extractedText.length >= 80
+          ? `OCR text extracted (${extractedText.length} chars). Please review/edit before AI analysis.`
+          : 'OCR text is not readable enough. AI Vision fallback is recommended.',
+      )
+    } catch (error: any) {
+      setOcrMessage(error.message || 'OCR extraction failed. AI Vision fallback is recommended.')
+    } finally {
+      setIsExtractingOcr(false)
+    }
   }
 
   const handleShipAiScan = async () => {
     if (!editingCert || !editForm || !uploadFile) return
     setIsScanning(true)
-    setScanMessage('Step 1/2: OCR/text extraction first...')
+    setScanMessage('Preparing AI analysis...')
     setScanResult(null)
     setErrorMessage('')
 
     try {
       const isPdf = uploadFile.type === 'application/pdf' || uploadFile.name.toLowerCase().endsWith('.pdf')
-      const extractedText = isPdf ? await extractPdfText(uploadFile) : ''
-      const canUseTextFirst = extractedText.length >= 80
+      const reviewedOcrText = ocrText.trim()
+      const canUseTextFirst = reviewedOcrText.length >= 80
       let fileBase64 = ''
       const mimeType = isPdf ? 'application/pdf' : 'image/jpeg'
 
       if (canUseTextFirst) {
-        setScanMessage(`Step 2/2: OCR text found (${extractedText.length} chars). Asking AI to parse text...`)
+        setScanMessage(`Using reviewed OCR text (${reviewedOcrText.length} chars) for AI parse...`)
       } else {
-        setScanMessage('OCR text not enough. Falling back to AI Vision with model sequence...')
+        setScanMessage('Reviewed OCR text is not enough. Falling back to AI Vision with model sequence...')
         fileBase64 = isPdf
           ? await new Promise<string>((resolve) => {
               const reader = new FileReader()
@@ -214,7 +251,7 @@ export default function ShipCertificatesPage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              extractedText: canUseTextFirst ? extractedText : undefined,
+              extractedText: canUseTextFirst ? reviewedOcrText : undefined,
               fileBase64: canUseTextFirst ? undefined : fileBase64,
               mimeType: canUseTextFirst ? undefined : mimeType,
               certName: editingCert.cert_name,
@@ -230,9 +267,9 @@ export default function ShipCertificatesPage() {
             throw new Error(latestError)
           }
 
-          const nextRemark = [editForm.remark, result.certificateNumber ? `Cert No: ${result.certificateNumber}` : '', result.note ? `AI: ${result.note}` : '']
-            .filter(Boolean)
-            .join('\n')
+          const currentRemark = editForm.remark.trim()
+          const detectedNumber = String(result.certificateNumber || '').trim()
+          const nextRemark = currentRemark || detectedNumber
 
           setScanResult(result)
           setEditForm({
@@ -418,8 +455,8 @@ export default function ShipCertificatesPage() {
           {filteredRows.length} shown / {rows.length} total records
         </p>
 
-        <section className="overflow-hidden rounded-[34px] border border-white/10 bg-black/30">
-          <div className="hidden grid-cols-[90px_130px_1fr_150px_150px_170px_170px_120px] gap-4 border-b border-white/10 px-6 py-5 text-[9px] font-black uppercase tracking-widest text-zinc-500 md:grid">
+        <section className="overflow-x-auto rounded-[34px] border border-white/10 bg-black/30">
+          <div className="hidden min-w-[1040px] grid-cols-[70px_105px_minmax(180px,1.35fr)_120px_120px_170px_minmax(120px,0.8fr)_100px] gap-3 border-b border-white/10 px-5 py-5 text-[9px] font-black uppercase tracking-widest text-zinc-500 md:grid">
             <span>Code</span>
             <span>Category</span>
             <span>Certificate</span>
@@ -444,16 +481,23 @@ export default function ShipCertificatesPage() {
           certificate={editingCert}
           form={editForm}
           uploadFile={uploadFile}
+          ocrText={ocrText}
+          ocrMessage={ocrMessage}
           scanResult={scanResult}
           scanMessage={scanMessage}
+          isExtractingOcr={isExtractingOcr}
           isScanning={isScanning}
           isSaving={isSaving}
           onFormChange={setEditForm}
+          onOcrTextChange={setOcrText}
           onFileChange={(file) => {
             setUploadFile(file)
+            setOcrText('')
+            setOcrMessage('')
             setScanResult(null)
             setScanMessage('')
           }}
+          onOcrExtract={handleShipOcrExtract}
           onAiScan={handleShipAiScan}
           onClose={closeEditModal}
           onSave={saveCertificateUpdate}
@@ -485,12 +529,17 @@ function ShipCertificateModal({
   certificate,
   form,
   uploadFile,
+  ocrText,
+  ocrMessage,
   scanResult,
   scanMessage,
+  isExtractingOcr,
   isScanning,
   isSaving,
   onFormChange,
+  onOcrTextChange,
   onFileChange,
+  onOcrExtract,
   onAiScan,
   onClose,
   onSave,
@@ -498,16 +547,23 @@ function ShipCertificateModal({
   certificate: ShipCertificate
   form: ShipCertificateForm
   uploadFile: File | null
+  ocrText: string
+  ocrMessage: string
   scanResult: ShipCertScanResult | null
   scanMessage: string
+  isExtractingOcr: boolean
   isScanning: boolean
   isSaving: boolean
   onFormChange: (form: ShipCertificateForm) => void
+  onOcrTextChange: (value: string) => void
   onFileChange: (file: File | null) => void
+  onOcrExtract: () => void
   onAiScan: () => void
   onClose: () => void
   onSave: () => void
 }) {
+  const pdfNeedsOcrFirst = !!uploadFile && (uploadFile.type === 'application/pdf' || uploadFile.name.toLowerCase().endsWith('.pdf')) && !ocrMessage
+
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl">
       <div className="w-full max-w-3xl overflow-hidden rounded-[40px] border border-cyan-500/20 bg-zinc-950 shadow-2xl">
@@ -536,26 +592,53 @@ function ShipCertificateModal({
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[9px] font-black uppercase tracking-widest text-cyan-300">AI Assist</p>
-                <p className="mt-1 text-xs normal-case text-zinc-400">OCR/text extraction runs first. AI Vision is used only when text is not readable enough.</p>
+                <p className="mt-1 text-xs normal-case text-zinc-400">Step 1 shows editable OCR text first. Step 2 uses that text, or Vision only when OCR is not enough.</p>
               </div>
-              <button
-                type="button"
-                onClick={onAiScan}
-                disabled={!uploadFile || isScanning}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-500/20 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {isScanning ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
-                {isScanning ? 'Reading...' : 'OCR + AI Read'}
-              </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={onOcrExtract}
+                  disabled={!uploadFile || isExtractingOcr || isScanning}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/20 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-100 hover:bg-emerald-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isExtractingOcr ? <Loader2 className="animate-spin" size={15} /> : <FileBadge size={15} />}
+                  {isExtractingOcr ? 'OCR...' : '1 Run OCR'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onAiScan}
+                  disabled={!uploadFile || pdfNeedsOcrFirst || isExtractingOcr || isScanning}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-500/20 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isScanning ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
+                  {isScanning ? 'Analyzing...' : pdfNeedsOcrFirst ? 'Run OCR First' : '2 Analyze'}
+                </button>
+              </div>
             </div>
+            {(ocrMessage || ocrText) && (
+              <div className="mt-4 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-xs normal-case text-emerald-100">
+                {ocrMessage && <p className="font-black uppercase tracking-widest text-emerald-300">{ocrMessage}</p>}
+                {ocrText && <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-emerald-200">OCR confidence: text extracted and ready for review</p>}
+                {ocrText && (
+                  <textarea
+                    value={ocrText}
+                    onChange={(event) => onOcrTextChange(event.target.value)}
+                    rows={5}
+                    className="mt-3 w-full rounded-2xl border border-emerald-300/20 bg-black/50 p-3 text-xs font-bold leading-relaxed text-emerald-50 outline-none focus:border-emerald-300"
+                  />
+                )}
+              </div>
+            )}
             {(scanMessage || scanResult) && (
-              <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4 text-xs normal-case text-zinc-300">
+              <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-black/40 p-4 text-xs normal-case text-zinc-300">
                 {scanMessage && <p className="font-bold text-cyan-200">{scanMessage}</p>}
                 {scanResult && (
                   <div className="mt-2 space-y-1">
                     <p>Detected: <span className="font-bold text-white">{scanResult.detectedCertName || '-'}</span></p>
+                    <p>Cert No: <span className="font-bold text-white">{scanResult.certificateNumber || '-'}</span></p>
                     <p>Mode: <span className="font-bold text-cyan-200">{scanResult.analysisMode === 'text' ? 'OCR text first' : 'AI Vision fallback'}</span></p>
                     <p>Match: <span className={scanResult.certTypeMatch ? 'font-bold text-emerald-300' : 'font-bold text-red-300'}>{scanResult.certTypeMatch ? 'Looks matched' : 'Needs manual review'}</span></p>
+                    {scanResult.note && <p className="pt-1 text-zinc-400">AI note: {scanResult.note}</p>}
                   </div>
                 )}
               </div>
@@ -605,7 +688,7 @@ function ShipCertificateRow({ row, canEdit, onEdit }: { row: ShipCertificate; ca
   const surveyDays = daysUntil(row.next_survey_date)
 
   return (
-    <article className="grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-5 last:border-0 md:grid-cols-[90px_130px_1fr_150px_150px_170px_170px_120px] md:items-center md:px-6">
+    <article className="grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-5 last:border-0 md:min-w-[1040px] md:grid-cols-[70px_105px_minmax(180px,1.35fr)_120px_120px_170px_minmax(120px,0.8fr)_100px] md:items-center md:gap-3">
       <div>
         <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 md:hidden">Code</p>
         <p className="font-black text-cyan-200">{row.code || '-'}</p>
@@ -615,7 +698,7 @@ function ShipCertificateRow({ row, canEdit, onEdit }: { row: ShipCertificate; ca
         <p className="text-xs font-black uppercase text-zinc-300">{row.category || '-'}</p>
       </div>
       <div>
-        <p className="text-base font-black uppercase italic text-white">{row.cert_name || 'Unknown certificate'}</p>
+        <p className="break-words text-sm font-black uppercase italic text-white">{row.cert_name || 'Unknown certificate'}</p>
         <p className="mt-1 text-[11px] normal-case text-zinc-500">
           Issue by {row.issue_by || '-'} · Issued {formatShipDate(row.issued_date)}
         </p>
@@ -625,10 +708,10 @@ function ShipCertificateRow({ row, canEdit, onEdit }: { row: ShipCertificate; ca
         <p className="text-sm font-black text-white">{formatShipDate(row.expiry_date)}</p>
         {expiryDays !== null && <p className="mt-1 text-[10px] text-zinc-500">{expiryDays} days</p>}
       </div>
-      <span className={`w-fit rounded-full border px-3 py-2 text-[9px] font-black uppercase tracking-widest ${shipStatusStyles[status]}`}>
+      <span className={`w-fit rounded-full border px-3 py-2 text-[8px] font-black uppercase tracking-widest ${shipStatusStyles[status]}`}>
         {getShipStatusLabel(status)}
       </span>
-      <div className={`rounded-2xl border px-3 py-2 text-[9px] font-black uppercase tracking-widest ${shipSurveyStyles[surveyStatus]}`}>
+      <div className={`rounded-2xl border px-3 py-2 text-[8px] font-black uppercase tracking-widest ${shipSurveyStyles[surveyStatus]}`}>
         <div className="flex items-center gap-2">
           {surveyStatus.includes('due') || surveyStatus.includes('overdue') ? <AlertTriangle size={12} /> : <CalendarClock size={12} />}
           <span>{getSurveyStatusLabel(surveyStatus)}</span>
@@ -639,20 +722,20 @@ function ShipCertificateRow({ row, canEdit, onEdit }: { row: ShipCertificate; ca
           </p>
         )}
       </div>
-      <div className="text-[11px] normal-case text-zinc-400">
+      <div className="min-w-0 text-[11px] normal-case text-zinc-400">
         <div className="flex items-center gap-2">
           <FileBadge size={13} className="text-zinc-600" />
-          <span>{row.remark || '-'}</span>
+          <span className="min-w-0 break-words">{row.remark || '-'}</span>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 md:justify-end">
         {row.file_url && (
           <a href={row.file_url} target="_blank" rel="noreferrer" className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-cyan-300 hover:bg-cyan-500 hover:text-white">
             <ExternalLink size={15} />
           </a>
         )}
         {canEdit && (
-          <button onClick={() => onEdit(row)} className="flex items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-3 text-[9px] font-black uppercase tracking-widest text-orange-300 hover:bg-orange-500 hover:text-white">
+          <button onClick={() => onEdit(row)} className="flex items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-3 text-[8px] font-black uppercase tracking-widest text-orange-300 hover:bg-orange-500 hover:text-white">
             <UploadCloud size={15} /> Renew
           </button>
         )}
