@@ -9,6 +9,7 @@ type ShipCertOcrBody = {
   certName?: string
   code?: string
   category?: string
+  analysisFocus?: 'full_certificate' | 'annual_survey'
   modelId?: string
   provider?: string
 }
@@ -16,7 +17,7 @@ type ShipCertOcrBody = {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as ShipCertOcrBody
-    const { fileBase64, mimeType, extractedText, certName, code, category, modelId, provider } = body
+    const { fileBase64, mimeType, extractedText, certName, code, category, analysisFocus, modelId, provider } = body
     const apiKey = provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : process.env.GEMINI_API_KEY
 
     if ((!extractedText && (!fileBase64 || !mimeType)) || !certName || !modelId || !provider) {
@@ -30,6 +31,7 @@ TASK: Read the uploaded ship/vessel certificate and extract fields for the check
 CHECKLIST ITEM: "${code || ''} ${certName}".
 CATEGORY: "${category || ''}".
 SOURCE MODE: ${hasExtractedText ? 'OCR/TEXT EXTRACTION FIRST. Use the extracted text below. Do not require vision unless the text is incomplete.' : 'VISION FALLBACK. OCR/text extraction did not provide enough readable text.'}
+ANALYSIS FOCUS: ${analysisFocus === 'annual_survey' ? 'Annual/intermediate/class survey endorsement page. Prioritize handwritten/stamped endorsement dates, surveyor signatures, and next/last annual survey clues.' : 'Full certificate identification and date extraction.'}
 
 RULES:
 1. Certificate type match must be strict. Do not treat a different vessel certificate as acceptable just because it is maritime related.
@@ -39,7 +41,7 @@ RULES:
    - GMDSS/LSA/FFE documents may include equipment lists, service certificates, inspection certificates, or shore-based maintenance certificates.
 3. Do not approve a lower-level or unrelated document for a higher/specific checklist item. If uncertain, certTypeMatch=false and explain why.
 4. Convert all dates to YYYY-MM-DD. Convert Thai Buddhist years to CE.
-5. For class/statutory certificates, annual/intermediate survey endorsement dates may appear on later pages. Extract the latest annual/intermediate/class survey endorsement date when visible.
+5. For class/statutory certificates, annual/intermediate survey endorsement dates may appear on later pages. Extract the latest annual/intermediate/class survey endorsement date when visible. If the provided page is an annual survey endorsement page, focus on handwritten/stamped endorsement dates even if the handwriting is imperfect.
 6. If a field is not visible, return an empty string. Do not invent dates.
 7. If the uploaded document clearly does not match the selected checklist item, set certTypeMatch=false.
 

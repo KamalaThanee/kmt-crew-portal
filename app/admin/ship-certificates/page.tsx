@@ -112,6 +112,13 @@ const buildFormFromCert = (row: ShipCertificate): ShipCertificateForm => ({
   remark: row.remark || '',
 })
 
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onloadend = () => resolve(String(reader.result || ''))
+  })
+
 export default function ShipCertificatesPage() {
   const router = useRouter()
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -125,6 +132,7 @@ export default function ShipCertificatesPage() {
   const [editingCert, setEditingCert] = useState<ShipCertificate | null>(null)
   const [editForm, setEditForm] = useState<ShipCertificateForm | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [surveyFile, setSurveyFile] = useState<File | null>(null)
   const [ocrText, setOcrText] = useState('')
   const [ocrMessage, setOcrMessage] = useState('')
   const [scanResult, setScanResult] = useState<ShipCertScanResult | null>(null)
@@ -170,6 +178,7 @@ export default function ShipCertificatesPage() {
     setEditingCert(row)
     setEditForm(buildFormFromCert(row))
     setUploadFile(null)
+    setSurveyFile(null)
     setOcrText('')
     setOcrMessage('')
     setScanResult(null)
@@ -180,6 +189,7 @@ export default function ShipCertificatesPage() {
     setEditingCert(null)
     setEditForm(null)
     setUploadFile(null)
+    setSurveyFile(null)
     setOcrText('')
     setOcrMessage('')
     setScanResult(null)
@@ -207,7 +217,7 @@ export default function ShipCertificatesPage() {
       setOcrMessage(
         extractedText.length >= 80
           ? `OCR text extracted (${extractedText.length} chars). Please review/edit before AI analysis.`
-          : 'OCR text is not readable enough. AI Vision fallback is recommended.',
+          : 'No embedded/selectable text found. This is likely a scanned PDF. Use AI Vision fallback or upload a clear annual survey page image below.',
       )
     } catch (error: any) {
       setOcrMessage(error.message || 'OCR extraction failed. AI Vision fallback is recommended.')
@@ -234,13 +244,7 @@ export default function ShipCertificatesPage() {
         setScanMessage(`Using reviewed OCR text (${reviewedOcrText.length} chars) for AI parse...`)
       } else {
         setScanMessage('Reviewed OCR text is not enough. Falling back to AI Vision with model sequence...')
-        fileBase64 = isPdf
-          ? await new Promise<string>((resolve) => {
-              const reader = new FileReader()
-              reader.readAsDataURL(uploadFile)
-              reader.onloadend = () => resolve(String(reader.result || ''))
-            })
-          : await compressImage(uploadFile)
+        fileBase64 = isPdf ? await readFileAsDataUrl(uploadFile) : await compressImage(uploadFile)
       }
 
       let latestError = 'AI models busy'
@@ -257,6 +261,7 @@ export default function ShipCertificatesPage() {
               certName: editingCert.cert_name,
               code: editingCert.code,
               category: editingCert.category,
+              analysisFocus: 'full_certificate',
               modelId: model.id,
               provider: model.provider,
             }),
@@ -291,6 +296,67 @@ export default function ShipCertificatesPage() {
       throw new Error(latestError)
     } catch (error: any) {
       setScanMessage(error.message || 'AI scan failed. Please fill manually.')
+    } finally {
+      setIsScanning(false)
+    }
+  }
+
+  const handleSurveyVisionScan = async () => {
+    if (!editingCert || !editForm || !surveyFile) return
+    setIsScanning(true)
+    setScanResult(null)
+    setScanMessage('Reading annual survey page with AI Vision...')
+    setErrorMessage('')
+
+    try {
+      const isPdf = surveyFile.type === 'application/pdf' || surveyFile.name.toLowerCase().endsWith('.pdf')
+      const mimeType = isPdf ? 'application/pdf' : 'image/jpeg'
+      const fileBase64 = isPdf ? await readFileAsDataUrl(surveyFile) : await compressImage(surveyFile)
+      let latestError = 'AI models busy'
+
+      for (const model of AI_MODELS) {
+        setScanMessage(`Annual survey Vision - trying: ${model.label}`)
+        try {
+          const res = await fetch('/api/ship-cert-ocr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileBase64,
+              mimeType,
+              certName: editingCert.cert_name,
+              code: editingCert.code,
+              category: editingCert.category,
+              analysisFocus: 'annual_survey',
+              modelId: model.id,
+              provider: model.provider,
+            }),
+          })
+          const result = await res.json()
+          if (!res.ok || result.error) {
+            latestError = result.error || latestError
+            throw new Error(latestError)
+          }
+
+          setScanResult({ ...result, analysisMode: 'vision' })
+          setEditForm({
+            ...editForm,
+            issue_by: result.issueBy || editForm.issue_by,
+            issued_date: result.issuedDate || editForm.issued_date,
+            expiry_date: result.expiryDate || editForm.expiry_date,
+            last_survey_date: result.lastSurveyDate || editForm.last_survey_date,
+            next_survey_date: result.nextSurveyDate || editForm.next_survey_date,
+            remark: editForm.remark.trim() || String(result.certificateNumber || '').trim(),
+          })
+          setScanMessage(`Annual survey page analyzed by: ${model.label}`)
+          return
+        } catch (error: any) {
+          latestError = error.message || latestError
+        }
+      }
+
+      throw new Error(latestError)
+    } catch (error: any) {
+      setScanMessage(error.message || 'Annual survey Vision failed. Please fill manually.')
     } finally {
       setIsScanning(false)
     }
@@ -481,6 +547,7 @@ export default function ShipCertificatesPage() {
           certificate={editingCert}
           form={editForm}
           uploadFile={uploadFile}
+          surveyFile={surveyFile}
           ocrText={ocrText}
           ocrMessage={ocrMessage}
           scanResult={scanResult}
@@ -497,8 +564,10 @@ export default function ShipCertificatesPage() {
             setScanResult(null)
             setScanMessage('')
           }}
+          onSurveyFileChange={setSurveyFile}
           onOcrExtract={handleShipOcrExtract}
           onAiScan={handleShipAiScan}
+          onSurveyVisionScan={handleSurveyVisionScan}
           onClose={closeEditModal}
           onSave={saveCertificateUpdate}
         />
@@ -529,6 +598,7 @@ function ShipCertificateModal({
   certificate,
   form,
   uploadFile,
+  surveyFile,
   ocrText,
   ocrMessage,
   scanResult,
@@ -539,14 +609,17 @@ function ShipCertificateModal({
   onFormChange,
   onOcrTextChange,
   onFileChange,
+  onSurveyFileChange,
   onOcrExtract,
   onAiScan,
+  onSurveyVisionScan,
   onClose,
   onSave,
 }: {
   certificate: ShipCertificate
   form: ShipCertificateForm
   uploadFile: File | null
+  surveyFile: File | null
   ocrText: string
   ocrMessage: string
   scanResult: ShipCertScanResult | null
@@ -557,8 +630,10 @@ function ShipCertificateModal({
   onFormChange: (form: ShipCertificateForm) => void
   onOcrTextChange: (value: string) => void
   onFileChange: (file: File | null) => void
+  onSurveyFileChange: (file: File | null) => void
   onOcrExtract: () => void
   onAiScan: () => void
+  onSurveyVisionScan: () => void
   onClose: () => void
   onSave: () => void
 }) {
@@ -644,6 +719,25 @@ function ShipCertificateModal({
               </div>
             )}
           </div>
+          <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 md:col-span-2">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <label className="min-w-0 flex-1 space-y-2">
+                <span className="text-[9px] font-black uppercase tracking-widest text-orange-300">Annual Survey Page / Handwriting</span>
+                <input type="file" accept="application/pdf,image/*" onChange={(event) => onSurveyFileChange(event.target.files?.[0] || null)} className="w-full rounded-2xl border border-orange-300/20 bg-black/50 p-3 text-xs font-bold text-white file:mr-3 file:rounded-xl file:border-0 file:bg-orange-600 file:px-3 file:py-2 file:text-white" />
+                <p className="text-[10px] normal-case text-orange-100/70">Use a clear photo/crop of the annual survey endorsement page when handwriting is hard to read.</p>
+                {surveyFile && <p className="text-[10px] normal-case text-orange-100">{surveyFile.name}</p>}
+              </label>
+              <button
+                type="button"
+                onClick={onSurveyVisionScan}
+                disabled={!surveyFile || isExtractingOcr || isScanning}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-orange-400/30 bg-orange-500/20 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-orange-100 hover:bg-orange-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isScanning ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
+                Survey Vision
+              </button>
+            </div>
+          </div>
           <DateInput label="Issued Date" value={form.issued_date} onChange={(value) => onFormChange({ ...form, issued_date: value })} />
           <DateInput label="Expiry Date" value={form.expiry_date} onChange={(value) => onFormChange({ ...form, expiry_date: value })} />
           <DateInput label="Last Survey Date" value={form.last_survey_date} onChange={(value) => onFormChange({ ...form, last_survey_date: value })} />
@@ -676,7 +770,14 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
   return (
     <label className="space-y-2">
       <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">{label}</span>
-      <input type="date" value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+      <input
+        type="text"
+        inputMode="numeric"
+        placeholder="YYYY-MM-DD"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400"
+      />
     </label>
   )
 }
