@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CalendarClock, ExternalLink, FileBadge, Loader2, Search, ShipWheel, UploadCloud, X } from 'lucide-react'
+import { AlertTriangle, CalendarClock, ExternalLink, FileBadge, Loader2, PlusCircle, Search, ShipWheel, UploadCloud, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
 import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
@@ -21,17 +21,23 @@ import {
 } from '@/lib/shipCertificates'
 
 const categories = ['all', 'Flag', 'Class', 'Insurance', 'Permit', 'GMDSS', 'FFE', 'LSA']
+const editableCategories = categories.filter((category) => category !== 'all')
 const statusFilters: Array<'all' | ShipCertificateStatus> = ['all', 'expired', 'due-30', 'due-60', 'due-90', 'due-180', 'valid', 'no-expiry']
 const SHIP_CERT_BUCKET = 'ship-certificates'
 type DashboardFilter = 'all' | 'expired' | 'due30' | 'due90' | 'surveyDue'
 
 type ShipCertificateForm = {
+  category: string
+  code: string
+  cert_name: string
   issue_by: string
   issued_date: string
   expiry_date: string
   last_survey_date: string
   next_survey_date: string
   remark: string
+  has_expiry: boolean
+  has_survey: boolean
 }
 
 type ShipCertScanResult = {
@@ -62,9 +68,9 @@ const sanitizeFilePart = (value?: string | null, fallback = 'ship-cert') => {
 const buildShipCertFilePath = (certificate: ShipCertificate, file: File, form: ShipCertificateForm) => {
   const ext = (file.name.split('.').pop() || 'pdf').toLowerCase()
   const vessel = sanitizeFilePart(certificate.vessel_name, 'Kamala_Thanee')
-  const category = sanitizeFilePart(certificate.category, 'Ship_Certificate')
-  const certCode = sanitizeFilePart(certificate.code, 'NO_CODE')
-  const certName = sanitizeFilePart(certificate.cert_name, 'Certificate')
+  const category = sanitizeFilePart(form.category || certificate.category, 'Ship_Certificate')
+  const certCode = sanitizeFilePart(form.code || certificate.code, 'NO_CODE')
+  const certName = sanitizeFilePart(form.cert_name || certificate.cert_name, 'Certificate')
   const expiryDate = sanitizeFilePart(form.expiry_date || 'NO_EXPIRY', 'NO_EXPIRY')
 
   return `${vessel}/${category}/${certCode}_${certName}_${expiryDate}.${ext}`
@@ -88,12 +94,28 @@ const cleanCertificateRemark = (value?: string | null) => {
 }
 
 const buildFormFromCert = (row: ShipCertificate): ShipCertificateForm => ({
+  category: row.category || 'Flag',
+  code: row.code || '',
+  cert_name: row.cert_name || '',
   issue_by: row.issue_by || '',
   issued_date: row.issued_date || '',
   expiry_date: row.expiry_date || '',
   last_survey_date: row.last_survey_date || '',
   next_survey_date: row.next_survey_date || '',
   remark: cleanCertificateRemark(row.remark),
+  has_expiry: row.has_expiry !== false,
+  has_survey: row.has_survey === true,
+})
+
+const buildBlankShipCert = (sortOrder: number, category = 'Flag'): ShipCertificate => ({
+  vessel_name: 'Kamala Thanee',
+  category,
+  code: '',
+  cert_name: '',
+  issue_by: '',
+  has_expiry: true,
+  has_survey: false,
+  sort_order: sortOrder,
 })
 
 const readFileAsDataUrl = (file: File) =>
@@ -112,10 +134,11 @@ export default function ShipCertificatesPage() {
   const [errorMessage, setErrorMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | ShipCertificateStatus>('all')
   const [dashboardFilter, setDashboardFilter] = useState<DashboardFilter>('all')
   const [editingCert, setEditingCert] = useState<ShipCertificate | null>(null)
   const [editForm, setEditForm] = useState<ShipCertificateForm | null>(null)
+  const [isAddingCert, setIsAddingCert] = useState(false)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [scanResult, setScanResult] = useState<ShipCertScanResult | null>(null)
   const [scanMessage, setScanMessage] = useState('')
@@ -158,6 +181,19 @@ export default function ShipCertificatesPage() {
   const openEditModal = (row: ShipCertificate) => {
     setEditingCert(row)
     setEditForm(buildFormFromCert(row))
+    setIsAddingCert(false)
+    setUploadFile(null)
+    setScanResult(null)
+    setScanMessage('')
+  }
+
+  const openAddCertModal = () => {
+    const nextSortOrder = Math.max(0, ...rows.map((row) => row.sort_order || 0)) + 1
+    const defaultCategory = categoryFilter === 'all' ? 'Flag' : categoryFilter
+    const draft = buildBlankShipCert(nextSortOrder, defaultCategory)
+    setEditingCert(draft)
+    setEditForm(buildFormFromCert(draft))
+    setIsAddingCert(true)
     setUploadFile(null)
     setScanResult(null)
     setScanMessage('')
@@ -166,6 +202,7 @@ export default function ShipCertificatesPage() {
   const closeEditModal = () => {
     setEditingCert(null)
     setEditForm(null)
+    setIsAddingCert(false)
     setUploadFile(null)
     setScanResult(null)
     setScanMessage('')
@@ -237,9 +274,16 @@ export default function ShipCertificatesPage() {
   }
 
   const saveCertificateUpdate = async () => {
-    if (!editingCert?.id || !editForm) return
+    if (!editingCert || !editForm) return
     setIsSaving(true)
     setErrorMessage('')
+
+    const certName = editForm.cert_name.trim()
+    if (!certName) {
+      setErrorMessage('Please enter certificate name before saving.')
+      setIsSaving(false)
+      return
+    }
 
     if (scanResult?.certTypeMatch === false) {
       setErrorMessage('AI thinks this file does not match the selected ship certificate. Please upload the correct certificate or clear/re-scan.')
@@ -261,22 +305,28 @@ export default function ShipCertificatesPage() {
     }
 
     const nextData = {
+      vessel_name: editingCert.vessel_name || 'Kamala Thanee',
+      category: editForm.category,
+      code: editForm.code.trim() || null,
+      cert_name: certName,
       issue_by: editForm.issue_by.trim() || null,
       issued_date: editForm.issued_date || null,
-      expiry_date: editForm.expiry_date || null,
-      last_survey_date: editForm.last_survey_date || null,
-      next_survey_date: editForm.next_survey_date || null,
+      expiry_date: editForm.has_expiry ? editForm.expiry_date || null : null,
+      last_survey_date: editForm.has_survey ? editForm.last_survey_date || null : null,
+      next_survey_date: editForm.has_survey ? editForm.next_survey_date || null : null,
       remark: editForm.remark.trim() || null,
       file_url: fileUrl,
+      has_expiry: editForm.has_expiry,
+      has_survey: editForm.has_survey,
+      sort_order: editingCert.sort_order || 0,
       updated_at: new Date().toISOString(),
     }
 
-    const { data, error } = await supabase
-      .from('ship_certificates')
-      .update(nextData)
-      .eq('id', editingCert.id)
-      .select('*')
-      .single()
+    const query = isAddingCert
+      ? supabase.from('ship_certificates').insert(nextData).select('*').single()
+      : supabase.from('ship_certificates').update(nextData).eq('id', editingCert.id).select('*').single()
+
+    const { data, error } = await query
 
     if (error) {
       setErrorMessage(`Save failed: ${error.message}`)
@@ -285,14 +335,17 @@ export default function ShipCertificatesPage() {
     }
 
     await supabase.from('ship_cert_history').insert({
-      ship_certificate_id: editingCert.id,
-      action: uploadFile ? 'renew_upload' : 'manual_update',
+      ship_certificate_id: data.id,
+      action: isAddingCert ? 'add_certificate' : uploadFile ? 'renew_upload' : 'manual_update',
       old_data: editingCert,
       new_data: data,
       actor_name: currentUser?.full_name || currentUser?.position || 'Unknown user',
     })
 
-    setRows((prev) => prev.map((row) => (row.id === editingCert.id ? data as ShipCertificate : row)))
+    setRows((prev) => {
+      if (isAddingCert) return [...prev, data as ShipCertificate].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+      return prev.map((row) => (row.id === editingCert.id ? data as ShipCertificate : row))
+    })
     setIsSaving(false)
     closeEditModal()
   }
@@ -360,8 +413,18 @@ export default function ShipCertificatesPage() {
               Vessel compliance, expiry, and class survey control
             </p>
           </div>
-          <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 px-5 py-4 text-xs normal-case text-cyan-100">
-            Phase 1: checklist foundation from document 11.62
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 px-5 py-4 text-xs normal-case text-cyan-100">
+              Phase 1: checklist foundation from document 11.62
+            </div>
+            {canEdit && (
+              <button
+                onClick={openAddCertModal}
+                className="inline-flex items-center justify-center gap-2 rounded-3xl border border-emerald-400/30 bg-emerald-500 px-5 py-4 text-xs font-black uppercase tracking-widest text-black shadow-lg shadow-emerald-500/20 hover:bg-emerald-300"
+              >
+                <PlusCircle size={16} /> Add New Cert
+              </button>
+            )}
           </div>
         </header>
 
@@ -422,7 +485,7 @@ export default function ShipCertificatesPage() {
             <select
               value={statusFilter}
               onChange={(event) => {
-                setStatusFilter(event.target.value)
+                setStatusFilter(event.target.value as 'all' | ShipCertificateStatus)
                 setDashboardFilter('all')
               }}
               className="h-14 rounded-2xl border border-cyan-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
@@ -461,6 +524,7 @@ export default function ShipCertificatesPage() {
         <ShipCertificateModal
           certificate={editingCert}
           form={editForm}
+          isAddingCert={isAddingCert}
           uploadFile={uploadFile}
           scanResult={scanResult}
           scanMessage={scanMessage}
@@ -521,6 +585,7 @@ function SummaryCard({
 function ShipCertificateModal({
   certificate,
   form,
+  isAddingCert,
   uploadFile,
   scanResult,
   scanMessage,
@@ -534,6 +599,7 @@ function ShipCertificateModal({
 }: {
   certificate: ShipCertificate
   form: ShipCertificateForm
+  isAddingCert: boolean
   uploadFile: File | null
   scanResult: ShipCertScanResult | null
   scanMessage: string
@@ -550,8 +616,8 @@ function ShipCertificateModal({
       <div className="w-full max-w-3xl overflow-hidden rounded-[40px] border border-cyan-500/20 bg-zinc-950 shadow-2xl">
         <div className="flex items-start justify-between border-b border-white/10 p-6">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-300">Renew / Update Ship Certificate</p>
-            <h2 className="mt-2 text-2xl font-black italic text-white">{certificate.code} · {certificate.cert_name}</h2>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-300">{isAddingCert ? 'Add New Ship Certificate' : 'Edit / Update Ship Certificate'}</p>
+            <h2 className="mt-2 text-2xl font-black italic text-white">{form.code || certificate.code || 'NEW'} · {form.cert_name || certificate.cert_name || 'New certificate'}</h2>
             <p className="mt-1 text-xs normal-case text-zinc-500">AI assist can prefill fields. Admin must still review before saving.</p>
           </div>
           <button onClick={onClose} className="rounded-2xl bg-white/5 p-3 text-zinc-400 hover:bg-white/10 hover:text-white">
@@ -560,6 +626,24 @@ function ShipCertificateModal({
         </div>
 
         <div className="grid max-h-[70vh] gap-4 overflow-y-auto p-6 md:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Category</span>
+            <select
+              value={form.category}
+              onChange={(event) => onFormChange({ ...form, category: event.target.value })}
+              className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400"
+            >
+              {editableCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+            </select>
+          </label>
+          <label className="space-y-2">
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Cert Code</span>
+            <input value={form.code} onChange={(event) => onFormChange({ ...form, code: event.target.value.toUpperCase() })} placeholder="F13, C16, G13..." className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+          </label>
+          <label className="space-y-2 md:col-span-2">
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Certificate Name</span>
+            <input value={form.cert_name} onChange={(event) => onFormChange({ ...form, cert_name: event.target.value })} placeholder="Certificate title" className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+          </label>
           <label className="space-y-2">
             <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Issue By</span>
             <input value={form.issue_by} onChange={(event) => onFormChange({ ...form, issue_by: event.target.value })} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
@@ -604,6 +688,16 @@ function ShipCertificateModal({
           <DateInput label="Expiry Date" value={form.expiry_date} onChange={(value) => onFormChange({ ...form, expiry_date: value })} />
           <DateInput label="Last Survey Date" value={form.last_survey_date} onChange={(value) => onFormChange({ ...form, last_survey_date: value })} />
           <DateInput label="Next Survey Date" value={form.next_survey_date} onChange={(value) => onFormChange({ ...form, next_survey_date: value })} />
+          <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
+            <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-black p-4">
+              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Track Expiry</span>
+              <input type="checkbox" checked={form.has_expiry} onChange={(event) => onFormChange({ ...form, has_expiry: event.target.checked })} className="h-5 w-5 accent-cyan-400" />
+            </label>
+            <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-black p-4">
+              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Track Survey</span>
+              <input type="checkbox" checked={form.has_survey} onChange={(event) => onFormChange({ ...form, has_survey: event.target.checked })} className="h-5 w-5 accent-cyan-400" />
+            </label>
+          </div>
           <label className="space-y-2 md:col-span-2">
             <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Remark / Certificate No.</span>
             <textarea value={form.remark} onChange={(event) => onFormChange({ ...form, remark: event.target.value })} rows={3} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
@@ -620,7 +714,7 @@ function ShipCertificateModal({
             Cancel
           </button>
           <button onClick={onSave} disabled={isSaving} className="flex-1 rounded-2xl bg-cyan-600 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-cyan-600/20 disabled:cursor-wait disabled:opacity-50">
-            {isSaving ? 'Saving...' : 'Confirm & Save'}
+            {isSaving ? 'Saving...' : isAddingCert ? 'Add Certificate' : 'Confirm & Save'}
           </button>
         </div>
       </div>
@@ -698,7 +792,7 @@ function ShipCertificateRow({ row, canEdit, onEdit }: { row: ShipCertificate; ca
         )}
         {canEdit && (
           <button onClick={() => onEdit(row)} className="flex items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-3 text-[8px] font-black uppercase tracking-widest text-orange-300 hover:bg-orange-500 hover:text-white">
-            <UploadCloud size={15} /> Renew
+            <UploadCloud size={15} /> Edit Cert
           </button>
         )}
       </div>

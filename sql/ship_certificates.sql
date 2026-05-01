@@ -82,6 +82,7 @@ alter table public.ship_cert_history enable row level security;
 
 drop policy if exists "Allow anon ship cert master read" on public.ship_cert_master;
 drop policy if exists "Allow anon ship certificates read" on public.ship_certificates;
+drop policy if exists "Allow anon ship certificates insert" on public.ship_certificates;
 drop policy if exists "Allow anon ship certificates update" on public.ship_certificates;
 drop policy if exists "Allow anon ship cert surveys read" on public.ship_cert_surveys;
 drop policy if exists "Allow anon ship cert surveys insert" on public.ship_cert_surveys;
@@ -91,6 +92,7 @@ drop policy if exists "Allow anon ship cert history insert" on public.ship_cert_
 
 create policy "Allow anon ship cert master read" on public.ship_cert_master for select using (true);
 create policy "Allow anon ship certificates read" on public.ship_certificates for select using (true);
+create policy "Allow anon ship certificates insert" on public.ship_certificates for insert with check (true);
 create policy "Allow anon ship certificates update" on public.ship_certificates for update using (true) with check (true);
 create policy "Allow anon ship cert surveys read" on public.ship_cert_surveys for select using (true);
 create policy "Allow anon ship cert surveys insert" on public.ship_cert_surveys for insert with check (true);
