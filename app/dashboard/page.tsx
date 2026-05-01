@@ -4,7 +4,9 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { isNoExpiryDate } from '@/lib/certificates'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
-import { User, FileBadge, ChevronRight, ShieldCheck, Clock, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
+import { getShipCertificateStatus, getShipSurveyStatus } from '@/lib/shipCertificates'
+import { canViewShipCertificates } from '@/lib/roles'
+import { ChevronRight, ShieldCheck, Clock, ShipWheel } from 'lucide-react'
 import Link from 'next/link'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -14,6 +16,7 @@ export default function CrewDashboard() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<any>({ progress: 0, ok: 0, warn: 0, exp: 0, miss: 0, total: 0, suit: 0, boot: 0, lastStatus: 'None' })
+  const [shipStats, setShipStats] = useState({ expired: 0, due90: 0, surveyDue: 0 })
 
   useEffect(() => {
     const uStr = localStorage.getItem('kmt_user')
@@ -32,6 +35,9 @@ export default function CrewDashboard() {
       u,
     )
     const { data: myReqs } = await reqQuery
+    const { data: shipCerts } = canViewShipCertificates(u.position)
+      ? await supabase.from('ship_certificates').select('*')
+      : { data: [] as any[] }
     
     if (matrix && myCerts) {
       const uPos = normalize(u.position);
@@ -64,6 +70,12 @@ export default function CrewDashboard() {
         suit: sCount, boot: bCount, lastStatus: myReqs?.[0]?.status || 'No Request'
       })
     }
+    const shipRows = shipCerts || []
+    setShipStats({
+      expired: shipRows.filter((cert: any) => getShipCertificateStatus(cert) === 'expired').length,
+      due90: shipRows.filter((cert: any) => ['due-30', 'due-60', 'due-90'].includes(getShipCertificateStatus(cert))).length,
+      surveyDue: shipRows.filter((cert: any) => ['survey-overdue', 'survey-due-30', 'survey-due-60', 'survey-due-90'].includes(getShipSurveyStatus(cert))).length,
+    })
     setLoading(false)
   }
 
@@ -108,6 +120,26 @@ export default function CrewDashboard() {
             <div><p className="text-xs uppercase text-slate-500">Last Req. Status</p><p className="text-lg font-black text-blue-400">{stats.lastStatus}</p></div>
           </div>
         </div>
+
+        {canViewShipCertificates(user?.position) && (
+          <Link href="/certificates?tab=ship" className="block bg-slate-900 border border-cyan-500/20 p-8 rounded-[40px] shadow-2xl hover:border-cyan-400 transition-all group">
+            <div className="flex items-center justify-between gap-6">
+              <div className="flex items-center gap-4">
+                <div className="bg-cyan-500/10 border border-cyan-500/20 p-4 rounded-[28px] text-cyan-300"><ShipWheel size={28}/></div>
+                <div>
+                  <h3 className="text-xl font-black italic">Ship Certificates</h3>
+                  <p className="text-cyan-300 mt-1">Vessel compliance watch</p>
+                </div>
+              </div>
+              <ChevronRight className="text-cyan-400 group-hover:translate-x-1 transition-transform" size={20}/>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-6">
+              <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl text-center"><p className="text-red-400 text-sm">{shipStats.expired}</p><p className="text-[7px]">EXP</p></div>
+              <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl text-center"><p className="text-amber-300 text-sm">{shipStats.due90}</p><p className="text-[7px]">90D</p></div>
+              <div className="bg-cyan-500/10 border border-cyan-500/20 p-3 rounded-xl text-center"><p className="text-cyan-300 text-sm">{shipStats.surveyDue}</p><p className="text-[7px]">SURVEY</p></div>
+            </div>
+          </Link>
+        )}
       </div>
     </div>
   )

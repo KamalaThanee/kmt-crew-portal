@@ -4,9 +4,9 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { isNoExpiryDate } from '@/lib/certificates'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
+import { getShipCertificateStatus, getShipSurveyStatus } from '@/lib/shipCertificates'
 import { 
-  FileBadge, Users, User, AlertTriangle, ChevronRight, 
-  CheckCircle2, ShieldCheck, Package, RefreshCw, Clock, Archive, Activity, ArrowUpRight 
+  User, AlertTriangle, ChevronRight, ShieldCheck, Package, RefreshCw, Clock, Archive
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -18,7 +18,7 @@ export default function AdminDashboard() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [personal, setPersonal] = useState<any>({ progress: 0, okCount: 0, reqCount: 0, expired: 0, warning: 0, missing: 0, suit: 0, boot: 0, lastStatus: 'None' })
-  const [vessel, setVessel] = useState<any>({ pending: 0, lowStock: 0, vesselExpired: 0, compliance: 0, totalItems: 0, vesselWarning: 0, lastRestockDate: 'No data' })
+  const [vessel, setVessel] = useState<any>({ pending: 0, lowStock: 0, vesselExpired: 0, compliance: 0, totalItems: 0, vesselWarning: 0, lastRestockDate: 'No data', shipExpired: 0, shipDue90: 0, shipSurveyDue: 0 })
 
   useEffect(() => {
     const uStr = localStorage.getItem('kmt_user')
@@ -35,18 +35,20 @@ export default function AdminDashboard() {
       u,
     )
 
-    const [matrixRes, crewsRes, allCertsRes, invRes, restockRes, myReqsRes] = await Promise.all([
+    const [matrixRes, crewsRes, allCertsRes, invRes, restockRes, myReqsRes, shipCertsRes] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
       supabase.from('crews').select('*'),
       supabase.from('crew_certs').select('*'),
       supabase.from('ppe_inventory').select('quantity, threshold'),
       supabase.from('restock_history').select('created_at').order('created_at', { ascending: false }).limit(1),
       myReqsQuery,
+      supabase.from('ship_certificates').select('*'),
     ]);
 
     const matrix = matrixRes.data || []; const allCerts = allCertsRes.data || [];
     const activeCrews = (crewsRes.data || []).filter(isCrewActive);
     const inventory = invRes.data || []; const lastRestock = restockRes.data || [];
+    const shipCerts = shipCertsRes.data || [];
 
     let okCount = 0; let expired = 0; let warning = 0; let suit = 0; let boot = 0;
     const userPosNorm = normalize(u.position);
@@ -99,7 +101,10 @@ export default function AdminDashboard() {
       lowStock: inventory.filter(i => (i.quantity||0) <= (i.threshold||0)).length, 
       totalItems: inventory.reduce((a, b) => a + (b.quantity || 0), 0), 
       compliance: vesselCompliance,
-      lastRestockDate: lastRestock.length > 0 ? new Date(lastRestock[0].created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'
+      lastRestockDate: lastRestock.length > 0 ? new Date(lastRestock[0].created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A',
+      shipExpired: shipCerts.filter((cert: any) => getShipCertificateStatus(cert) === 'expired').length,
+      shipDue90: shipCerts.filter((cert: any) => ['due-30', 'due-60', 'due-90'].includes(getShipCertificateStatus(cert))).length,
+      shipSurveyDue: shipCerts.filter((cert: any) => ['survey-overdue', 'survey-due-30', 'survey-due-60', 'survey-due-90'].includes(getShipSurveyStatus(cert))).length,
     });
     setLoading(false);
   }
@@ -160,6 +165,17 @@ export default function AdminDashboard() {
                  <div className="flex items-center gap-6">
                     <div className="w-20 h-20 bg-purple-500/10 rounded-[32px] flex items-center justify-center text-purple-500 font-black text-2xl border border-purple-500/20 shadow-inner">{vessel.compliance}%</div>
                     <div><p className="text-xl font-black text-white italic uppercase">Fleet Readiness</p><p className="text-zinc-500 mt-1 uppercase text-[8px]">Overall Certificate Compliance</p></div>
+                 </div>
+              </Link>
+              <Link href="/certificates?tab=ship" className="col-span-2 md:col-span-4 bg-zinc-900/40 border border-cyan-500/20 p-8 rounded-[40px] flex flex-col md:flex-row items-center justify-between shadow-2xl hover:border-cyan-500 transition-all gap-6">
+                 <div className="flex items-center gap-6">
+                    <div className="w-20 h-20 bg-cyan-500/10 rounded-[32px] flex items-center justify-center text-cyan-400 font-black text-2xl border border-cyan-500/20 shadow-inner">{vessel.shipExpired + vessel.shipDue90 + vessel.shipSurveyDue}</div>
+                    <div><p className="text-xl font-black text-white italic uppercase">Ship Certificate Watch</p><p className="text-zinc-500 mt-1 uppercase text-[8px]">Expired, due 90 days, and survey due</p></div>
+                 </div>
+                 <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3"><p className="text-red-400 text-lg">{vessel.shipExpired}</p><p className="text-[7px] text-zinc-500">EXP</p></div>
+                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3"><p className="text-amber-300 text-lg">{vessel.shipDue90}</p><p className="text-[7px] text-zinc-500">90D</p></div>
+                    <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3"><p className="text-cyan-300 text-lg">{vessel.shipSurveyDue}</p><p className="text-[7px] text-zinc-500">SURVEY</p></div>
                  </div>
               </Link>
            </div>
