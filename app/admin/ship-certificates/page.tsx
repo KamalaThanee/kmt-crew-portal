@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, CalendarClock, ExternalLink, FileBadge, Loader2, PlusCircle, Search, ShipWheel, UploadCloud, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
+import { compressImage } from '@/lib/certificateUpload'
 import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import {
@@ -37,8 +37,11 @@ const categoryCodePrefixes: Record<string, string> = {
 }
 
 const shipCertificateAiModels = [
-  ...AI_MODELS.filter((model) => model.provider === 'google'),
-  ...AI_MODELS.filter((model) => model.provider !== 'google'),
+  { id: 'gemini-2.5-flash', provider: 'google', label: 'Gemini 2.5 Flash (AI Studio)' },
+  { id: 'gemini-3-flash-preview', provider: 'google', label: 'Gemini 3 Flash Preview (AI Studio)' },
+  { id: 'gemini-3.1-flash-lite-preview', provider: 'google', label: 'Gemini 3.1 Flash Lite Preview (AI Studio)' },
+  { id: 'qwen/qwen3-vl-32b-instruct', provider: 'openrouter', label: 'Qwen3 VL 32B Instruct (OpenRouter)' },
+  { id: 'google/gemini-2.5-flash-lite', provider: 'openrouter', label: 'Gemini 2.5 Flash Lite (OpenRouter)' },
 ]
 
 type ShipCertificateForm = {
