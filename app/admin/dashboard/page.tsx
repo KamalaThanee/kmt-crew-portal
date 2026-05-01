@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { isNoExpiryDate } from '@/lib/certificates'
+import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { getShipCertificateStatus, getShipSurveyStatus } from '@/lib/shipCertificates'
 import { 
@@ -10,7 +10,6 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 
-const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
 
 export default function AdminDashboard() {
@@ -35,7 +34,7 @@ export default function AdminDashboard() {
       u,
     )
 
-    const [matrixRes, crewsRes, allCertsRes, invRes, restockRes, myReqsRes, shipCertsRes] = await Promise.all([
+    const [matrixRes, crewsRes, allCertsRes, invRes, restockRes, myReqsRes, shipCertsRes, rulesRes] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
       supabase.from('crews').select('*'),
       supabase.from('crew_certs').select('*'),
@@ -43,58 +42,32 @@ export default function AdminDashboard() {
       supabase.from('restock_history').select('created_at').order('created_at', { ascending: false }).limit(1),
       myReqsQuery,
       supabase.from('ship_certificates').select('*'),
+      supabase.from('cert_rules').select('*'),
     ]);
 
     const matrix = matrixRes.data || []; const allCerts = allCertsRes.data || [];
     const activeCrews = (crewsRes.data || []).filter(isCrewActive);
     const inventory = invRes.data || []; const lastRestock = restockRes.data || [];
     const shipCerts = shipCertsRes.data || [];
+    const rules = rulesRes.data || [];
 
-    let okCount = 0; let expired = 0; let warning = 0; let suit = 0; let boot = 0;
-    const userPosNorm = normalize(u.position);
-    let myRequired = matrix.filter(row => normalize(row.position) === userPosNorm && row.requirement_type === 'P');
+    let suit = 0; let boot = 0;
     const myCerts = allCerts.filter(cc => cc.crew_id === u.id);
-    const today = new Date();
-
-    myRequired.forEach(req => {
-      const uploaded = myCerts.find(c => normalize(c.cert_name) === normalize(req.cert_name))
-      if (uploaded) {
-        if (isNoExpiryDate(uploaded.expiry_date)) okCount++;
-        else {
-          const expDate = new Date(uploaded.expiry_date); const dDiff = (expDate.getTime() - today.getTime()) / 86400000;
-          if (dDiff < 0) expired++; else if (dDiff <= 90) { warning++; okCount++; } else okCount++;
-        }
-      }
-    });
+    const myCertData = calculateCrewCertificateCompliance({ crew: u, crewCerts: myCerts, matrix, rules });
 
     const { count: totalPending } = await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending');
 
     const vesselProgress = activeCrews.map((crew: any) => {
-      const required = matrix.filter((row: any) => normalize(row.position) === normalize(crew.position) && row.requirement_type === 'P')
-      if (required.length === 0) return null
-
       const crewCerts = allCerts.filter((cert: any) => cert.crew_id === crew.id)
-      let ready = 0
-      required.forEach((req: any) => {
-        const uploaded = crewCerts.find((cert: any) => normalize(cert.cert_name) === normalize(req.cert_name))
-        if (!uploaded) return
-        if (isNoExpiryDate(uploaded.expiry_date)) {
-          ready++
-          return
-        }
-
-        const daysLeft = (new Date(uploaded.expiry_date).getTime() - today.getTime()) / 86400000
-        if (daysLeft >= 0) ready++
-      })
-
-      return Math.round((ready / required.length) * 100)
+      const certData = calculateCrewCertificateCompliance({ crew, crewCerts, matrix, rules })
+      return certData.mandatoryTotal > 0 ? certData.progress : null
     }).filter((value: number | null): value is number => value !== null)
 
     const vesselCompliance = vesselProgress.length > 0
       ? Math.round(vesselProgress.reduce((sum: number, value: number) => sum + value, 0) / vesselProgress.length)
       : 0
 
-    setPersonal({ progress: myRequired.length > 0 ? Math.round((okCount/myRequired.length)*100) : 0, okCount, reqCount: myRequired.length, expired, warning, missing: myRequired.length - okCount, suit, boot, lastStatus: myReqsRes.data?.[0]?.status || 'None' });
+    setPersonal({ progress: myCertData.progress, okCount: myCertData.ok, reqCount: myCertData.mandatoryTotal, expired: myCertData.expired, warning: myCertData.warning, missing: myCertData.missing, suit, boot, lastStatus: myReqsRes.data?.[0]?.status || 'None' });
     
     setVessel({ 
       pending: totalPending || 0, 

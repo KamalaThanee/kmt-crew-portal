@@ -4,8 +4,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { CrewCertificatesPanel } from '@/components/certificates/CrewCertificatesPanel'
 import { PersonalCertificatesPanel } from '@/components/certificates/PersonalCertificatesPanel'
+import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { createZipBlob, getFileExtension, safeFileName, triggerDownload } from '@/lib/certificateDownloads'
-import { isNoExpiryDate } from '@/lib/certificates'
 import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { ShieldCheck } from 'lucide-react'
@@ -83,50 +83,7 @@ function CertificatesContent() {
   }, [currentUser]);
 
   const calculateCerts = (targetCrew: any, crewCertList: any[]) => {
-    if (!matrix.length) return { progress: 0, ok: 0, expired: 0, warning: 0, missing: 0, list: [] };
-    const uPos = normalize(targetCrew.position);
-    let required = matrix.filter(row => normalize(row.position) === uPos && (row.requirement_type === 'P' || row.requirement_type === 'O'))
-      .map(m => ({ ...m, is_mandatory: m.requirement_type === 'P' }));
-    
-    (rules || []).forEach(rule => {
-      if (crewCertList.some(c => normalize(c.cert_name) === normalize(rule.trigger_cert))) {
-        const idx = required.findIndex(req => normalize(req.cert_name) === normalize(rule.required_cert));
-        if (idx === -1) {
-          const info = matrix.find(m => normalize(m.cert_name) === normalize(rule.required_cert));
-          required.push({ cert_name: rule.required_cert, is_mandatory: true, category: info?.category || 'Additional' });
-        } else { required[idx].is_mandatory = true; }
-      }
-    });
-
-    const today = new Date();
-    let ok = 0, expired = 0, warning = 0, missing = 0, mandatoryTotal = 0;
-
-    const list = required.map(req => {
-      if (req.is_mandatory) mandatoryTotal++;
-      const uploaded = crewCertList.find(c => normalize(c.cert_name) === normalize(req.cert_name));
-      let status = req.is_mandatory ? 'missing' : 'optional';
-      let daysLeft = -1;
-      if (uploaded) {
-        if (isNoExpiryDate(uploaded.expiry_date)) { status = 'ok'; ok++; daysLeft = 9999; }
-        else {
-          const expDate = new Date(uploaded.expiry_date);
-          daysLeft = Math.floor((expDate.getTime() - today.getTime()) / 86400000);
-          if (daysLeft < 0) { status = 'expired'; expired++; }
-          else if (daysLeft <= 90) { status = 'warning'; warning++; ok++; }
-          else { status = 'ok'; ok++; }
-        }
-      } else if (req.is_mandatory) missing++;
-      return { ...req, uploaded, status, daysLeft };
-    }).sort((a, b) => {
-       const weight: any = { expired: 1, missing: 2, warning: 3, ok: 4, optional: 5 };
-       return weight[a.status] - weight[b.status];
-    });
-
-    return { 
-      list, 
-      progress: mandatoryTotal > 0 ? Math.round((ok / mandatoryTotal) * 100) : 0, 
-      ok, expired, warning, missing 
-    };
+    return calculateCrewCertificateCompliance({ crew: targetCrew, crewCerts: crewCertList, matrix, rules })
   }
 
   const myCertData = useMemo(() => calculateCerts(currentUser || {}, myCerts), [currentUser, myCerts, matrix, rules]);
