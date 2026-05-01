@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     const { fileBase64, mimeType, extractedText, certName, code, category, analysisFocus, modelId, provider } = body
     const apiKey = provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : process.env.GEMINI_API_KEY
 
-    if ((!extractedText && (!fileBase64 || !mimeType)) || !certName || !modelId || !provider) {
+    if ((!extractedText && (!fileBase64 || !mimeType)) || !modelId || !provider) {
       throw new Error('Missing ship certificate OCR input')
     }
     if (!apiKey) throw new Error('Missing OCR provider API key')
@@ -28,13 +28,13 @@ export async function POST(req: Request) {
     const hasExtractedText = !!extractedText?.trim()
     const prompt = `You are a strict maritime vessel certificate auditor and document controller with working knowledge of IMO instruments, SOLAS, MARPOL, STCW where relevant, ISM/ISPS, MLC, flag-state statutory certificates, classification society certificates, and annual/intermediate/class survey endorsement practice.
 TASK: Read the uploaded ship/vessel certificate and extract fields for the checklist item.
-CHECKLIST ITEM: "${code || ''} ${certName}".
+CHECKLIST ITEM: "${certName ? `${code || ''} ${certName}` : `NEW ${category || ''} SHIP CERTIFICATE - identify the certificate type from the uploaded file`}".
 CATEGORY: "${category || ''}".
 SOURCE MODE: ${hasExtractedText ? 'OCR/TEXT EXTRACTION FIRST. Use the extracted text below. Do not require vision unless the text is incomplete.' : 'VISION FALLBACK. OCR/text extraction did not provide enough readable text.'}
 ANALYSIS FOCUS: ${analysisFocus === 'annual_survey' ? 'Annual/intermediate/class survey endorsement page. Prioritize handwritten/stamped endorsement dates, surveyor signatures, and next/last annual survey clues.' : 'Full certificate identification and date extraction.'}
 
 RULES:
-1. Certificate type match must be strict. Do not treat a different vessel certificate as acceptable just because it is maritime related.
+1. Certificate type match must be strict when a checklist item name is provided. Do not treat a different vessel certificate as acceptable just because it is maritime related. If this is a new certificate with no checklist item name, identify the certificate type and set certTypeMatch=true when it is a genuine vessel/ship certificate.
 2. Use maritime regulatory context to interpret equivalent names:
    - Flag/statutory examples: Certificate of Registry, Minimum Safe Manning, Safety Radio, Safety Equipment, Load Line, IOPP, Sewage, IAPP, Civil Liability, Maritime Labour, DOC/SMC/ISSC where applicable.
    - Class examples: Classification Certificate, Hull/Machinery, Load Line class endorsements, annual/intermediate/special survey endorsements.

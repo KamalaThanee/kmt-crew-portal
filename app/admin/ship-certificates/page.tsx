@@ -26,6 +26,16 @@ const statusFilters: Array<'all' | ShipCertificateStatus> = ['all', 'expired', '
 const SHIP_CERT_BUCKET = 'ship-certificates'
 type DashboardFilter = 'all' | 'expired' | 'due30' | 'due90' | 'surveyDue'
 
+const categoryCodePrefixes: Record<string, string> = {
+  Flag: 'F',
+  Class: 'C',
+  Insurance: 'I',
+  Permit: 'P',
+  GMDSS: 'G',
+  FFE: 'FE',
+  LSA: 'L',
+}
+
 type ShipCertificateForm = {
   category: string
   code: string
@@ -118,6 +128,18 @@ const buildBlankShipCert = (sortOrder: number, category = 'Flag'): ShipCertifica
   sort_order: sortOrder,
 })
 
+const getNextCertCode = (rows: ShipCertificate[], category: string) => {
+  const prefix = categoryCodePrefixes[category] || category.slice(0, 1).toUpperCase()
+  const numbers = rows
+    .filter((row) => row.category === category)
+    .map((row) => String(row.code || '').trim().toUpperCase())
+    .map((code) => {
+      const match = code.match(new RegExp(`^${prefix}(\\d+)$`, 'i'))
+      return match ? Number(match[1]) : 0
+    })
+  return `${prefix}${Math.max(0, ...numbers) + 1}`
+}
+
 const readFileAsDataUrl = (file: File) =>
   new Promise<string>((resolve) => {
     const reader = new FileReader()
@@ -190,7 +212,10 @@ export default function ShipCertificatesPage() {
   const openAddCertModal = () => {
     const nextSortOrder = Math.max(0, ...rows.map((row) => row.sort_order || 0)) + 1
     const defaultCategory = categoryFilter === 'all' ? 'Flag' : categoryFilter
-    const draft = buildBlankShipCert(nextSortOrder, defaultCategory)
+    const draft = {
+      ...buildBlankShipCert(nextSortOrder, defaultCategory),
+      code: getNextCertCode(rows, defaultCategory),
+    }
     setEditingCert(draft)
     setEditForm(buildFormFromCert(draft))
     setIsAddingCert(true)
@@ -230,9 +255,9 @@ export default function ShipCertificatesPage() {
             body: JSON.stringify({
               fileBase64,
               mimeType,
-              certName: editingCert.cert_name,
-              code: editingCert.code,
-              category: editingCert.category,
+              certName: isAddingCert ? '' : editForm.cert_name || editingCert.cert_name,
+              code: editForm.code || editingCert.code,
+              category: editForm.category || editingCert.category,
               analysisFocus: 'full_certificate',
               modelId: model.id,
               provider: model.provider,
@@ -251,6 +276,7 @@ export default function ShipCertificatesPage() {
           setScanResult(result)
           setEditForm({
             ...editForm,
+            cert_name: isAddingCert && result.detectedCertName ? result.detectedCertName : editForm.cert_name,
             issue_by: result.issueBy || editForm.issue_by,
             issued_date: result.issuedDate || editForm.issued_date,
             expiry_date: result.expiryDate || editForm.expiry_date,
@@ -285,7 +311,7 @@ export default function ShipCertificatesPage() {
       return
     }
 
-    if (scanResult?.certTypeMatch === false) {
+    if (!isAddingCert && scanResult?.certTypeMatch === false) {
       setErrorMessage('AI thinks this file does not match the selected ship certificate. Please upload the correct certificate or clear/re-scan.')
       setIsSaving(false)
       return
@@ -330,6 +356,11 @@ export default function ShipCertificatesPage() {
 
     if (error) {
       setErrorMessage(`Save failed: ${error.message}`)
+      setIsSaving(false)
+      return
+    }
+    if (!data) {
+      setErrorMessage('Save failed: no ship certificate data returned.')
       setIsSaving(false)
       return
     }
@@ -531,6 +562,9 @@ export default function ShipCertificatesPage() {
           isScanning={isScanning}
           isSaving={isSaving}
           onFormChange={setEditForm}
+          onCategoryChange={(category) => {
+            setEditForm((prev) => prev ? { ...prev, category, code: isAddingCert ? getNextCertCode(rows, category) : prev.code } : prev)
+          }}
           onFileChange={(file) => {
             setUploadFile(file)
             setScanResult(null)
@@ -592,6 +626,7 @@ function ShipCertificateModal({
   isScanning,
   isSaving,
   onFormChange,
+  onCategoryChange,
   onFileChange,
   onAiScan,
   onClose,
@@ -606,11 +641,14 @@ function ShipCertificateModal({
   isScanning: boolean
   isSaving: boolean
   onFormChange: (form: ShipCertificateForm) => void
+  onCategoryChange: (category: string) => void
   onFileChange: (file: File | null) => void
   onAiScan: () => void
   onClose: () => void
   onSave: () => void
 }) {
+  const showExtractedFields = !isAddingCert || !!form.cert_name || !!scanResult
+
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl">
       <div className="w-full max-w-3xl overflow-hidden rounded-[40px] border border-cyan-500/20 bg-zinc-950 shadow-2xl">
@@ -630,7 +668,7 @@ function ShipCertificateModal({
             <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Category</span>
             <select
               value={form.category}
-              onChange={(event) => onFormChange({ ...form, category: event.target.value })}
+              onChange={(event) => onCategoryChange(event.target.value)}
               className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400"
             >
               {editableCategories.map((category) => <option key={category} value={category}>{category}</option>)}
@@ -638,21 +676,26 @@ function ShipCertificateModal({
           </label>
           <label className="space-y-2">
             <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Cert Code</span>
-            <input value={form.code} onChange={(event) => onFormChange({ ...form, code: event.target.value.toUpperCase() })} placeholder="F13, C16, G13..." className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+            <input value={form.code} onChange={(event) => onFormChange({ ...form, code: event.target.value.toUpperCase() })} readOnly={isAddingCert} placeholder="Auto code" className={`w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400 ${isAddingCert ? 'cursor-not-allowed text-cyan-200' : ''}`} />
+            {isAddingCert && <p className="text-[10px] normal-case text-cyan-200/70">Auto-generated from selected category.</p>}
           </label>
-          <label className="space-y-2 md:col-span-2">
-            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Certificate Name</span>
-            <input value={form.cert_name} onChange={(event) => onFormChange({ ...form, cert_name: event.target.value })} placeholder="Certificate title" className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
-          </label>
-          <label className="space-y-2">
-            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Issue By</span>
-            <input value={form.issue_by} onChange={(event) => onFormChange({ ...form, issue_by: event.target.value })} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
-          </label>
+          {!isAddingCert && (
+            <label className="space-y-2 md:col-span-2">
+              <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Certificate Name</span>
+              <input value={form.cert_name} onChange={(event) => onFormChange({ ...form, cert_name: event.target.value })} placeholder="Certificate title" className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+            </label>
+          )}
           <label className="space-y-2">
             <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Certificate File</span>
             <input type="file" accept="application/pdf,image/*" onChange={(event) => onFileChange(event.target.files?.[0] || null)} className="w-full rounded-2xl border border-white/10 bg-black p-3 text-xs font-bold text-white file:mr-3 file:rounded-xl file:border-0 file:bg-cyan-600 file:px-3 file:py-2 file:text-white" />
             {uploadFile && <p className="text-[10px] normal-case text-cyan-200">{uploadFile.name}</p>}
           </label>
+          {isAddingCert && form.cert_name && (
+            <label className="space-y-2 md:col-span-2">
+              <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">AI-detected Certificate Name</span>
+              <input value={form.cert_name} onChange={(event) => onFormChange({ ...form, cert_name: event.target.value })} className="w-full rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm font-bold text-white outline-none focus:border-emerald-400" />
+            </label>
+          )}
           <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4 md:col-span-2">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
@@ -684,24 +727,37 @@ function ShipCertificateModal({
               </div>
             )}
           </div>
-          <DateInput label="Issued Date" value={form.issued_date} onChange={(value) => onFormChange({ ...form, issued_date: value })} />
-          <DateInput label="Expiry Date" value={form.expiry_date} onChange={(value) => onFormChange({ ...form, expiry_date: value })} />
-          <DateInput label="Last Survey Date" value={form.last_survey_date} onChange={(value) => onFormChange({ ...form, last_survey_date: value })} />
-          <DateInput label="Next Survey Date" value={form.next_survey_date} onChange={(value) => onFormChange({ ...form, next_survey_date: value })} />
-          <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
-            <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-black p-4">
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Track Expiry</span>
-              <input type="checkbox" checked={form.has_expiry} onChange={(event) => onFormChange({ ...form, has_expiry: event.target.checked })} className="h-5 w-5 accent-cyan-400" />
-            </label>
-            <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-black p-4">
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Track Survey</span>
-              <input type="checkbox" checked={form.has_survey} onChange={(event) => onFormChange({ ...form, has_survey: event.target.checked })} className="h-5 w-5 accent-cyan-400" />
-            </label>
-          </div>
-          <label className="space-y-2 md:col-span-2">
-            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Remark / Certificate No.</span>
-            <textarea value={form.remark} onChange={(event) => onFormChange({ ...form, remark: event.target.value })} rows={3} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
-          </label>
+          {!showExtractedFields && (
+            <div className="rounded-2xl border border-dashed border-cyan-500/20 bg-black/30 p-5 text-xs normal-case text-zinc-400 md:col-span-2">
+              Upload the certificate and run AI Vision. The remaining fields will appear here for review/edit after AI reads the file.
+            </div>
+          )}
+          {showExtractedFields && (
+            <>
+              <label className="space-y-2">
+                <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Issue By</span>
+                <input value={form.issue_by} onChange={(event) => onFormChange({ ...form, issue_by: event.target.value })} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+              </label>
+              <DateInput label="Issued Date" value={form.issued_date} onChange={(value) => onFormChange({ ...form, issued_date: value })} />
+              <DateInput label="Expiry Date" value={form.expiry_date} onChange={(value) => onFormChange({ ...form, expiry_date: value })} />
+              <DateInput label="Last Survey Date" value={form.last_survey_date} onChange={(value) => onFormChange({ ...form, last_survey_date: value })} />
+              <DateInput label="Next Survey Date" value={form.next_survey_date} onChange={(value) => onFormChange({ ...form, next_survey_date: value })} />
+              <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
+                <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-black p-4">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Track Expiry</span>
+                  <input type="checkbox" checked={form.has_expiry} onChange={(event) => onFormChange({ ...form, has_expiry: event.target.checked })} className="h-5 w-5 accent-cyan-400" />
+                </label>
+                <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-black p-4">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Track Survey</span>
+                  <input type="checkbox" checked={form.has_survey} onChange={(event) => onFormChange({ ...form, has_survey: event.target.checked })} className="h-5 w-5 accent-cyan-400" />
+                </label>
+              </div>
+              <label className="space-y-2 md:col-span-2">
+                <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Remark / Certificate No.</span>
+                <textarea value={form.remark} onChange={(event) => onFormChange({ ...form, remark: event.target.value })} rows={3} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+              </label>
+            </>
+          )}
           {certificate.file_url && (
             <a href={certificate.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-cyan-300 hover:text-white md:col-span-2">
               <ExternalLink size={14} /> View current file
