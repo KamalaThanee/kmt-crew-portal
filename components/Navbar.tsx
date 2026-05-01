@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, mounted, isAdmin, logout } = useCurrentUser();
+  const { user, mounted, isAdmin, canViewShipCerts, logout } = useCurrentUser();
   const [showProfile, setShowProfile] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [cartCount, setCartCount] = useState(0);
@@ -39,8 +39,8 @@ export default function Navbar() {
   });
 
   const menuItems = useMemo(
-    () => getNavbarMenuItems(isAdmin),
-    [isAdmin],
+    () => getNavbarMenuItems(isAdmin, canViewShipCerts),
+    [isAdmin, canViewShipCerts],
   );
 
   useEffect(() => {
