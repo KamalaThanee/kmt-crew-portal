@@ -5,6 +5,7 @@ export const runtime = 'edge'
 type ShipCertOcrBody = {
   fileBase64?: string
   mimeType?: string
+  extractedText?: string
   certName?: string
   code?: string
   category?: string
@@ -15,18 +16,20 @@ type ShipCertOcrBody = {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as ShipCertOcrBody
-    const { fileBase64, mimeType, certName, code, category, modelId, provider } = body
+    const { fileBase64, mimeType, extractedText, certName, code, category, modelId, provider } = body
     const apiKey = provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : process.env.GEMINI_API_KEY
 
-    if (!fileBase64 || !mimeType || !certName || !modelId || !provider) {
+    if ((!extractedText && (!fileBase64 || !mimeType)) || !certName || !modelId || !provider) {
       throw new Error('Missing ship certificate OCR input')
     }
     if (!apiKey) throw new Error('Missing OCR provider API key')
 
+    const hasExtractedText = !!extractedText?.trim()
     const prompt = `You are a strict maritime vessel certificate auditor.
 TASK: Read the uploaded ship/vessel certificate and extract fields for the checklist item.
 CHECKLIST ITEM: "${code || ''} ${certName}".
 CATEGORY: "${category || ''}".
+SOURCE MODE: ${hasExtractedText ? 'OCR/TEXT EXTRACTION FIRST. Use the extracted text below. Do not require vision unless the text is incomplete.' : 'VISION FALLBACK. OCR/text extraction did not provide enough readable text.'}
 
 RULES:
 1. Certificate type match must be strict. Do not treat a different vessel certificate as acceptable just because it is maritime related.
@@ -36,41 +39,42 @@ RULES:
 5. If the uploaded document clearly does not match the selected checklist item, set certTypeMatch=false.
 
 Return ONLY raw JSON:
-{"issueBy":"issuer/class/authority or empty","issuedDate":"YYYY-MM-DD or empty","expiryDate":"YYYY-MM-DD or empty","lastSurveyDate":"YYYY-MM-DD or empty","nextSurveyDate":"YYYY-MM-DD or empty","detectedCertName":"text","certificateNumber":"text or empty","certTypeMatch":true,"note":"short English reasoning"}`
+{"issueBy":"issuer/class/authority or empty","issuedDate":"YYYY-MM-DD or empty","expiryDate":"YYYY-MM-DD or empty","lastSurveyDate":"YYYY-MM-DD or empty","nextSurveyDate":"YYYY-MM-DD or empty","detectedCertName":"text","certificateNumber":"text or empty","certTypeMatch":true,"note":"short English reasoning"}
 
-    const cleanBase64 = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64
+${hasExtractedText ? `EXTRACTED TEXT:\n${extractedText?.slice(0, 18000)}` : ''}`
+
+    const cleanBase64 = fileBase64?.includes(',') ? fileBase64.split(',')[1] : fileBase64
     let response: Response
 
     if (provider === 'openrouter') {
+      const content = hasExtractedText
+        ? prompt
+        : [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${cleanBase64}` } },
+          ]
+
       response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: modelId,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: prompt },
-                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${cleanBase64}` } },
-              ],
-            },
-          ],
+          messages: [{ role: 'user', content }],
         }),
       })
     } else {
+      const parts = hasExtractedText
+        ? [{ text: prompt }]
+        : [
+            { text: prompt },
+            { inline_data: { mime_type: mimeType, data: cleanBase64 } },
+          ]
+
       response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: prompt },
-                { inline_data: { mime_type: mimeType, data: cleanBase64 } },
-              ],
-            },
-          ],
+          contents: [{ parts }],
         }),
       })
     }
@@ -91,6 +95,7 @@ Return ONLY raw JSON:
 
     return NextResponse.json({
       ...JSON.parse(jsonMatch[0]),
+      analysisMode: hasExtractedText ? 'text' : 'vision',
       activeModel: modelId,
     })
   } catch (error: any) {

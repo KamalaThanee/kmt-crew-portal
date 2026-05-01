@@ -43,7 +43,42 @@ type ShipCertScanResult = {
   certificateNumber?: string
   certTypeMatch?: boolean
   note?: string
+  analysisMode?: 'text' | 'vision'
   activeModel?: string
+}
+
+const decodePdfLiteral = (value: string) =>
+  value
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n')
+    .replace(/\\t/g, ' ')
+    .replace(/\\\(/g, '(')
+    .replace(/\\\)/g, ')')
+    .replace(/\\\\/g, '\\')
+
+const extractPdfText = async (file: File) => {
+  const buffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  let raw = ''
+  const chunkSize = 0x8000
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    raw += String.fromCharCode(...bytes.subarray(index, index + chunkSize))
+  }
+
+  const texts: string[] = []
+  for (const match of raw.matchAll(/\((?:\\.|[^\\)]){2,}\)\s*Tj/g)) {
+    texts.push(decodePdfLiteral(match[0].replace(/\)\s*Tj$/, '').slice(1)))
+  }
+  for (const match of raw.matchAll(/\[(.*?)\]\s*TJ/gs)) {
+    const parts = [...match[1].matchAll(/\((?:\\.|[^\\)]){1,}\)/g)].map((part) => decodePdfLiteral(part[0].slice(1, -1)))
+    if (parts.length) texts.push(parts.join(''))
+  }
+
+  return texts
+    .join('\n')
+    .replace(/[^\S\r\n]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 const sanitizeFilePart = (value?: string | null, fallback = 'ship-cert') => {
@@ -147,31 +182,41 @@ export default function ShipCertificatesPage() {
   const handleShipAiScan = async () => {
     if (!editingCert || !editForm || !uploadFile) return
     setIsScanning(true)
-    setScanMessage('Preparing file for AI scan...')
+    setScanMessage('Step 1/2: OCR/text extraction first...')
     setScanResult(null)
     setErrorMessage('')
 
     try {
       const isPdf = uploadFile.type === 'application/pdf' || uploadFile.name.toLowerCase().endsWith('.pdf')
+      const extractedText = isPdf ? await extractPdfText(uploadFile) : ''
+      const canUseTextFirst = extractedText.length >= 80
+      let fileBase64 = ''
       const mimeType = isPdf ? 'application/pdf' : 'image/jpeg'
-      const fileBase64 = isPdf
-        ? await new Promise<string>((resolve) => {
-            const reader = new FileReader()
-            reader.readAsDataURL(uploadFile)
-            reader.onloadend = () => resolve(String(reader.result || ''))
-          })
-        : await compressImage(uploadFile)
+
+      if (canUseTextFirst) {
+        setScanMessage(`Step 2/2: OCR text found (${extractedText.length} chars). Asking AI to parse text...`)
+      } else {
+        setScanMessage('OCR text not enough. Falling back to AI Vision with model sequence...')
+        fileBase64 = isPdf
+          ? await new Promise<string>((resolve) => {
+              const reader = new FileReader()
+              reader.readAsDataURL(uploadFile)
+              reader.onloadend = () => resolve(String(reader.result || ''))
+            })
+          : await compressImage(uploadFile)
+      }
 
       let latestError = 'AI models busy'
       for (const model of AI_MODELS) {
-        setScanMessage(`Trying: ${model.label}`)
+        setScanMessage(`${canUseTextFirst ? 'OCR text parse' : 'Vision fallback'} - trying: ${model.label}`)
         try {
           const res = await fetch('/api/ship-cert-ocr', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              fileBase64,
-              mimeType,
+              extractedText: canUseTextFirst ? extractedText : undefined,
+              fileBase64: canUseTextFirst ? undefined : fileBase64,
+              mimeType: canUseTextFirst ? undefined : mimeType,
               certName: editingCert.cert_name,
               code: editingCert.code,
               category: editingCert.category,
@@ -199,7 +244,7 @@ export default function ShipCertificatesPage() {
             next_survey_date: result.nextSurveyDate || editForm.next_survey_date,
             remark: nextRemark,
           })
-          setScanMessage(`Analyzed by: ${model.label}`)
+          setScanMessage(`${result.analysisMode === 'text' ? 'OCR text parsed' : 'Vision fallback analyzed'} by: ${model.label}`)
           return
         } catch (error: any) {
           latestError = error.message || latestError
@@ -491,7 +536,7 @@ function ShipCertificateModal({
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[9px] font-black uppercase tracking-widest text-cyan-300">AI Assist</p>
-                <p className="mt-1 text-xs normal-case text-zinc-400">Reads issuer, issued/expiry date, and survey endorsement when visible.</p>
+                <p className="mt-1 text-xs normal-case text-zinc-400">OCR/text extraction runs first. AI Vision is used only when text is not readable enough.</p>
               </div>
               <button
                 type="button"
@@ -500,7 +545,7 @@ function ShipCertificateModal({
                 className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-500/20 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {isScanning ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
-                {isScanning ? 'Reading...' : 'AI Read File'}
+                {isScanning ? 'Reading...' : 'OCR + AI Read'}
               </button>
             </div>
             {(scanMessage || scanResult) && (
@@ -509,6 +554,7 @@ function ShipCertificateModal({
                 {scanResult && (
                   <div className="mt-2 space-y-1">
                     <p>Detected: <span className="font-bold text-white">{scanResult.detectedCertName || '-'}</span></p>
+                    <p>Mode: <span className="font-bold text-cyan-200">{scanResult.analysisMode === 'text' ? 'OCR text first' : 'AI Vision fallback'}</span></p>
                     <p>Match: <span className={scanResult.certTypeMatch ? 'font-bold text-emerald-300' : 'font-bold text-red-300'}>{scanResult.certTypeMatch ? 'Looks matched' : 'Needs manual review'}</span></p>
                   </div>
                 )}
