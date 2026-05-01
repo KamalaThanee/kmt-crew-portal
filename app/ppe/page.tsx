@@ -174,14 +174,17 @@ function PPEContent() {
   if (!mounted || !user) return null
 
   return (
-    <div className="min-h-screen bg-black text-white pb-32 pt-24 px-4 md:px-8 font-sans">
-      <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+      <div className="space-y-8 animate-in fade-in duration-500">
         
         {/* HEADER */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-b border-white/5 pb-8">
+        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
            <div>
-              <h1 className="text-3xl md:text-5xl font-black italic uppercase text-white tracking-tighter">Request PPE</h1>
-              <p className="text-orange-500 text-[10px] font-bold uppercase tracking-[0.3em] mt-2 flex items-center gap-2">
+              <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3">
+                {isAdmin ? <ShieldAlert className="text-orange-500" size={36}/> : <User className="text-orange-500" size={36}/>}
+                Request PPE
+              </h1>
+              <p className="text-zinc-500 mt-1 tracking-widest flex items-center gap-2">
                 {isAdmin ? <ShieldAlert size={12}/> : <User size={12}/>}
                 {isAdmin ? 'Storekeeper Administrative Mode' : `Personnel: ${user.full_name}`}
               </p>

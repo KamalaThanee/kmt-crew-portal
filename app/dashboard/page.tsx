@@ -82,8 +82,8 @@ export default function CrewDashboard() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse">LOADING...</div>
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto pb-32 pt-20 font-sans text-white uppercase font-bold text-[10px]">
-      <div className="mb-10"><h1 className="text-3xl font-black italic">My Dashboard</h1></div>
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6"><div><h1 className="text-3xl md:text-4xl font-black italic">My Dashboard</h1><p className="text-zinc-500 mt-1 tracking-widest">Personal readiness and PPE status</p></div></div>
       
       <div className="space-y-6">
         <Link href="/certificates" className="block bg-slate-900 border border-blue-500/20 p-8 rounded-[40px] shadow-2xl hover:border-blue-500 transition-all group">

@@ -85,9 +85,9 @@ export default function AdminDashboard() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse uppercase tracking-widest text-xs">Command Hub...</div>
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-20 font-sans text-white uppercase font-bold text-[10px]">
-      <div className="mb-10 flex justify-between items-center">
-        <div><h1 className="text-3xl font-black italic leading-none text-white">Command Center</h1><p className="text-orange-500 tracking-[0.2em] mt-2 uppercase">Vessel Oversight</p></div>
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div><h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3 text-white"><ShieldCheck className="text-orange-500" size={36}/> Command Center</h1><p className="text-zinc-500 mt-1 tracking-widest">Vessel Oversight</p></div>
         <button onClick={() => fetchAdminData(user)} className="p-3 bg-zinc-900 border border-white/5 rounded-full hover:bg-orange-600 transition-all"><RefreshCw size={20}/></button>
       </div>
 

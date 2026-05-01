@@ -31,8 +31,8 @@ export function InventoryControls({
 }: InventoryControlsProps) {
   return (
     <>
-      <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div><h1 className="text-4xl md:text-5xl font-black italic flex items-center gap-4 tracking-tighter text-white"><Package className="text-blue-500" size={40}/> Inventory</h1></div>
+      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div><h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3 text-white"><Package className="text-orange-500" size={36}/> Inventory</h1><p className="text-zinc-500 mt-1 tracking-widest">Stock control and receive shipment</p></div>
         <div className="flex flex-wrap gap-3">
           <button onClick={onExportExcel} className="px-8 py-4 bg-blue-600/10 border border-blue-500/30 text-blue-400 rounded-[20px] font-black text-xs flex items-center gap-3 transition-all active:scale-95 shadow-lg shadow-blue-500/5"><Download size={18}/> Export Excel</button>
           <button onClick={onOpenReceiveStock} className="px-8 py-4 bg-emerald-600/10 border border-emerald-500/30 text-emerald-500 rounded-[20px] font-black text-xs flex items-center gap-3 transition-all active:scale-95 shadow-lg shadow-emerald-500/5"><Archive size={18}/> Receive Stock</button>
