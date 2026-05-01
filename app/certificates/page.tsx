@@ -234,10 +234,10 @@ function CertificatesContent() {
         </div>
         
         {canManageCertificates && (
-          <div className="flex bg-zinc-900 p-1.5 rounded-2xl border border-white/5 w-fit shadow-2xl">
-            <button onClick={() => setActiveTab('personal')} className={`px-8 py-3 rounded-xl transition-all ${activeTab === 'personal' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-zinc-500 hover:text-white'}`}>My Certs</button>
-            <button onClick={() => setActiveTab('crew')} className={`px-8 py-3 rounded-xl transition-all ${activeTab === 'crew' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-zinc-500 hover:text-white'}`}>Crew Certificates</button>
-            {canOpenShipCertificates && <button onClick={() => router.push('/admin/ship-certificates')} className="px-8 py-3 rounded-xl text-zinc-500 transition-all hover:text-white">Ship Certs</button>}
+          <div className="grid w-full max-w-xl grid-cols-3 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[560px]">
+            <button onClick={() => setActiveTab('personal')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'personal' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>My Certs</button>
+            <button onClick={() => setActiveTab('crew')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'crew' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>Crew Certificates</button>
+            {canOpenShipCertificates && <button onClick={() => router.push('/admin/ship-certificates')} className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white">Ship Certs</button>}
           </div>
         )}
       </div>
