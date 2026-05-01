@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { clearOneSignalUser } from '@/lib/onesignalClient'
-import { isAdminRole } from '@/lib/roles'
+import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import {
   clearCurrentUser,
   KMT_USER_CHANGED_EVENT,
@@ -45,6 +45,7 @@ export function useCurrentUser() {
   }, [])
 
   const isAdmin = useMemo(() => isAdminRole(user?.position), [user?.position])
+  const canViewShipCerts = useMemo(() => canViewShipCertificates(user?.position), [user?.position])
 
-  return { user, mounted, isAdmin, refreshUser, logout }
+  return { user, mounted, isAdmin, canViewShipCerts, refreshUser, logout }
 }
