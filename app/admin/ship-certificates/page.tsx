@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CalendarClock, ExternalLink, FileBadge, Search, ShipWheel, UploadCloud, X } from 'lucide-react'
+import { AlertTriangle, CalendarClock, ExternalLink, FileBadge, Loader2, Search, ShipWheel, UploadCloud, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
 import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import {
@@ -32,6 +33,41 @@ type ShipCertificateForm = {
   remark: string
 }
 
+type ShipCertScanResult = {
+  issueBy?: string
+  issuedDate?: string
+  expiryDate?: string
+  lastSurveyDate?: string
+  nextSurveyDate?: string
+  detectedCertName?: string
+  certificateNumber?: string
+  certTypeMatch?: boolean
+  note?: string
+  activeModel?: string
+}
+
+const sanitizeFilePart = (value?: string | null, fallback = 'ship-cert') => {
+  const clean = String(value || fallback)
+    .normalize('NFKD')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 80)
+  return clean || fallback
+}
+
+const buildShipCertFilePath = (certificate: ShipCertificate, file: File) => {
+  const ext = (file.name.split('.').pop() || 'pdf').toLowerCase()
+  const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+  const vessel = sanitizeFilePart(certificate.vessel_name, 'Kamala_Thanee')
+  const category = sanitizeFilePart(certificate.category, 'Ship_Certificate')
+  const code = sanitizeFilePart(certificate.code, 'NO_CODE')
+  const certName = sanitizeFilePart(certificate.cert_name, 'Certificate')
+
+  return `${vessel}/${category}/${code}_${certName}_${timestamp}.${ext}`
+}
+
 const buildFormFromCert = (row: ShipCertificate): ShipCertificateForm => ({
   issue_by: row.issue_by || '',
   issued_date: row.issued_date || '',
@@ -54,6 +90,9 @@ export default function ShipCertificatesPage() {
   const [editingCert, setEditingCert] = useState<ShipCertificate | null>(null)
   const [editForm, setEditForm] = useState<ShipCertificateForm | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [scanResult, setScanResult] = useState<ShipCertScanResult | null>(null)
+  const [scanMessage, setScanMessage] = useState('')
+  const [isScanning, setIsScanning] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
@@ -93,12 +132,86 @@ export default function ShipCertificatesPage() {
     setEditingCert(row)
     setEditForm(buildFormFromCert(row))
     setUploadFile(null)
+    setScanResult(null)
+    setScanMessage('')
   }
 
   const closeEditModal = () => {
     setEditingCert(null)
     setEditForm(null)
     setUploadFile(null)
+    setScanResult(null)
+    setScanMessage('')
+  }
+
+  const handleShipAiScan = async () => {
+    if (!editingCert || !editForm || !uploadFile) return
+    setIsScanning(true)
+    setScanMessage('Preparing file for AI scan...')
+    setScanResult(null)
+    setErrorMessage('')
+
+    try {
+      const isPdf = uploadFile.type === 'application/pdf' || uploadFile.name.toLowerCase().endsWith('.pdf')
+      const mimeType = isPdf ? 'application/pdf' : 'image/jpeg'
+      const fileBase64 = isPdf
+        ? await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.readAsDataURL(uploadFile)
+            reader.onloadend = () => resolve(String(reader.result || ''))
+          })
+        : await compressImage(uploadFile)
+
+      let latestError = 'AI models busy'
+      for (const model of AI_MODELS) {
+        setScanMessage(`Trying: ${model.label}`)
+        try {
+          const res = await fetch('/api/ship-cert-ocr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileBase64,
+              mimeType,
+              certName: editingCert.cert_name,
+              code: editingCert.code,
+              category: editingCert.category,
+              modelId: model.id,
+              provider: model.provider,
+            }),
+          })
+          const result = await res.json()
+          if (!res.ok || result.error) {
+            latestError = result.error || latestError
+            throw new Error(latestError)
+          }
+
+          const nextRemark = [editForm.remark, result.certificateNumber ? `Cert No: ${result.certificateNumber}` : '', result.note ? `AI: ${result.note}` : '']
+            .filter(Boolean)
+            .join('\n')
+
+          setScanResult(result)
+          setEditForm({
+            ...editForm,
+            issue_by: result.issueBy || editForm.issue_by,
+            issued_date: result.issuedDate || editForm.issued_date,
+            expiry_date: result.expiryDate || editForm.expiry_date,
+            last_survey_date: result.lastSurveyDate || editForm.last_survey_date,
+            next_survey_date: result.nextSurveyDate || editForm.next_survey_date,
+            remark: nextRemark,
+          })
+          setScanMessage(`Analyzed by: ${model.label}`)
+          return
+        } catch (error: any) {
+          latestError = error.message || latestError
+        }
+      }
+
+      throw new Error(latestError)
+    } catch (error: any) {
+      setScanMessage(error.message || 'AI scan failed. Please fill manually.')
+    } finally {
+      setIsScanning(false)
+    }
   }
 
   const saveCertificateUpdate = async () => {
@@ -106,11 +219,15 @@ export default function ShipCertificatesPage() {
     setIsSaving(true)
     setErrorMessage('')
 
+    if (scanResult?.certTypeMatch === false) {
+      setErrorMessage('AI thinks this file does not match the selected ship certificate. Please upload the correct certificate or clear/re-scan.')
+      setIsSaving(false)
+      return
+    }
+
     let fileUrl = editingCert.file_url || null
     if (uploadFile) {
-      const safeCode = String(editingCert.code || 'ship-cert').replace(/[^a-z0-9_-]/gi, '_')
-      const fileExt = uploadFile.name.split('.').pop() || 'pdf'
-      const filePath = `${safeCode}/${Date.now()}.${fileExt}`
+      const filePath = buildShipCertFilePath(editingCert, uploadFile)
       const { error: uploadError } = await supabase.storage.from(SHIP_CERT_BUCKET).upload(filePath, uploadFile, { upsert: true })
       if (uploadError) {
         setErrorMessage(`Upload failed: ${uploadError.message}`)
@@ -282,9 +399,17 @@ export default function ShipCertificatesPage() {
           certificate={editingCert}
           form={editForm}
           uploadFile={uploadFile}
+          scanResult={scanResult}
+          scanMessage={scanMessage}
+          isScanning={isScanning}
           isSaving={isSaving}
           onFormChange={setEditForm}
-          onFileChange={setUploadFile}
+          onFileChange={(file) => {
+            setUploadFile(file)
+            setScanResult(null)
+            setScanMessage('')
+          }}
+          onAiScan={handleShipAiScan}
           onClose={closeEditModal}
           onSave={saveCertificateUpdate}
         />
@@ -315,18 +440,26 @@ function ShipCertificateModal({
   certificate,
   form,
   uploadFile,
+  scanResult,
+  scanMessage,
+  isScanning,
   isSaving,
   onFormChange,
   onFileChange,
+  onAiScan,
   onClose,
   onSave,
 }: {
   certificate: ShipCertificate
   form: ShipCertificateForm
   uploadFile: File | null
+  scanResult: ShipCertScanResult | null
+  scanMessage: string
+  isScanning: boolean
   isSaving: boolean
   onFormChange: (form: ShipCertificateForm) => void
   onFileChange: (file: File | null) => void
+  onAiScan: () => void
   onClose: () => void
   onSave: () => void
 }) {
@@ -337,7 +470,7 @@ function ShipCertificateModal({
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-300">Renew / Update Ship Certificate</p>
             <h2 className="mt-2 text-2xl font-black italic text-white">{certificate.code} · {certificate.cert_name}</h2>
-            <p className="mt-1 text-xs normal-case text-zinc-500">Manual confirm first. Hybrid OCR + AI reading will come in the next phase.</p>
+            <p className="mt-1 text-xs normal-case text-zinc-500">AI assist can prefill fields. Admin must still review before saving.</p>
           </div>
           <button onClick={onClose} className="rounded-2xl bg-white/5 p-3 text-zinc-400 hover:bg-white/10 hover:text-white">
             <X size={20} />
@@ -354,6 +487,34 @@ function ShipCertificateModal({
             <input type="file" accept="application/pdf,image/*" onChange={(event) => onFileChange(event.target.files?.[0] || null)} className="w-full rounded-2xl border border-white/10 bg-black p-3 text-xs font-bold text-white file:mr-3 file:rounded-xl file:border-0 file:bg-cyan-600 file:px-3 file:py-2 file:text-white" />
             {uploadFile && <p className="text-[10px] normal-case text-cyan-200">{uploadFile.name}</p>}
           </label>
+          <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4 md:col-span-2">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-cyan-300">AI Assist</p>
+                <p className="mt-1 text-xs normal-case text-zinc-400">Reads issuer, issued/expiry date, and survey endorsement when visible.</p>
+              </div>
+              <button
+                type="button"
+                onClick={onAiScan}
+                disabled={!uploadFile || isScanning}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-500/20 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isScanning ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
+                {isScanning ? 'Reading...' : 'AI Read File'}
+              </button>
+            </div>
+            {(scanMessage || scanResult) && (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4 text-xs normal-case text-zinc-300">
+                {scanMessage && <p className="font-bold text-cyan-200">{scanMessage}</p>}
+                {scanResult && (
+                  <div className="mt-2 space-y-1">
+                    <p>Detected: <span className="font-bold text-white">{scanResult.detectedCertName || '-'}</span></p>
+                    <p>Match: <span className={scanResult.certTypeMatch ? 'font-bold text-emerald-300' : 'font-bold text-red-300'}>{scanResult.certTypeMatch ? 'Looks matched' : 'Needs manual review'}</span></p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <DateInput label="Issued Date" value={form.issued_date} onChange={(value) => onFormChange({ ...form, issued_date: value })} />
           <DateInput label="Expiry Date" value={form.expiry_date} onChange={(value) => onFormChange({ ...form, expiry_date: value })} />
           <DateInput label="Last Survey Date" value={form.last_survey_date} onChange={(value) => onFormChange({ ...form, last_survey_date: value })} />
