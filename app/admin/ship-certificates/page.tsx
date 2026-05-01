@@ -515,49 +515,49 @@ export default function ShipCertificatesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050817] px-4 pb-32 pt-24 text-white md:px-8">
+    <div className="min-h-screen bg-[#050817] px-4 pb-32 pt-20 text-white md:px-8">
       <div className="mx-auto max-w-7xl space-y-8">
-        <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+        <header className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <ShipWheel className="text-cyan-300" size={34} />
-              <h1 className="text-4xl font-black italic tracking-tight md:text-5xl">Ship Certificate</h1>
+              <ShipWheel className="text-orange-500" size={36} />
+              <h1 className="text-3xl font-black italic tracking-tight md:text-4xl">Ship Certificate</h1>
             </div>
-            <p className="mt-2 text-[10px] font-black uppercase tracking-[0.35em] text-cyan-200/70">
+            <p className="mt-2 text-[10px] font-black uppercase tracking-[0.28em] text-zinc-500">
               Vessel compliance, expiry, and class survey control
             </p>
           </div>
           <div className="flex flex-col gap-3 md:items-end">
-            <div className="grid w-full grid-cols-3 rounded-[30px] border border-cyan-400/20 bg-cyan-950/10 p-1.5 text-[10px] font-black uppercase tracking-tight text-cyan-100/45 shadow-2xl shadow-cyan-950/20 backdrop-blur md:w-[560px]">
+            <div className="grid w-full grid-cols-3 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[560px]">
               <button
                 type="button"
                 onClick={() => router.push('/certificates?tab=personal')}
-                className="rounded-[22px] px-4 py-4 transition-all hover:bg-cyan-400/10 hover:text-cyan-100"
+                className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white"
               >
                 My Certs
               </button>
               <button
                 type="button"
                 onClick={() => router.push('/certificates?tab=crew')}
-                className="rounded-[22px] px-4 py-4 transition-all hover:bg-cyan-400/10 hover:text-cyan-100"
+                className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white"
               >
                 Crew Certificates
               </button>
               <button
                 type="button"
-                className="rounded-[22px] bg-cyan-400 px-4 py-4 text-black shadow-lg shadow-cyan-400/25"
+                className="rounded-[22px] bg-orange-600 px-4 py-4 text-white shadow-lg shadow-orange-600/25"
               >
                 Ship Certs
               </button>
             </div>
             <div className="flex flex-col gap-3 md:flex-row md:items-center">
-              <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 px-5 py-4 text-xs normal-case text-cyan-100">
+              <div className="rounded-3xl border border-orange-500/20 bg-orange-500/10 px-5 py-4 text-xs normal-case text-orange-100">
                 Phase 1: checklist foundation from document 11.62
               </div>
               {canEdit && (
                 <button
                   onClick={openAddCertModal}
-                  className="inline-flex items-center justify-center gap-2 rounded-3xl border border-emerald-400/30 bg-emerald-500 px-5 py-4 text-xs font-black uppercase tracking-widest text-black shadow-lg shadow-emerald-500/20 hover:bg-emerald-300"
+                  className="inline-flex items-center justify-center gap-2 rounded-3xl border border-orange-400/30 bg-orange-600 px-5 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 hover:bg-orange-500"
                 >
                   <PlusCircle size={16} /> Add New Cert
                 </button>
@@ -575,14 +575,14 @@ export default function ShipCertificatesPage() {
         )}
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-5">
-          <SummaryCard label="Total" value={summary.total} tone="cyan" detail="Current category" active={dashboardFilter === 'all' && statusFilter === 'all'} onClick={() => { setDashboardFilter('all'); setStatusFilter('all') }} />
+          <SummaryCard label="Total" value={summary.total} tone="orange" detail="Current category" active={dashboardFilter === 'all' && statusFilter === 'all'} onClick={() => { setDashboardFilter('all'); setStatusFilter('all') }} />
           <SummaryCard label="Expired" value={summary.expired} tone="red" detail="Needs immediate action" active={dashboardFilter === 'expired'} onClick={() => { setDashboardFilter('expired'); setStatusFilter('all') }} />
           <SummaryCard label="Due 30d" value={summary.due30} tone="orange" detail="Renew now" active={dashboardFilter === 'due30'} onClick={() => { setDashboardFilter('due30'); setStatusFilter('all') }} />
           <SummaryCard label="Due 90d" value={summary.due90} tone="amber" detail="Planning window" active={dashboardFilter === 'due90'} onClick={() => { setDashboardFilter('due90'); setStatusFilter('all') }} />
-          <SummaryCard label="Survey Due" value={summary.surveyDue} tone="purple" detail="Class endorsement" active={dashboardFilter === 'surveyDue'} onClick={() => { setDashboardFilter('surveyDue'); setStatusFilter('all') }} />
+          <SummaryCard label="Survey Due" value={summary.surveyDue} tone="zinc" detail="Class endorsement" active={dashboardFilter === 'surveyDue'} onClick={() => { setDashboardFilter('surveyDue'); setStatusFilter('all') }} />
         </section>
 
-        <section className="overflow-x-auto rounded-[28px] border border-cyan-500/10 bg-black/25 p-2">
+        <section className="overflow-x-auto rounded-[28px] border border-orange-500/10 bg-black/25 p-2">
           <div className="flex min-w-max gap-2">
             {categories.map((category) => {
               const count = category === 'all' ? rows.length : rows.filter((row) => row.category === category).length
@@ -597,8 +597,8 @@ export default function ShipCertificatesPage() {
                   }}
                   className={`rounded-2xl border px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
                     active
-                      ? 'border-cyan-300 bg-cyan-400 text-black shadow-lg shadow-cyan-500/20'
-                      : 'border-white/10 bg-white/5 text-zinc-400 hover:border-cyan-400/40 hover:text-cyan-100'
+                      ? 'border-orange-400 bg-orange-600 text-white shadow-lg shadow-orange-600/20'
+                      : 'border-white/10 bg-white/5 text-zinc-400 hover:border-orange-400/40 hover:text-white'
                   }`}
                 >
                   {category === 'all' ? 'All' : category}
@@ -611,8 +611,8 @@ export default function ShipCertificatesPage() {
 
         <section className="rounded-[34px] border border-white/10 bg-black/30 p-4">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px]">
-            <label className="flex items-center gap-3 rounded-2xl border border-cyan-500/20 bg-black/40 px-4">
-              <Search size={16} className="text-cyan-300" />
+            <label className="flex items-center gap-3 rounded-2xl border border-orange-500/20 bg-black/40 px-4">
+              <Search size={16} className="text-orange-500" />
               <input
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
@@ -626,7 +626,7 @@ export default function ShipCertificatesPage() {
                 setStatusFilter(event.target.value as 'all' | ShipCertificateStatus)
                 setDashboardFilter('all')
               }}
-              className="h-14 rounded-2xl border border-cyan-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+              className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
             >
               {statusFilters.map((status) => <option key={status} value={status}>{status === 'all' ? 'All Status' : getShipStatusLabel(status)}</option>)}
             </select>
@@ -697,16 +697,15 @@ function SummaryCard({
   label: string
   value: number
   detail: string
-  tone: 'cyan' | 'red' | 'orange' | 'amber' | 'purple'
+  tone: 'orange' | 'red' | 'amber' | 'zinc'
   active: boolean
   onClick: () => void
 }) {
   const tones = {
-    cyan: 'border-cyan-500/20 bg-cyan-500/10 text-cyan-200',
     red: 'border-red-500/20 bg-red-500/10 text-red-200',
     orange: 'border-orange-500/20 bg-orange-500/10 text-orange-200',
     amber: 'border-amber-500/20 bg-amber-500/10 text-amber-200',
-    purple: 'border-purple-500/20 bg-purple-500/10 text-purple-200',
+    zinc: 'border-white/10 bg-white/5 text-zinc-200',
   }
 
   return (
@@ -758,10 +757,10 @@ function ShipCertificateModal({
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl">
-      <div className="w-full max-w-3xl overflow-hidden rounded-[40px] border border-cyan-500/20 bg-zinc-950 shadow-2xl">
+      <div className="w-full max-w-3xl overflow-hidden rounded-[40px] border border-orange-500/20 bg-zinc-950 shadow-2xl">
         <div className="flex items-start justify-between border-b border-white/10 p-6">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-300">{isAddingCert ? 'Add New Ship Certificate' : 'Edit / Update Ship Certificate'}</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">{isAddingCert ? 'Add New Ship Certificate' : 'Edit / Update Ship Certificate'}</p>
             <h2 className="mt-2 text-2xl font-black italic text-white">{form.code || certificate.code || 'NEW'} · {form.cert_name || certificate.cert_name || 'New certificate'}</h2>
             <p className="mt-1 text-xs normal-case text-zinc-500">AI assist can prefill fields. Admin must still review before saving.</p>
           </div>
@@ -776,57 +775,57 @@ function ShipCertificateModal({
             <select
               value={form.category}
               onChange={(event) => onCategoryChange(event.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400"
+                className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-orange-500"
             >
               {editableCategories.map((category) => <option key={category} value={category}>{category}</option>)}
             </select>
           </label>
           <label className="space-y-2">
             <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Cert Code</span>
-            <input value={form.code} onChange={(event) => onFormChange({ ...form, code: event.target.value.toUpperCase() })} readOnly={isAddingCert} placeholder="Auto code" className={`w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400 ${isAddingCert ? 'cursor-not-allowed text-cyan-200' : ''}`} />
-            {isAddingCert && <p className="text-[10px] normal-case text-cyan-200/70">Auto-generated from selected category.</p>}
+            <input value={form.code} onChange={(event) => onFormChange({ ...form, code: event.target.value.toUpperCase() })} readOnly={isAddingCert} placeholder="Auto code" className={`w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-orange-500 ${isAddingCert ? 'cursor-not-allowed text-orange-200' : ''}`} />
+            {isAddingCert && <p className="text-[10px] normal-case text-orange-200/70">Auto-generated from selected category.</p>}
           </label>
           {!isAddingCert && (
             <label className="space-y-2 md:col-span-2">
               <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Certificate Name</span>
-              <input value={form.cert_name} onChange={(event) => onFormChange({ ...form, cert_name: event.target.value })} placeholder="Certificate title" className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+              <input value={form.cert_name} onChange={(event) => onFormChange({ ...form, cert_name: event.target.value })} placeholder="Certificate title" className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-orange-500" />
             </label>
           )}
           <label className="space-y-2">
             <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Certificate File</span>
-            <input type="file" accept="application/pdf,image/*" onChange={(event) => onFileChange(event.target.files?.[0] || null)} className="w-full rounded-2xl border border-white/10 bg-black p-3 text-xs font-bold text-white file:mr-3 file:rounded-xl file:border-0 file:bg-cyan-600 file:px-3 file:py-2 file:text-white" />
-            {uploadFile && <p className="text-[10px] normal-case text-cyan-200">{uploadFile.name}</p>}
+            <input type="file" accept="application/pdf,image/*" onChange={(event) => onFileChange(event.target.files?.[0] || null)} className="w-full rounded-2xl border border-white/10 bg-black p-3 text-xs font-bold text-white file:mr-3 file:rounded-xl file:border-0 file:bg-orange-600 file:px-3 file:py-2 file:text-white" />
+            {uploadFile && <p className="text-[10px] normal-case text-orange-200">{uploadFile.name}</p>}
           </label>
           {isAddingCert && form.cert_name && (
             <label className="space-y-2 md:col-span-2">
               <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">AI-detected Certificate Name</span>
-              <input value={form.cert_name} onChange={(event) => onFormChange({ ...form, cert_name: event.target.value })} className="w-full rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm font-bold text-white outline-none focus:border-emerald-400" />
+            <input value={form.cert_name} onChange={(event) => onFormChange({ ...form, cert_name: event.target.value })} className="w-full rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 text-sm font-bold text-white outline-none focus:border-orange-500" />
             </label>
           )}
-          <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4 md:col-span-2">
+          <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 md:col-span-2">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-cyan-300">AI Vision Assist</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-orange-500">AI Vision Assist</p>
                 <p className="mt-1 text-xs normal-case text-zinc-400">For scanned ship certificates. AI fills fields, then admin reviews and can edit before saving.</p>
               </div>
               <button
                 type="button"
                 onClick={onAiScan}
                 disabled={!uploadFile || isScanning}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-500/20 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-orange-400/30 bg-orange-600 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {isScanning ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
                 {isScanning ? 'Analyzing...' : 'AI Vision Analyze'}
               </button>
             </div>
             {(scanMessage || scanResult) && (
-              <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-black/40 p-4 text-xs normal-case text-zinc-300">
-                {scanMessage && <p className="font-bold text-cyan-200">{scanMessage}</p>}
+              <div className="mt-4 rounded-2xl border border-orange-400/20 bg-black/40 p-4 text-xs normal-case text-zinc-300">
+                {scanMessage && <p className="font-bold text-orange-200">{scanMessage}</p>}
                 {scanResult && (
                   <div className="mt-2 space-y-1">
                     <p>Detected: <span className="font-bold text-white">{scanResult.detectedCertName || '-'}</span></p>
                     <p>Cert No: <span className="font-bold text-white">{scanResult.certificateNumber || '-'}</span></p>
-                    <p>Mode: <span className="font-bold text-cyan-200">AI Vision</span></p>
+                    <p>Mode: <span className="font-bold text-orange-200">AI Vision</span></p>
                     {(scanResult.surveyIntervalMonths || scanResult.expiryIntervalMonths) && (
                       <p>
                         Interval:{' '}
@@ -835,7 +834,7 @@ function ShipCertificateModal({
                         </span>
                       </p>
                     )}
-                    <p>Match: <span className={scanResult.certTypeMatch ? 'font-bold text-emerald-300' : 'font-bold text-red-300'}>{scanResult.certTypeMatch ? 'Looks matched' : 'Needs manual review'}</span></p>
+                    <p>Match: <span className={scanResult.certTypeMatch ? 'font-bold text-orange-200' : 'font-bold text-red-300'}>{scanResult.certTypeMatch ? 'Looks matched' : 'Needs manual review'}</span></p>
                     {scanResult.ruleBasis && <p className="pt-1 text-zinc-400">Rule basis: {scanResult.ruleBasis}</p>}
                     {scanResult.note && <p className="pt-1 text-zinc-400">AI note: {scanResult.note}</p>}
                   </div>
@@ -844,7 +843,7 @@ function ShipCertificateModal({
             )}
           </div>
           {!showExtractedFields && (
-            <div className="rounded-2xl border border-dashed border-cyan-500/20 bg-black/30 p-5 text-xs normal-case text-zinc-400 md:col-span-2">
+            <div className="rounded-2xl border border-dashed border-orange-500/20 bg-black/30 p-5 text-xs normal-case text-zinc-400 md:col-span-2">
               Upload the certificate and run AI Vision. The remaining fields will appear here for review/edit after AI reads the file.
             </div>
           )}
@@ -852,7 +851,7 @@ function ShipCertificateModal({
             <>
               <label className="space-y-2">
                 <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Issue By</span>
-                <input value={form.issue_by} onChange={(event) => onFormChange({ ...form, issue_by: event.target.value })} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+                <input value={form.issue_by} onChange={(event) => onFormChange({ ...form, issue_by: event.target.value })} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-orange-500" />
               </label>
               <DateInput label="Issued Date" value={form.issued_date} onChange={(value) => onFormChange({ ...form, issued_date: value })} />
               <DateInput label="Expiry Date" value={form.expiry_date} onChange={(value) => onFormChange({ ...form, expiry_date: value })} />
@@ -861,21 +860,21 @@ function ShipCertificateModal({
               <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
                 <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-black p-4">
                   <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Track Expiry</span>
-                  <input type="checkbox" checked={form.has_expiry} onChange={(event) => onFormChange({ ...form, has_expiry: event.target.checked })} className="h-5 w-5 accent-cyan-400" />
+                  <input type="checkbox" checked={form.has_expiry} onChange={(event) => onFormChange({ ...form, has_expiry: event.target.checked })} className="h-5 w-5 accent-orange-500" />
                 </label>
                 <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-black p-4">
                   <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Track Survey</span>
-                  <input type="checkbox" checked={form.has_survey} onChange={(event) => onFormChange({ ...form, has_survey: event.target.checked })} className="h-5 w-5 accent-cyan-400" />
+                  <input type="checkbox" checked={form.has_survey} onChange={(event) => onFormChange({ ...form, has_survey: event.target.checked })} className="h-5 w-5 accent-orange-500" />
                 </label>
               </div>
               <label className="space-y-2 md:col-span-2">
                 <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Remark / Certificate No.</span>
-                <textarea value={form.remark} onChange={(event) => onFormChange({ ...form, remark: event.target.value })} rows={3} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400" />
+                <textarea value={form.remark} onChange={(event) => onFormChange({ ...form, remark: event.target.value })} rows={3} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-orange-500" />
               </label>
             </>
           )}
           {certificate.file_url && (
-            <a href={certificate.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-cyan-300 hover:text-white md:col-span-2">
+            <a href={certificate.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-orange-500 hover:text-white md:col-span-2">
               <ExternalLink size={14} /> View current file
             </a>
           )}
@@ -885,7 +884,7 @@ function ShipCertificateModal({
           <button onClick={onClose} className="flex-1 rounded-2xl bg-white/5 py-4 text-xs font-black uppercase tracking-widest text-zinc-300 hover:bg-white/10">
             Cancel
           </button>
-          <button onClick={onSave} disabled={isSaving} className="flex-1 rounded-2xl bg-cyan-600 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-cyan-600/20 disabled:cursor-wait disabled:opacity-50">
+          <button onClick={onSave} disabled={isSaving} className="flex-1 rounded-2xl bg-orange-600 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:cursor-wait disabled:opacity-50">
             {isSaving ? 'Saving...' : isAddingCert ? 'Add Certificate' : 'Confirm & Save'}
           </button>
         </div>
@@ -903,7 +902,7 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onClick={(event) => (event.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
-        className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400"
+        className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-orange-500"
       />
     </label>
   )
@@ -919,7 +918,7 @@ function ShipCertificateRow({ row, canEdit, onEdit }: { row: ShipCertificate; ca
     <article className="grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-5 last:border-0 md:min-w-[1040px] md:grid-cols-[70px_105px_minmax(180px,1.35fr)_120px_120px_170px_minmax(120px,0.8fr)_100px] md:items-center md:gap-3">
       <div>
         <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 md:hidden">Code</p>
-        <p className="font-black text-cyan-200">{row.code || '-'}</p>
+        <p className="font-black text-orange-200">{row.code || '-'}</p>
       </div>
       <div>
         <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 md:hidden">Category</p>
@@ -958,7 +957,7 @@ function ShipCertificateRow({ row, canEdit, onEdit }: { row: ShipCertificate; ca
       </div>
       <div className="flex flex-wrap items-center gap-2 md:justify-end">
         {row.file_url && (
-          <a href={row.file_url} target="_blank" rel="noreferrer" className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-cyan-300 hover:bg-cyan-500 hover:text-white">
+          <a href={row.file_url} target="_blank" rel="noreferrer" className="rounded-xl border border-orange-500/20 bg-orange-500/10 p-3 text-orange-500 hover:bg-orange-600 hover:text-white">
             <ExternalLink size={15} />
           </a>
         )}
