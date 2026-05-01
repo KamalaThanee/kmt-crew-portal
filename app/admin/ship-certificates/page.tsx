@@ -19,7 +19,7 @@ import {
   type ShipCertificateStatus,
 } from '@/lib/shipCertificates'
 
-const categories = ['all', 'Class', 'GMDSS', 'FFE', 'LSA']
+const categories = ['all', 'Flag', 'Class', 'Insurance', 'Permit', 'GMDSS', 'FFE', 'LSA']
 const statusFilters: Array<'all' | ShipCertificateStatus> = ['all', 'expired', 'due-30', 'due-60', 'due-90', 'due-180', 'valid', 'no-expiry']
 
 export default function ShipCertificatesPage() {
