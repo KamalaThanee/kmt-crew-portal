@@ -47,40 +47,6 @@ type ShipCertScanResult = {
   activeModel?: string
 }
 
-const decodePdfLiteral = (value: string) =>
-  value
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, '\n')
-    .replace(/\\t/g, ' ')
-    .replace(/\\\(/g, '(')
-    .replace(/\\\)/g, ')')
-    .replace(/\\\\/g, '\\')
-
-const extractPdfText = async (file: File) => {
-  const buffer = await file.arrayBuffer()
-  const bytes = new Uint8Array(buffer)
-  let raw = ''
-  const chunkSize = 0x8000
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    raw += String.fromCharCode(...bytes.subarray(index, index + chunkSize))
-  }
-
-  const texts: string[] = []
-  for (const match of raw.matchAll(/\((?:\\.|[^\\)]){2,}\)\s*Tj/g)) {
-    texts.push(decodePdfLiteral(match[0].replace(/\)\s*Tj$/, '').slice(1)))
-  }
-  for (const match of raw.matchAll(/\[(.*?)\]\s*TJ/gs)) {
-    const parts = [...match[1].matchAll(/\((?:\\.|[^\\)]){1,}\)/g)].map((part) => decodePdfLiteral(part[0].slice(1, -1)))
-    if (parts.length) texts.push(parts.join(''))
-  }
-
-  return texts
-    .join('\n')
-    .replace(/[^\S\r\n]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-}
-
 const sanitizeFilePart = (value?: string | null, fallback = 'ship-cert') => {
   const clean = String(value || fallback)
     .normalize('NFKD')
@@ -103,13 +69,30 @@ const buildShipCertFilePath = (certificate: ShipCertificate, file: File, form: S
   return `${vessel}/${category}/${certCode}_${certName}_${expiryDate}.${ext}`
 }
 
+const cleanCertificateRemark = (value?: string | null) => {
+  const seen = new Set<string>()
+  return String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^cert\s*no\.?\s*:\s*/i, '').trim())
+    .filter((line) => !/^ai\s*:/i.test(line))
+    .filter((line) => {
+      const key = line.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .join('\n')
+}
+
 const buildFormFromCert = (row: ShipCertificate): ShipCertificateForm => ({
   issue_by: row.issue_by || '',
   issued_date: row.issued_date || '',
   expiry_date: row.expiry_date || '',
   last_survey_date: row.last_survey_date || '',
   next_survey_date: row.next_survey_date || '',
-  remark: row.remark || '',
+  remark: cleanCertificateRemark(row.remark),
 })
 
 const readFileAsDataUrl = (file: File) =>
@@ -132,12 +115,8 @@ export default function ShipCertificatesPage() {
   const [editingCert, setEditingCert] = useState<ShipCertificate | null>(null)
   const [editForm, setEditForm] = useState<ShipCertificateForm | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
-  const [surveyFile, setSurveyFile] = useState<File | null>(null)
-  const [ocrText, setOcrText] = useState('')
-  const [ocrMessage, setOcrMessage] = useState('')
   const [scanResult, setScanResult] = useState<ShipCertScanResult | null>(null)
   const [scanMessage, setScanMessage] = useState('')
-  const [isExtractingOcr, setIsExtractingOcr] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -178,9 +157,6 @@ export default function ShipCertificatesPage() {
     setEditingCert(row)
     setEditForm(buildFormFromCert(row))
     setUploadFile(null)
-    setSurveyFile(null)
-    setOcrText('')
-    setOcrMessage('')
     setScanResult(null)
     setScanMessage('')
   }
@@ -189,75 +165,32 @@ export default function ShipCertificatesPage() {
     setEditingCert(null)
     setEditForm(null)
     setUploadFile(null)
-    setSurveyFile(null)
-    setOcrText('')
-    setOcrMessage('')
     setScanResult(null)
     setScanMessage('')
-  }
-
-  const handleShipOcrExtract = async () => {
-    if (!uploadFile) return
-    setIsExtractingOcr(true)
-    setOcrMessage('Reading text from file...')
-    setOcrText('')
-    setScanResult(null)
-    setScanMessage('')
-    setErrorMessage('')
-
-    try {
-      const isPdf = uploadFile.type === 'application/pdf' || uploadFile.name.toLowerCase().endsWith('.pdf')
-      if (!isPdf) {
-        setOcrMessage('Image file selected. Browser OCR is not available, so the next step will use AI Vision fallback.')
-        return
-      }
-
-      const extractedText = await extractPdfText(uploadFile)
-      setOcrText(extractedText)
-      setOcrMessage(
-        extractedText.length >= 80
-          ? `OCR text extracted (${extractedText.length} chars). Please review/edit before AI analysis.`
-          : 'No embedded/selectable text found. This is likely a scanned PDF. Use AI Vision fallback or upload a clear annual survey page image below.',
-      )
-    } catch (error: any) {
-      setOcrMessage(error.message || 'OCR extraction failed. AI Vision fallback is recommended.')
-    } finally {
-      setIsExtractingOcr(false)
-    }
   }
 
   const handleShipAiScan = async () => {
     if (!editingCert || !editForm || !uploadFile) return
     setIsScanning(true)
-    setScanMessage('Preparing AI analysis...')
+    setScanMessage('Preparing AI Vision analysis...')
     setScanResult(null)
     setErrorMessage('')
 
     try {
       const isPdf = uploadFile.type === 'application/pdf' || uploadFile.name.toLowerCase().endsWith('.pdf')
-      const reviewedOcrText = ocrText.trim()
-      const canUseTextFirst = reviewedOcrText.length >= 80
-      let fileBase64 = ''
       const mimeType = isPdf ? 'application/pdf' : 'image/jpeg'
-
-      if (canUseTextFirst) {
-        setScanMessage(`Using reviewed OCR text (${reviewedOcrText.length} chars) for AI parse...`)
-      } else {
-        setScanMessage('Reviewed OCR text is not enough. Falling back to AI Vision with model sequence...')
-        fileBase64 = isPdf ? await readFileAsDataUrl(uploadFile) : await compressImage(uploadFile)
-      }
+      const fileBase64 = isPdf ? await readFileAsDataUrl(uploadFile) : await compressImage(uploadFile)
 
       let latestError = 'AI models busy'
       for (const model of AI_MODELS) {
-        setScanMessage(`${canUseTextFirst ? 'OCR text parse' : 'Vision fallback'} - trying: ${model.label}`)
+        setScanMessage(`AI Vision - trying: ${model.label}`)
         try {
           const res = await fetch('/api/ship-cert-ocr', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              extractedText: canUseTextFirst ? reviewedOcrText : undefined,
-              fileBase64: canUseTextFirst ? undefined : fileBase64,
-              mimeType: canUseTextFirst ? undefined : mimeType,
+              fileBase64,
+              mimeType,
               certName: editingCert.cert_name,
               code: editingCert.code,
               category: editingCert.category,
@@ -284,9 +217,9 @@ export default function ShipCertificatesPage() {
             expiry_date: result.expiryDate || editForm.expiry_date,
             last_survey_date: result.lastSurveyDate || editForm.last_survey_date,
             next_survey_date: result.nextSurveyDate || editForm.next_survey_date,
-            remark: nextRemark,
+            remark: cleanCertificateRemark(nextRemark),
           })
-          setScanMessage(`${result.analysisMode === 'text' ? 'OCR text parsed' : 'Vision fallback analyzed'} by: ${model.label}`)
+          setScanMessage(`AI Vision analyzed by: ${model.label}`)
           return
         } catch (error: any) {
           latestError = error.message || latestError
@@ -296,67 +229,6 @@ export default function ShipCertificatesPage() {
       throw new Error(latestError)
     } catch (error: any) {
       setScanMessage(error.message || 'AI scan failed. Please fill manually.')
-    } finally {
-      setIsScanning(false)
-    }
-  }
-
-  const handleSurveyVisionScan = async () => {
-    if (!editingCert || !editForm || !surveyFile) return
-    setIsScanning(true)
-    setScanResult(null)
-    setScanMessage('Reading annual survey page with AI Vision...')
-    setErrorMessage('')
-
-    try {
-      const isPdf = surveyFile.type === 'application/pdf' || surveyFile.name.toLowerCase().endsWith('.pdf')
-      const mimeType = isPdf ? 'application/pdf' : 'image/jpeg'
-      const fileBase64 = isPdf ? await readFileAsDataUrl(surveyFile) : await compressImage(surveyFile)
-      let latestError = 'AI models busy'
-
-      for (const model of AI_MODELS) {
-        setScanMessage(`Annual survey Vision - trying: ${model.label}`)
-        try {
-          const res = await fetch('/api/ship-cert-ocr', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              fileBase64,
-              mimeType,
-              certName: editingCert.cert_name,
-              code: editingCert.code,
-              category: editingCert.category,
-              analysisFocus: 'annual_survey',
-              modelId: model.id,
-              provider: model.provider,
-            }),
-          })
-          const result = await res.json()
-          if (!res.ok || result.error) {
-            latestError = result.error || latestError
-            throw new Error(latestError)
-          }
-
-          setScanResult({ ...result, analysisMode: 'vision' })
-          setEditForm({
-            ...editForm,
-            issue_by: result.issueBy || editForm.issue_by,
-            issued_date: result.issuedDate || editForm.issued_date,
-            expiry_date: result.expiryDate || editForm.expiry_date,
-            last_survey_date: result.lastSurveyDate || editForm.last_survey_date,
-            next_survey_date: result.nextSurveyDate || editForm.next_survey_date,
-            remark: editForm.remark.trim() || String(result.certificateNumber || '').trim(),
-          })
-          setScanMessage(`Annual survey page analyzed by: ${model.label}`)
-          return
-        } catch (error: any) {
-          latestError = error.message || latestError
-        }
-      }
-
-      throw new Error(latestError)
-    } catch (error: any) {
-      setScanMessage(error.message || 'Annual survey Vision failed. Please fill manually.')
     } finally {
       setIsScanning(false)
     }
@@ -547,27 +419,17 @@ export default function ShipCertificatesPage() {
           certificate={editingCert}
           form={editForm}
           uploadFile={uploadFile}
-          surveyFile={surveyFile}
-          ocrText={ocrText}
-          ocrMessage={ocrMessage}
           scanResult={scanResult}
           scanMessage={scanMessage}
-          isExtractingOcr={isExtractingOcr}
           isScanning={isScanning}
           isSaving={isSaving}
           onFormChange={setEditForm}
-          onOcrTextChange={setOcrText}
           onFileChange={(file) => {
             setUploadFile(file)
-            setOcrText('')
-            setOcrMessage('')
             setScanResult(null)
             setScanMessage('')
           }}
-          onSurveyFileChange={setSurveyFile}
-          onOcrExtract={handleShipOcrExtract}
           onAiScan={handleShipAiScan}
-          onSurveyVisionScan={handleSurveyVisionScan}
           onClose={closeEditModal}
           onSave={saveCertificateUpdate}
         />
@@ -598,47 +460,29 @@ function ShipCertificateModal({
   certificate,
   form,
   uploadFile,
-  surveyFile,
-  ocrText,
-  ocrMessage,
   scanResult,
   scanMessage,
-  isExtractingOcr,
   isScanning,
   isSaving,
   onFormChange,
-  onOcrTextChange,
   onFileChange,
-  onSurveyFileChange,
-  onOcrExtract,
   onAiScan,
-  onSurveyVisionScan,
   onClose,
   onSave,
 }: {
   certificate: ShipCertificate
   form: ShipCertificateForm
   uploadFile: File | null
-  surveyFile: File | null
-  ocrText: string
-  ocrMessage: string
   scanResult: ShipCertScanResult | null
   scanMessage: string
-  isExtractingOcr: boolean
   isScanning: boolean
   isSaving: boolean
   onFormChange: (form: ShipCertificateForm) => void
-  onOcrTextChange: (value: string) => void
   onFileChange: (file: File | null) => void
-  onSurveyFileChange: (file: File | null) => void
-  onOcrExtract: () => void
   onAiScan: () => void
-  onSurveyVisionScan: () => void
   onClose: () => void
   onSave: () => void
 }) {
-  const pdfNeedsOcrFirst = !!uploadFile && (uploadFile.type === 'application/pdf' || uploadFile.name.toLowerCase().endsWith('.pdf')) && !ocrMessage
-
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl">
       <div className="w-full max-w-3xl overflow-hidden rounded-[40px] border border-cyan-500/20 bg-zinc-950 shadow-2xl">
@@ -666,44 +510,19 @@ function ShipCertificateModal({
           <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4 md:col-span-2">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-cyan-300">AI Assist</p>
-                <p className="mt-1 text-xs normal-case text-zinc-400">Step 1 shows editable OCR text first. Step 2 uses that text, or Vision only when OCR is not enough.</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-cyan-300">AI Vision Assist</p>
+                <p className="mt-1 text-xs normal-case text-zinc-400">For scanned ship certificates. AI fills fields, then admin reviews and can edit before saving.</p>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={onOcrExtract}
-                  disabled={!uploadFile || isExtractingOcr || isScanning}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/20 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-100 hover:bg-emerald-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {isExtractingOcr ? <Loader2 className="animate-spin" size={15} /> : <FileBadge size={15} />}
-                  {isExtractingOcr ? 'OCR...' : '1 Run OCR'}
-                </button>
-                <button
-                  type="button"
-                  onClick={onAiScan}
-                  disabled={!uploadFile || pdfNeedsOcrFirst || isExtractingOcr || isScanning}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-500/20 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {isScanning ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
-                  {isScanning ? 'Analyzing...' : pdfNeedsOcrFirst ? 'Run OCR First' : '2 Analyze'}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={onAiScan}
+                disabled={!uploadFile || isScanning}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-500/20 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isScanning ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
+                {isScanning ? 'Analyzing...' : 'AI Vision Analyze'}
+              </button>
             </div>
-            {(ocrMessage || ocrText) && (
-              <div className="mt-4 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-xs normal-case text-emerald-100">
-                {ocrMessage && <p className="font-black uppercase tracking-widest text-emerald-300">{ocrMessage}</p>}
-                {ocrText && <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-emerald-200">OCR confidence: text extracted and ready for review</p>}
-                {ocrText && (
-                  <textarea
-                    value={ocrText}
-                    onChange={(event) => onOcrTextChange(event.target.value)}
-                    rows={5}
-                    className="mt-3 w-full rounded-2xl border border-emerald-300/20 bg-black/50 p-3 text-xs font-bold leading-relaxed text-emerald-50 outline-none focus:border-emerald-300"
-                  />
-                )}
-              </div>
-            )}
             {(scanMessage || scanResult) && (
               <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-black/40 p-4 text-xs normal-case text-zinc-300">
                 {scanMessage && <p className="font-bold text-cyan-200">{scanMessage}</p>}
@@ -711,32 +530,13 @@ function ShipCertificateModal({
                   <div className="mt-2 space-y-1">
                     <p>Detected: <span className="font-bold text-white">{scanResult.detectedCertName || '-'}</span></p>
                     <p>Cert No: <span className="font-bold text-white">{scanResult.certificateNumber || '-'}</span></p>
-                    <p>Mode: <span className="font-bold text-cyan-200">{scanResult.analysisMode === 'text' ? 'OCR text first' : 'AI Vision fallback'}</span></p>
+                    <p>Mode: <span className="font-bold text-cyan-200">AI Vision</span></p>
                     <p>Match: <span className={scanResult.certTypeMatch ? 'font-bold text-emerald-300' : 'font-bold text-red-300'}>{scanResult.certTypeMatch ? 'Looks matched' : 'Needs manual review'}</span></p>
                     {scanResult.note && <p className="pt-1 text-zinc-400">AI note: {scanResult.note}</p>}
                   </div>
                 )}
               </div>
             )}
-          </div>
-          <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 md:col-span-2">
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <label className="min-w-0 flex-1 space-y-2">
-                <span className="text-[9px] font-black uppercase tracking-widest text-orange-300">Annual Survey Page / Handwriting</span>
-                <input type="file" accept="application/pdf,image/*" onChange={(event) => onSurveyFileChange(event.target.files?.[0] || null)} className="w-full rounded-2xl border border-orange-300/20 bg-black/50 p-3 text-xs font-bold text-white file:mr-3 file:rounded-xl file:border-0 file:bg-orange-600 file:px-3 file:py-2 file:text-white" />
-                <p className="text-[10px] normal-case text-orange-100/70">Use a clear photo/crop of the annual survey endorsement page when handwriting is hard to read.</p>
-                {surveyFile && <p className="text-[10px] normal-case text-orange-100">{surveyFile.name}</p>}
-              </label>
-              <button
-                type="button"
-                onClick={onSurveyVisionScan}
-                disabled={!surveyFile || isExtractingOcr || isScanning}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-orange-400/30 bg-orange-500/20 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-orange-100 hover:bg-orange-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {isScanning ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
-                Survey Vision
-              </button>
-            </div>
           </div>
           <DateInput label="Issued Date" value={form.issued_date} onChange={(value) => onFormChange({ ...form, issued_date: value })} />
           <DateInput label="Expiry Date" value={form.expiry_date} onChange={(value) => onFormChange({ ...form, expiry_date: value })} />
@@ -771,11 +571,10 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
     <label className="space-y-2">
       <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">{label}</span>
       <input
-        type="text"
-        inputMode="numeric"
-        placeholder="YYYY-MM-DD"
+        type="date"
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onClick={(event) => (event.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
         className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-cyan-400"
       />
     </label>
@@ -826,7 +625,7 @@ function ShipCertificateRow({ row, canEdit, onEdit }: { row: ShipCertificate; ca
       <div className="min-w-0 text-[11px] normal-case text-zinc-400">
         <div className="flex items-center gap-2">
           <FileBadge size={13} className="text-zinc-600" />
-          <span className="min-w-0 break-words">{row.remark || '-'}</span>
+          <span className="min-w-0 break-words">{cleanCertificateRemark(row.remark) || '-'}</span>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 md:justify-end">
