@@ -92,15 +92,15 @@ const sanitizeFilePart = (value?: string | null, fallback = 'ship-cert') => {
   return clean || fallback
 }
 
-const buildShipCertFilePath = (certificate: ShipCertificate, file: File) => {
+const buildShipCertFilePath = (certificate: ShipCertificate, file: File, form: ShipCertificateForm) => {
   const ext = (file.name.split('.').pop() || 'pdf').toLowerCase()
-  const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
   const vessel = sanitizeFilePart(certificate.vessel_name, 'Kamala_Thanee')
   const category = sanitizeFilePart(certificate.category, 'Ship_Certificate')
-  const code = sanitizeFilePart(certificate.code, 'NO_CODE')
+  const certCode = sanitizeFilePart(certificate.code, 'NO_CODE')
   const certName = sanitizeFilePart(certificate.cert_name, 'Certificate')
+  const expiryDate = sanitizeFilePart(form.expiry_date || 'NO_EXPIRY', 'NO_EXPIRY')
 
-  return `${vessel}/${category}/${code}_${certName}_${timestamp}.${ext}`
+  return `${vessel}/${category}/${certCode}_${certName}_${expiryDate}.${ext}`
 }
 
 const buildFormFromCert = (row: ShipCertificate): ShipCertificateForm => ({
@@ -272,7 +272,7 @@ export default function ShipCertificatesPage() {
 
     let fileUrl = editingCert.file_url || null
     if (uploadFile) {
-      const filePath = buildShipCertFilePath(editingCert, uploadFile)
+      const filePath = buildShipCertFilePath(editingCert, uploadFile, editForm)
       const { error: uploadError } = await supabase.storage.from(SHIP_CERT_BUCKET).upload(filePath, uploadFile, { upsert: true })
       if (uploadError) {
         setErrorMessage(`Upload failed: ${uploadError.message}`)

@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     if (!apiKey) throw new Error('Missing OCR provider API key')
 
     const hasExtractedText = !!extractedText?.trim()
-    const prompt = `You are a strict maritime vessel certificate auditor.
+    const prompt = `You are a strict maritime vessel certificate auditor and document controller with working knowledge of IMO instruments, SOLAS, MARPOL, STCW where relevant, ISM/ISPS, MLC, flag-state statutory certificates, classification society certificates, and annual/intermediate/class survey endorsement practice.
 TASK: Read the uploaded ship/vessel certificate and extract fields for the checklist item.
 CHECKLIST ITEM: "${code || ''} ${certName}".
 CATEGORY: "${category || ''}".
@@ -33,10 +33,15 @@ SOURCE MODE: ${hasExtractedText ? 'OCR/TEXT EXTRACTION FIRST. Use the extracted 
 
 RULES:
 1. Certificate type match must be strict. Do not treat a different vessel certificate as acceptable just because it is maritime related.
-2. Convert all dates to YYYY-MM-DD. Convert Thai Buddhist years to CE.
-3. For class/statutory certificates, annual/intermediate survey endorsement dates may appear on later pages. Extract the latest annual/intermediate/class survey endorsement date when visible.
-4. If a field is not visible, return an empty string. Do not invent dates.
-5. If the uploaded document clearly does not match the selected checklist item, set certTypeMatch=false.
+2. Use maritime regulatory context to interpret equivalent names:
+   - Flag/statutory examples: Certificate of Registry, Minimum Safe Manning, Safety Radio, Safety Equipment, Load Line, IOPP, Sewage, IAPP, Civil Liability, Maritime Labour, DOC/SMC/ISSC where applicable.
+   - Class examples: Classification Certificate, Hull/Machinery, Load Line class endorsements, annual/intermediate/special survey endorsements.
+   - GMDSS/LSA/FFE documents may include equipment lists, service certificates, inspection certificates, or shore-based maintenance certificates.
+3. Do not approve a lower-level or unrelated document for a higher/specific checklist item. If uncertain, certTypeMatch=false and explain why.
+4. Convert all dates to YYYY-MM-DD. Convert Thai Buddhist years to CE.
+5. For class/statutory certificates, annual/intermediate survey endorsement dates may appear on later pages. Extract the latest annual/intermediate/class survey endorsement date when visible.
+6. If a field is not visible, return an empty string. Do not invent dates.
+7. If the uploaded document clearly does not match the selected checklist item, set certTypeMatch=false.
 
 Return ONLY raw JSON:
 {"issueBy":"issuer/class/authority or empty","issuedDate":"YYYY-MM-DD or empty","expiryDate":"YYYY-MM-DD or empty","lastSurveyDate":"YYYY-MM-DD or empty","nextSurveyDate":"YYYY-MM-DD or empty","detectedCertName":"text","certificateNumber":"text or empty","certTypeMatch":true,"note":"short English reasoning"}
