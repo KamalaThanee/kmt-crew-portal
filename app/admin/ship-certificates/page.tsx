@@ -36,6 +36,11 @@ const categoryCodePrefixes: Record<string, string> = {
   LSA: 'L',
 }
 
+const shipCertificateAiModels = [
+  ...AI_MODELS.filter((model) => model.provider === 'google'),
+  ...AI_MODELS.filter((model) => model.provider !== 'google'),
+]
+
 type ShipCertificateForm = {
   category: string
   code: string
@@ -138,6 +143,22 @@ const getNextCertCode = (rows: ShipCertificate[], category: string) => {
       return match ? Number(match[1]) : 0
     })
   return `${prefix}${Math.max(0, ...numbers) + 1}`
+}
+
+const getFriendlyAiError = (value: unknown) => {
+  const raw = typeof value === 'string' ? value : value instanceof Error ? value.message : JSON.stringify(value || '')
+  const lower = raw.toLowerCase()
+
+  if (lower.includes('429') || lower.includes('rate-limit') || lower.includes('rate limited')) {
+    return 'AI provider is temporarily rate-limited. Please wait a moment and try again.'
+  }
+  if (lower.includes('api key')) {
+    return 'AI provider key is missing or not available on this deployment.'
+  }
+  if (lower.includes('empty content')) {
+    return 'AI could not read this file clearly. Please try a clearer PDF/image or fill manually.'
+  }
+  return raw.slice(0, 240) || 'AI scan failed. Please fill manually.'
 }
 
 const readFileAsDataUrl = (file: File) =>
@@ -245,8 +266,9 @@ export default function ShipCertificatesPage() {
       const mimeType = isPdf ? 'application/pdf' : 'image/jpeg'
       const fileBase64 = isPdf ? await readFileAsDataUrl(uploadFile) : await compressImage(uploadFile)
 
+      const modelErrors: string[] = []
       let latestError = 'AI models busy'
-      for (const model of AI_MODELS) {
+      for (const model of shipCertificateAiModels) {
         setScanMessage(`AI Vision - trying: ${model.label}`)
         try {
           const res = await fetch('/api/ship-cert-ocr', {
@@ -265,7 +287,8 @@ export default function ShipCertificatesPage() {
           })
           const result = await res.json()
           if (!res.ok || result.error) {
-            latestError = result.error || latestError
+            latestError = getFriendlyAiError(result.error || latestError)
+            modelErrors.push(`${model.label}: ${latestError}`)
             throw new Error(latestError)
           }
 
@@ -287,13 +310,16 @@ export default function ShipCertificatesPage() {
           setScanMessage(`AI Vision analyzed by: ${model.label}`)
           return
         } catch (error: any) {
-          latestError = error.message || latestError
+          latestError = getFriendlyAiError(error)
+          if (!modelErrors.some((item) => item.startsWith(`${model.label}:`))) {
+            modelErrors.push(`${model.label}: ${latestError}`)
+          }
         }
       }
 
-      throw new Error(latestError)
+      throw new Error(modelErrors.join(' | ') || latestError)
     } catch (error: any) {
-      setScanMessage(error.message || 'AI scan failed. Please fill manually.')
+      setScanMessage(getFriendlyAiError(error))
     } finally {
       setIsScanning(false)
     }

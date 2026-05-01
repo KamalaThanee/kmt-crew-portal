@@ -88,7 +88,14 @@ ${hasExtractedText ? `EXTRACTED TEXT:\n${extractedText?.slice(0, 18000)}` : ''}`
 
     if (!response.ok) {
       const errorText = await response.text()
-      throw new Error(errorText || 'AI provider request failed')
+      let message = errorText || 'AI provider request failed'
+      try {
+        const parsed = JSON.parse(errorText)
+        message = parsed?.error?.message || parsed?.message || message
+      } catch {
+        // Keep provider text when it is not JSON.
+      }
+      throw new Error(message)
     }
 
     const data = await response.json()
