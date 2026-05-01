@@ -188,8 +188,7 @@ insert into ship_cert_seed(source_key, category, code, cert_name, issue_by, has_
   ('lsa_13_certificate_of_parachute_disstress_signal_3_pcs', 'LSA', '13', 'Certificate of parachute disstress signal (3 Pcs)', null, true, false, 74, '2023-05-31'::date, '2026-05-31'::date, null::date, null::date, null),
   ('lsa_14_certificate_of_gas_detector_no_1', 'LSA', '14', 'Certificate of Gas detector No.1', null, true, false, 75, '2025-07-11'::date, '2026-07-11'::date, null::date, null::date, 'GDS-021/2025'),
   ('lsa_15_certificate_of_gas_detector_no_2', 'LSA', '15', 'Certificate of Gas detector No.2', null, true, false, 76, '2025-07-18'::date, '2026-07-18'::date, null::date, null::date, 'KA423-8067223'),
-  ('lsa_16_first_aid_kit_for_rescue_boat', 'LSA', '16', 'First aid kit for rescue boat', null, true, false, 77, '2025-06-02'::date, '2027-06-01'::date, null::date, null::date, null)
-)
+  ('lsa_16_first_aid_kit_for_rescue_boat', 'LSA', '16', 'First aid kit for rescue boat', null, true, false, 77, '2025-06-02'::date, '2027-06-01'::date, null::date, null::date, null);
 insert into public.ship_cert_master (source_key, category, code, cert_name, default_issue_by, has_expiry, has_survey, sort_order)
 select source_key, category, code, cert_name, issue_by, has_expiry, has_survey, sort_order from ship_cert_seed
 on conflict (source_key) do update set
