@@ -8,7 +8,7 @@ import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { createZipBlob, getFileExtension, safeFileName, triggerDownload } from '@/lib/certificateDownloads'
 import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
-import { ExternalLink, ShieldCheck } from 'lucide-react'
+import { ExternalLink, Search, ShieldCheck } from 'lucide-react'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
@@ -297,15 +297,113 @@ function CertificatesContent() {
 }
 
 function CertificateLogPanel({ rows }: { rows: CertificateLogRow[] }) {
+  const [logSearch, setLogSearch] = useState('')
+  const [actionFilter, setActionFilter] = useState('all')
+  const [monthFilter, setMonthFilter] = useState('all')
+  const [yearFilter, setYearFilter] = useState('all')
+
+  const actionOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set(rows.map((row) => row.action).filter(Boolean) as string[]))]
+  }, [rows])
+
+  const monthOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set(rows.map((row) => {
+      if (!row.created_at) return ''
+      const date = new Date(row.created_at)
+      if (Number.isNaN(date.getTime())) return ''
+      return String(date.getMonth() + 1).padStart(2, '0')
+    }).filter(Boolean))).sort()]
+  }, [rows])
+
+  const yearOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set(rows.map((row) => {
+      if (!row.created_at) return ''
+      const date = new Date(row.created_at)
+      if (Number.isNaN(date.getTime())) return ''
+      return String(date.getFullYear())
+    }).filter(Boolean))).sort((a, b) => b.localeCompare(a))]
+  }, [rows])
+
+  const filteredRows = useMemo(() => {
+    const query = logSearch.trim().toLowerCase()
+    return rows.filter((row) => {
+      const cert = getLogCertificate(row)
+      const date = row.created_at ? new Date(row.created_at) : null
+      const month = date && !Number.isNaN(date.getTime()) ? String(date.getMonth() + 1).padStart(2, '0') : ''
+      const year = date && !Number.isNaN(date.getTime()) ? String(date.getFullYear()) : ''
+      const text = [
+        row.action,
+        row.actor_name,
+        cert.code,
+        cert.cert_name,
+        cert.category,
+        cert.issue_by,
+        cert.remark,
+      ].filter(Boolean).join(' ').toLowerCase()
+
+      return (
+        (!query || text.includes(query)) &&
+        (actionFilter === 'all' || row.action === actionFilter) &&
+        (monthFilter === 'all' || month === monthFilter) &&
+        (yearFilter === 'all' || year === yearFilter)
+      )
+    })
+  }, [actionFilter, monthFilter, logSearch, rows, yearFilter])
+
   return (
     <section className="space-y-5">
-      {rows.length === 0 ? (
+      <div className="rounded-[34px] border border-white/10 bg-black/30 p-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_190px_160px_160px]">
+          <label className="flex items-center gap-3 rounded-2xl border border-orange-500/20 bg-black/40 px-4">
+            <Search size={16} className="text-orange-500" />
+            <input
+              value={logSearch}
+              onChange={(event) => setLogSearch(event.target.value)}
+              placeholder="Search cert, action, or user..."
+              className="h-14 w-full bg-transparent text-sm font-bold text-white outline-none placeholder:text-zinc-600"
+            />
+          </label>
+          <select
+            value={actionFilter}
+            onChange={(event) => setActionFilter(event.target.value)}
+            className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+          >
+            {actionOptions.map((action) => (
+              <option key={action} value={action}>{action === 'all' ? 'All Actions' : getLogActionLabel(action)}</option>
+            ))}
+          </select>
+          <select
+            value={monthFilter}
+            onChange={(event) => setMonthFilter(event.target.value)}
+            className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+          >
+            {monthOptions.map((month) => (
+              <option key={month} value={month}>{month === 'all' ? 'All Months' : month}</option>
+            ))}
+          </select>
+          <select
+            value={yearFilter}
+            onChange={(event) => setYearFilter(event.target.value)}
+            className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+          >
+            {yearOptions.map((year) => (
+              <option key={year} value={year}>{year === 'all' ? 'All Years' : year}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+        {filteredRows.length} shown / {rows.length} log records
+      </p>
+
+      {filteredRows.length === 0 ? (
         <div className="rounded-[34px] border border-white/10 bg-black/30 p-12 text-center text-sm font-black uppercase tracking-widest text-zinc-600">
-          No certificate log yet
+          No certificate log matches current filters
         </div>
       ) : (
         <div className="space-y-3">
-          {rows.map((row) => {
+          {filteredRows.map((row) => {
             const cert = getLogCertificate(row)
             const fileUrl = cert.file_url
             return (
