@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CalendarClock, ExternalLink, FileBadge, Loader2, PlusCircle, Search, ShipWheel, UploadCloud, X } from 'lucide-react'
+import { AlertTriangle, CalendarClock, Download, ExternalLink, FileBadge, Loader2, PlusCircle, Search, ShipWheel, UploadCloud, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { compressImage } from '@/lib/certificateUpload'
+import { exportShipCertificatesTo1162 } from '@/lib/shipCertificateExport'
 import { canViewShipCertificates } from '@/lib/roles'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import {
@@ -233,6 +234,7 @@ export default function ShipCertificatesPage() {
   const [scanMessage, setScanMessage] = useState('')
   const [isScanning, setIsScanning] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
     const user = readCurrentUser()
@@ -464,6 +466,18 @@ export default function ShipCertificatesPage() {
     closeEditModal()
   }
 
+  const handleExport1162 = async () => {
+    setIsExporting(true)
+    setErrorMessage('')
+    try {
+      await exportShipCertificatesTo1162(rows)
+    } catch (error: any) {
+      setErrorMessage(`Export failed: ${error.message || 'Unable to create 11.62 Excel file'}`)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const filteredRows = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
     return rows.filter((row) => {
@@ -548,9 +562,15 @@ export default function ShipCertificatesPage() {
         </div>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
-          <div className="rounded-3xl border border-orange-500/20 bg-orange-500/10 px-5 py-4 text-xs normal-case text-orange-100">
-            Phase 1: checklist foundation from document 11.62
-          </div>
+          <button
+            type="button"
+            onClick={handleExport1162}
+            disabled={isExporting || rows.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-3xl border border-orange-500/20 bg-orange-500/10 px-5 py-4 text-xs font-black uppercase tracking-widest text-orange-100 hover:border-orange-400 hover:bg-orange-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+            Export 11.62 Excel
+          </button>
           {canEdit && (
             <button
               onClick={openAddCertModal}
@@ -563,8 +583,12 @@ export default function ShipCertificatesPage() {
 
         {errorMessage && (
           <div className="rounded-[32px] border border-orange-500/30 bg-orange-500/10 p-6 text-sm normal-case text-orange-100">
-            <p className="font-black uppercase tracking-widest text-orange-300">Ship certificate tables not ready</p>
-            <p className="mt-2">Run <span className="font-black text-white">sql/ship_certificates.sql</span> in Supabase first.</p>
+            <p className="font-black uppercase tracking-widest text-orange-300">
+              {errorMessage.startsWith('Export failed') ? 'Ship certificate export failed' : 'Ship certificate tables not ready'}
+            </p>
+            {!errorMessage.startsWith('Export failed') && (
+              <p className="mt-2">Run <span className="font-black text-white">sql/ship_certificates.sql</span> in Supabase first.</p>
+            )}
             <p className="mt-1 text-orange-200/70">{errorMessage}</p>
           </div>
         )}
