@@ -163,7 +163,7 @@ function buildSheetRows(sheetName: (typeof formSheets)[number], rows: ShipCertif
 }
 
 export async function exportShipCertificatesTo1162(rows: ShipCertificate[]) {
-  const XLSX = await import('xlsx')
+  const XLSX = await import('xlsx-js-style')
   const workbook = XLSX.utils.book_new()
 
   for (const sheetName of formSheets) {
