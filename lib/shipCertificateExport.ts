@@ -44,6 +44,15 @@ function encodeCol(index: number) {
   return col
 }
 
+function decodeCol(cellRef: string) {
+  const letters = cellRef.match(/^[A-Z]+/i)?.[0] || ''
+  return letters.split('').reduce((sum, char) => sum * 26 + char.toUpperCase().charCodeAt(0) - 64, 0) - 1
+}
+
+function sanitizeXmlText(value: string) {
+  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim()
+}
+
 function getRow(doc: Document, rowNumber: number) {
   const rows = Array.from(doc.getElementsByTagNameNS(spreadsheetNs, 'row'))
   return rows.find((row) => row.getAttribute('r') === String(rowNumber)) || null
@@ -57,7 +66,9 @@ function getCell(doc: Document, row: Element, colIndex: number, rowNumber: numbe
 
   cell = doc.createElementNS(spreadsheetNs, 'c')
   cell.setAttribute('r', ref)
-  row.appendChild(cell)
+  const nextCell = cells.find((item) => decodeCol(item.getAttribute('r') || '') > colIndex)
+  if (nextCell) row.insertBefore(cell, nextCell)
+  else row.appendChild(cell)
   return cell
 }
 
@@ -77,12 +88,10 @@ function setCellValue(doc: Document, cell: Element, value: string | number | nul
     return
   }
 
-  cell.setAttribute('t', 'inlineStr')
-  const inlineString = doc.createElementNS(spreadsheetNs, 'is')
-  const text = doc.createElementNS(spreadsheetNs, 't')
-  text.textContent = value
-  inlineString.appendChild(text)
-  cell.appendChild(inlineString)
+  cell.setAttribute('t', 'str')
+  const v = doc.createElementNS(spreadsheetNs, 'v')
+  v.textContent = sanitizeXmlText(value)
+  cell.appendChild(v)
 }
 
 function clearTemplateDataRows(doc: Document, sheetName: (typeof formSheets)[number], startRow: number, endRow: number) {
