@@ -569,7 +569,8 @@ export default function ShipCertificatesPage() {
     return rows.filter((row) => {
       const status = getShipCertificateStatus(row)
       const survey = getShipSurveyStatus(row)
-      const text = [row.code, row.cert_name, row.issue_by, row.remark, row.category].filter(Boolean).join(' ').toLowerCase()
+      const certLabel = [row.code, row.cert_name].filter(Boolean).join(' | ')
+      const text = [certLabel, row.code, row.cert_name, row.issue_by, row.remark, row.category].filter(Boolean).join(' ').toLowerCase()
       const matchesDashboard =
         dashboardFilter === 'all' ||
         (dashboardFilter === 'expired' && status === 'expired') ||
@@ -585,6 +586,12 @@ export default function ShipCertificatesPage() {
       )
     })
   }, [categoryFilter, dashboardFilter, rows, searchTerm, statusFilter])
+
+  const certOptions = useMemo(() => {
+    return Array.from(new Set(rows.map((row) => {
+      return [row.code, row.cert_name].filter(Boolean).join(' | ')
+    }).filter(Boolean))).sort()
+  }, [rows])
 
   const summary = useMemo(() => {
     const scopedRows = categoryFilter === 'all' ? rows : rows.filter((row) => row.category === categoryFilter)
@@ -731,15 +738,21 @@ export default function ShipCertificatesPage() {
         </section>
 
         <section className="rounded-[34px] border border-white/10 bg-black/30 p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px]">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_150px]">
             <label className="flex items-center gap-3 rounded-2xl border border-orange-500/20 bg-black/40 px-4">
               <Search size={16} className="text-orange-500" />
               <input
+                list="ship-certificate-options"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search certificate, issuer, remark..."
+                placeholder="Search or pick certificate..."
                 className="h-14 w-full bg-transparent text-sm font-bold text-white outline-none placeholder:text-zinc-600"
               />
+              <datalist id="ship-certificate-options">
+                {certOptions.map((cert) => (
+                  <option key={cert} value={cert} />
+                ))}
+              </datalist>
             </label>
             <select
               value={statusFilter}
@@ -751,6 +764,18 @@ export default function ShipCertificatesPage() {
             >
               {statusFilters.map((status) => <option key={status} value={status}>{status === 'all' ? 'All Status' : getShipStatusLabel(status)}</option>)}
             </select>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm('')
+                setCategoryFilter('all')
+                setStatusFilter('all')
+                setDashboardFilter('all')
+              }}
+              className="h-14 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 text-xs font-black uppercase tracking-widest text-orange-100 hover:bg-orange-600 hover:text-white"
+            >
+              Clear Filters
+            </button>
           </div>
         </section>
 
