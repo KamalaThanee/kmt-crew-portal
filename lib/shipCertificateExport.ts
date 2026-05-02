@@ -1,27 +1,12 @@
 import type { ShipCertificate } from '@/lib/shipCertificates'
 
 const formSheets = ['Class', 'GMDSS', 'FFE', 'LSA'] as const
-
+const templatePath = '/templates/ship-certificate-checklist-11.62.xlsx'
 const classSheetCategories = new Set(['Flag', 'Class', 'Insurance', 'Permit'])
-const tableHeaderRowIndex = 6
-const headerFill = { fgColor: { rgb: 'D9F2DF' } }
-
-const thinBorder = {
-  top: { style: 'thin', color: { rgb: '000000' } },
-  bottom: { style: 'thin', color: { rgb: '000000' } },
-  left: { style: 'thin', color: { rgb: '000000' } },
-  right: { style: 'thin', color: { rgb: '000000' } },
-}
-
-function normalizeDateValue(value?: string | null) {
-  if (!value) return 'Nil'
-  const date = new Date(`${value}T00:00:00`)
-  if (Number.isNaN(date.getTime())) return value
-  return date
-}
+const spreadsheetNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 
 function nilIfEmpty(value?: string | null) {
-  return value && String(value).trim() ? value : 'Nil'
+  return value && String(value).trim() ? String(value).trim() : 'Nil'
 }
 
 function sortByCodeAndOrder(a: ShipCertificate, b: ShipCertificate) {
@@ -37,166 +22,159 @@ function getRowsForSheet(rows: ShipCertificate[], sheetName: (typeof formSheets)
   return rows.filter((row) => row.category === sheetName).sort(sortByCodeAndOrder)
 }
 
-function buildHeaderRows(sheetName: (typeof formSheets)[number]) {
-  const month = new Date()
-  const monthLabel = month.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
-
-  return [
-    [null, null, null, null, null, null, null, null, null],
-    ['TRUTH\nMARITIME SERVICES\nCOMPANY LIMITED', 'Title:', 'Ship Certificate Checklist', null, null, 'Revision Number\n0', null, 'Effective Date\n17 May 2021', 'Document Number\n11.62'],
-    [null, null, null, null, null, 'Reviewed By\nDPA', null, 'Approved By\nManaging Director', 'Page 1 of 1'],
-    [],
-    [null, 'Vessel :', 'Kamala Thanee', null, null, null, null, 'Month :', monthLabel],
-    [],
-  ]
+function toExcelDateSerial(value?: string | null) {
+  if (!value) return null
+  const date = new Date(`${value}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return null
+  return Math.round(date.getTime() / 86400000 + 25569)
 }
 
-function applyCellStyle(worksheet: Record<string, any>, cellAddress: string, style: Record<string, any>) {
-  if (!worksheet[cellAddress]) worksheet[cellAddress] = { t: 's', v: '' }
-  worksheet[cellAddress].s = {
-    ...(worksheet[cellAddress].s || {}),
-    ...style,
+function dateOrNil(value?: string | null) {
+  return toExcelDateSerial(value) ?? 'Nil'
+}
+
+function encodeCol(index: number) {
+  let col = ''
+  let current = index + 1
+  while (current > 0) {
+    const mod = (current - 1) % 26
+    col = String.fromCharCode(65 + mod) + col
+    current = Math.floor((current - mod) / 26)
   }
+  return col
 }
 
-function applyRangeStyle(XLSX: any, worksheet: Record<string, any>, rangeAddress: string, style: Record<string, any>) {
-  const range = XLSX.utils.decode_range(rangeAddress)
-  for (let row = range.s.r; row <= range.e.r; row += 1) {
-    for (let col = range.s.c; col <= range.e.c; col += 1) {
-      applyCellStyle(worksheet, XLSX.utils.encode_cell({ r: row, c: col }), style)
+function getRow(doc: Document, rowNumber: number) {
+  const rows = Array.from(doc.getElementsByTagNameNS(spreadsheetNs, 'row'))
+  return rows.find((row) => row.getAttribute('r') === String(rowNumber)) || null
+}
+
+function getCell(doc: Document, row: Element, colIndex: number, rowNumber: number) {
+  const ref = `${encodeCol(colIndex)}${rowNumber}`
+  const cells = Array.from(row.getElementsByTagNameNS(spreadsheetNs, 'c'))
+  let cell = cells.find((item) => item.getAttribute('r') === ref)
+  if (cell) return cell
+
+  cell = doc.createElementNS(spreadsheetNs, 'c')
+  cell.setAttribute('r', ref)
+  row.appendChild(cell)
+  return cell
+}
+
+function clearCell(cell: Element) {
+  cell.removeAttribute('t')
+  Array.from(cell.childNodes).forEach((node) => cell.removeChild(node))
+}
+
+function setCellValue(doc: Document, cell: Element, value: string | number | null) {
+  clearCell(cell)
+  if (value === null || value === '') return
+
+  if (typeof value === 'number') {
+    const v = doc.createElementNS(spreadsheetNs, 'v')
+    v.textContent = String(value)
+    cell.appendChild(v)
+    return
+  }
+
+  cell.setAttribute('t', 'inlineStr')
+  const inlineString = doc.createElementNS(spreadsheetNs, 'is')
+  const text = doc.createElementNS(spreadsheetNs, 't')
+  text.textContent = value
+  inlineString.appendChild(text)
+  cell.appendChild(inlineString)
+}
+
+function clearTemplateDataRows(doc: Document, sheetName: (typeof formSheets)[number], startRow: number, endRow: number) {
+  const cols = sheetName === 'Class' ? [0, 1, 3, 4, 5, 6, 7, 8] : [0, 1, 5, 6, 7, 8]
+  for (let rowNumber = startRow; rowNumber <= endRow; rowNumber += 1) {
+    const row = getRow(doc, rowNumber)
+    if (!row) continue
+    for (const col of cols) {
+      setCellValue(doc, getCell(doc, row, col, rowNumber), null)
     }
   }
 }
 
-function applyFormLayout(XLSX: any, worksheet: Record<string, any>, sheetName: (typeof formSheets)[number], rowCount: number) {
-  const tableEndRow = Math.max(tableHeaderRowIndex, rowCount - 1)
-  const tableRange = XLSX.utils.encode_range({ s: { r: tableHeaderRowIndex, c: 0 }, e: { r: tableEndRow, c: 8 } })
+function fillSheet(doc: Document, sheetName: (typeof formSheets)[number], sourceRows: ShipCertificate[]) {
+  const startRow = 8
+  const templateEndRow = Number(doc.getElementsByTagNameNS(spreadsheetNs, 'dimension')[0]?.getAttribute('ref')?.match(/(\d+)$/)?.[1] || 80)
+  const rows = getRowsForSheet(sourceRows, sheetName)
 
-  worksheet['!cols'] = [
-    { wch: 12 },
-    { wch: 12 },
-    { wch: sheetName === 'Class' ? 30 : 36 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 16 },
-    { wch: 16 },
-    { wch: 20 },
-    { wch: 18 },
-  ]
-  worksheet['!rows'] = Array.from({ length: rowCount }, (_, index) => ({
-    hpt: index === 1 || index === 2 ? 39 : index === tableHeaderRowIndex ? 24 : index > tableHeaderRowIndex ? 30 : 18,
-  }))
-  worksheet['!merges'] = [
-    { s: { r: 1, c: 0 }, e: { r: 2, c: 0 } },
-    { s: { r: 1, c: 2 }, e: { r: 2, c: 4 } },
-    { s: { r: 1, c: 5 }, e: { r: 1, c: 6 } },
-    { s: { r: 2, c: 5 }, e: { r: 2, c: 6 } },
-    { s: { r: 4, c: 2 }, e: { r: 4, c: 4 } },
-  ]
-  worksheet['!autofilter'] = { ref: tableRange }
-  worksheet['!margins'] = { left: 0.25, right: 0.25, top: 0.35, bottom: 0.35, header: 0.2, footer: 0.2 }
-  worksheet['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 }
-
-  applyRangeStyle(XLSX, worksheet, 'A2:I3', {
-    border: thinBorder,
-    fill: headerFill,
-    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-    font: { bold: true, name: 'Arial', sz: 10 },
-  })
-  applyRangeStyle(XLSX, worksheet, 'A5:I5', {
-    border: thinBorder,
-    fill: headerFill,
-    alignment: { vertical: 'center', wrapText: true },
-    font: { bold: true, name: 'Arial', sz: 10 },
-  })
-  applyRangeStyle(XLSX, worksheet, 'B2:E3', {
-    border: thinBorder,
-    fill: headerFill,
-    alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
-    font: { bold: true, name: 'Arial', sz: 10 },
-  })
-  applyCellStyle(worksheet, 'A2', {
-    border: thinBorder,
-    fill: { fgColor: { rgb: 'FFFFFF' } },
-    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-    font: { bold: true, name: 'Arial', sz: 15, color: { rgb: '111111' } },
-  })
-  applyCellStyle(worksheet, 'C2', {
-    border: thinBorder,
-    fill: headerFill,
-    alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
-    font: { bold: true, name: 'Arial', sz: 15, color: { rgb: '064B55' } },
-  })
-  applyRangeStyle(XLSX, worksheet, `A${tableHeaderRowIndex + 1}:I${tableHeaderRowIndex + 1}`, {
-    border: thinBorder,
-    fill: { fgColor: { rgb: 'D9EAD3' } },
-    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-    font: { bold: true, name: 'Arial', sz: 10 },
-  })
-  applyRangeStyle(XLSX, worksheet, tableRange, {
-    border: thinBorder,
-    alignment: { vertical: 'center', wrapText: true },
-    font: { name: 'Arial', sz: 10 },
-  })
-
-  for (let row = tableHeaderRowIndex + 1; row <= tableEndRow; row += 1) {
-    for (const col of [4, 5, 6, 7]) {
-      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
-      if (worksheet[cellAddress]?.t === 'd') worksheet[cellAddress].z = 'dd mmm yyyy'
-    }
-  }
-}
-
-function buildSheetRows(sheetName: (typeof formSheets)[number], rows: ShipCertificate[]) {
-  const sheetRows = getRowsForSheet(rows, sheetName)
-  const headerRows = buildHeaderRows(sheetName)
-
+  setCellValue(doc, getCell(doc, getRow(doc, 5)!, 2, 5), 'Kamala Thanee')
   if (sheetName === 'Class') {
-    return [
-      ...headerRows,
-      ['No', 'CERTIFICATE', null, 'ISSUE BY', 'ISSUED DATE', 'EXPIRE DATE', 'LAST SURVEY', 'NEXT SURVEY', 'Remark'],
-      ...sheetRows.map((row) => [
-        row.code || '',
-        row.cert_name || '',
-        null,
-        nilIfEmpty(row.issue_by),
-        normalizeDateValue(row.issued_date),
-        row.has_expiry === false ? 'Nil' : normalizeDateValue(row.expiry_date),
-        row.has_survey ? normalizeDateValue(row.last_survey_date) : 'Nil',
-        row.has_survey ? normalizeDateValue(row.next_survey_date) : 'Nil',
-        nilIfEmpty(row.remark),
-      ]),
-    ]
+    setCellValue(doc, getCell(doc, getRow(doc, 5)!, 8, 5), toExcelDateSerial(new Date().toISOString().slice(0, 10)))
   }
 
-  return [
-    ...headerRows,
-    ['No', 'CERTIFICATE', null, null, null, 'ISSUE BY', 'ISSUED DATE', 'EXPIRE DATE', 'Remark'],
-    ...sheetRows.map((row, index) => [
-      row.code || index + 1,
-      row.cert_name || '',
-      null,
-      null,
-      null,
-      nilIfEmpty(row.issue_by),
-      normalizeDateValue(row.issued_date),
-      row.has_expiry === false ? 'Nil' : normalizeDateValue(row.expiry_date),
-      nilIfEmpty(row.remark),
-    ]),
-  ]
+  clearTemplateDataRows(doc, sheetName, startRow, Math.max(templateEndRow, startRow + rows.length + 5))
+
+  rows.forEach((row, index) => {
+    const rowNumber = startRow + index
+    const rowEl = getRow(doc, rowNumber)
+    if (!rowEl) return
+
+    if (sheetName === 'Class') {
+      const values = [
+        [0, row.code || ''],
+        [1, row.cert_name || ''],
+        [3, nilIfEmpty(row.issue_by)],
+        [4, dateOrNil(row.issued_date)],
+        [5, row.has_expiry === false ? 'Nil' : dateOrNil(row.expiry_date)],
+        [6, row.has_survey ? dateOrNil(row.last_survey_date) : 'Nil'],
+        [7, row.has_survey ? dateOrNil(row.next_survey_date) : 'Nil'],
+        [8, nilIfEmpty(row.remark)],
+      ] as Array<[number, string | number | null]>
+      values.forEach(([col, value]) => setCellValue(doc, getCell(doc, rowEl, col, rowNumber), value))
+      return
+    }
+
+    const values = [
+      [0, row.code || index + 1],
+      [1, row.cert_name || ''],
+      [5, nilIfEmpty(row.issue_by)],
+      [6, dateOrNil(row.issued_date)],
+      [7, row.has_expiry === false ? 'Nil' : dateOrNil(row.expiry_date)],
+      [8, nilIfEmpty(row.remark)],
+    ] as Array<[number, string | number | null]>
+    values.forEach(([col, value]) => setCellValue(doc, getCell(doc, rowEl, col, rowNumber), value))
+  })
 }
 
 export async function exportShipCertificatesTo1162(rows: ShipCertificate[]) {
-  const XLSX = await import('xlsx-js-style')
-  const workbook = XLSX.utils.book_new()
+  const [{ default: JSZip }] = await Promise.all([import('jszip')])
+  const templateResponse = await fetch(templatePath)
+  if (!templateResponse.ok) throw new Error('11.62 template file not found')
 
-  for (const sheetName of formSheets) {
-    const sheetRows = buildSheetRows(sheetName, rows)
-    const worksheet = XLSX.utils.aoa_to_sheet(sheetRows, { cellDates: true })
-    applyFormLayout(XLSX, worksheet, sheetName, sheetRows.length)
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
+  const zip = await JSZip.loadAsync(await templateResponse.arrayBuffer())
+  const parser = new DOMParser()
+  const serializer = new XMLSerializer()
+
+  formSheets.forEach((sheetName, index) => {
+    const sheetPath = `xl/worksheets/sheet${index + 1}.xml`
+    const sheetFile = zip.file(sheetPath)
+    if (!sheetFile) throw new Error(`Template sheet missing: ${sheetName}`)
+  })
+
+  for (const [index, sheetName] of formSheets.entries()) {
+    const sheetPath = `xl/worksheets/sheet${index + 1}.xml`
+    const xml = await zip.file(sheetPath)!.async('string')
+    const doc = parser.parseFromString(xml, 'application/xml')
+    fillSheet(doc, sheetName, rows)
+    zip.file(sheetPath, serializer.serializeToString(doc))
   }
 
+  const blob = await zip.generateAsync({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+
   const stamp = new Date().toISOString().slice(0, 10)
-  XLSX.writeFile(workbook, `KMT-Ship-Certificate-Checklist-11.62-${stamp}.xlsx`)
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `KMT-Ship-Certificate-Checklist-11.62-${stamp}.xlsx`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
