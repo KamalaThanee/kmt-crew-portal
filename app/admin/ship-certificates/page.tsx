@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CalendarClock, Download, ExternalLink, FileBadge, Loader2, PlusCircle, Search, ShipWheel, UploadCloud, X } from 'lucide-react'
+import { AlertTriangle, CalendarClock, Download, ExternalLink, FileBadge, Loader2, PlusCircle, Search, ShipWheel, Trash2, UploadCloud, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { compressImage } from '@/lib/certificateUpload'
 import { exportShipCertificatesTo1162 } from '@/lib/shipCertificateExport'
@@ -466,12 +466,39 @@ export default function ShipCertificatesPage() {
     closeEditModal()
   }
 
+  const deleteCertificate = async () => {
+    if (!editingCert?.id || isAddingCert) return
+    const confirmed = window.confirm(`Delete ${editingCert.code || ''} ${editingCert.cert_name || 'this certificate'}?`)
+    if (!confirmed) return
+
+    setIsSaving(true)
+    setErrorMessage('')
+
+    const { error } = await supabase.from('ship_certificates').delete().eq('id', editingCert.id)
+    if (error) {
+      setErrorMessage(`Delete failed: ${error.message}`)
+      setIsSaving(false)
+      return
+    }
+
+    await supabase.from('ship_cert_history').insert({
+      ship_certificate_id: editingCert.id,
+      action: 'delete_certificate',
+      old_data: editingCert,
+      new_data: null,
+      actor_name: currentUser?.full_name || currentUser?.position || 'Unknown user',
+    })
+
+    setRows((prev) => prev.filter((row) => row.id !== editingCert.id))
+    setIsSaving(false)
+    closeEditModal()
+  }
+
   const handleExport1162 = async () => {
     setIsExporting(true)
     setErrorMessage('')
     try {
-      const exportRows = categoryFilter === 'all' ? rows : rows.filter((row) => row.category === categoryFilter)
-      await exportShipCertificatesTo1162(exportRows)
+      await exportShipCertificatesTo1162(rows)
     } catch (error: any) {
       setErrorMessage(`Export failed: ${error.message || 'Unable to create 11.62 Excel file'}`)
     } finally {
@@ -570,7 +597,7 @@ export default function ShipCertificatesPage() {
             className="inline-flex items-center justify-center gap-2 rounded-3xl border border-orange-500/20 bg-orange-500/10 px-5 py-4 text-xs font-black uppercase tracking-widest text-orange-100 hover:border-orange-400 hover:bg-orange-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-            {categoryFilter === 'all' ? 'Export 11.62 Excel' : `Export ${categoryFilter}`}
+            Export 11.62 Excel
           </button>
           {canEdit && (
             <button
@@ -699,6 +726,7 @@ export default function ShipCertificatesPage() {
           }}
           onAiScan={handleShipAiScan}
           onClose={closeEditModal}
+          onDelete={deleteCertificate}
           onSave={saveCertificateUpdate}
         />
       )}
@@ -756,6 +784,7 @@ function ShipCertificateModal({
   onFileChange,
   onAiScan,
   onClose,
+  onDelete,
   onSave,
 }: {
   certificate: ShipCertificate
@@ -771,6 +800,7 @@ function ShipCertificateModal({
   onFileChange: (file: File | null) => void
   onAiScan: () => void
   onClose: () => void
+  onDelete: () => void
   onSave: () => void
 }) {
   const showExtractedFields = !isAddingCert || !!form.cert_name || !!scanResult
@@ -901,6 +931,15 @@ function ShipCertificateModal({
         </div>
 
         <div className="flex flex-col gap-3 border-t border-white/10 p-6 md:flex-row">
+          {!isAddingCert && (
+            <button
+              onClick={onDelete}
+              disabled={isSaving}
+              className="flex items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 py-4 text-xs font-black uppercase tracking-widest text-red-300 hover:bg-red-500 hover:text-white disabled:cursor-wait disabled:opacity-50 md:w-44"
+            >
+              <Trash2 size={15} /> Delete
+            </button>
+          )}
           <button onClick={onClose} className="flex-1 rounded-2xl bg-white/5 py-4 text-xs font-black uppercase tracking-widest text-zinc-300 hover:bg-white/10">
             Cancel
           </button>
