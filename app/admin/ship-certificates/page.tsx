@@ -27,6 +27,16 @@ const statusFilters: Array<'all' | ShipCertificateStatus> = ['all', 'expired', '
 const SHIP_CERT_BUCKET = 'ship-certificates'
 type DashboardFilter = 'all' | 'expired' | 'due30' | 'due90' | 'surveyDue'
 
+type ShipCertHistoryRow = {
+  id: string
+  ship_certificate_id: string | null
+  action: string
+  old_data: Partial<ShipCertificate> | null
+  new_data: Partial<ShipCertificate> | null
+  actor_name: string | null
+  created_at: string | null
+}
+
 const categoryCodePrefixes: Record<string, string> = {
   Flag: 'F',
   Class: 'C',
@@ -215,12 +225,39 @@ const readFileAsDataUrl = (file: File) =>
     reader.onloadend = () => resolve(String(reader.result || ''))
   })
 
+const formatAuditDate = (value?: string | null) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString()
+}
+
+const getAuditCertificate = (row: ShipCertHistoryRow) => row.new_data || row.old_data || {}
+
+const getAuditActionLabel = (action?: string | null) => {
+  const labels: Record<string, string> = {
+    add_certificate: 'Added',
+    renew_upload: 'Renewed / Uploaded',
+    manual_update: 'Edited',
+    delete_certificate: 'Deleted',
+  }
+  return labels[String(action || '')] || String(action || 'Updated').replace(/_/g, ' ')
+}
+
+const getAuditActionStyle = (action?: string | null) => {
+  if (action === 'delete_certificate') return 'border-red-500/30 bg-red-500/10 text-red-200'
+  if (action === 'renew_upload') return 'border-orange-400/30 bg-orange-500/10 text-orange-200'
+  if (action === 'add_certificate') return 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+  return 'border-white/10 bg-white/5 text-zinc-300'
+}
+
 export default function ShipCertificatesPage() {
   const router = useRouter()
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [canEdit, setCanEdit] = useState(false)
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<ShipCertificate[]>([])
+  const [historyRows, setHistoryRows] = useState<ShipCertHistoryRow[]>([])
   const [errorMessage, setErrorMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -255,10 +292,13 @@ export default function ShipCertificatesPage() {
   const fetchData = async () => {
     setLoading(true)
     setErrorMessage('')
-    const { data, error } = await supabase
-      .from('ship_certificates')
-      .select('*')
-      .order('sort_order', { ascending: true })
+    const [{ data, error }, historyResult] = await Promise.all([
+      supabase
+        .from('ship_certificates')
+        .select('*')
+        .order('sort_order', { ascending: true }),
+      fetchHistoryRows(),
+    ])
 
     if (error) {
       setErrorMessage(error.message)
@@ -266,7 +306,19 @@ export default function ShipCertificatesPage() {
     } else {
       setRows((data || []) as ShipCertificate[])
     }
+    setHistoryRows(historyResult)
     setLoading(false)
+  }
+
+  const fetchHistoryRows = async () => {
+    const { data, error } = await supabase
+      .from('ship_cert_history')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(12)
+
+    if (error) return []
+    return (data || []) as ShipCertHistoryRow[]
   }
 
   const openEditModal = (row: ShipCertificate) => {
@@ -457,6 +509,7 @@ export default function ShipCertificatesPage() {
       new_data: data,
       actor_name: currentUser?.full_name || currentUser?.position || 'Unknown user',
     })
+    setHistoryRows(await fetchHistoryRows())
 
     setRows((prev) => {
       if (isAddingCert) return [...prev, data as ShipCertificate].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
@@ -482,7 +535,7 @@ export default function ShipCertificatesPage() {
     }
 
     await supabase.from('ship_cert_history').insert({
-      ship_certificate_id: editingCert.id,
+      ship_certificate_id: null,
       action: 'delete_certificate',
       old_data: editingCert,
       new_data: null,
@@ -490,6 +543,7 @@ export default function ShipCertificatesPage() {
     })
 
     setRows((prev) => prev.filter((row) => row.id !== editingCert.id))
+    setHistoryRows(await fetchHistoryRows())
     setIsSaving(false)
     closeEditModal()
   }
@@ -703,6 +757,8 @@ export default function ShipCertificatesPage() {
             <ShipCertificateRow key={row.id || `${row.category}-${row.code}-${row.cert_name}`} row={row} canEdit={canEdit} onEdit={openEditModal} />
           ))}
         </section>
+
+        <ShipCertificateAuditTrail rows={historyRows} />
       </div>
 
       {editingCert && editForm && (
@@ -731,6 +787,72 @@ export default function ShipCertificatesPage() {
         />
       )}
     </div>
+  )
+}
+
+function ShipCertificateAuditTrail({ rows }: { rows: ShipCertHistoryRow[] }) {
+  return (
+    <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/80 p-5 shadow-2xl shadow-black/30">
+      <div className="mb-5 flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">Recent Audit</p>
+          <h2 className="mt-2 text-2xl font-black uppercase italic text-white">Ship certificate changes</h2>
+        </div>
+        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+          Latest upload / edit / delete activity
+        </p>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-[28px] border border-white/10 bg-black/40 p-8 text-center text-[11px] font-black uppercase tracking-widest text-zinc-600">
+          No audit activity yet
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((row) => {
+            const cert = getAuditCertificate(row)
+            const fileUrl = cert.file_url
+            return (
+              <article key={row.id} className="grid gap-4 rounded-[28px] border border-white/10 bg-black/45 p-4 md:grid-cols-[150px_1fr_170px_120px] md:items-center">
+                <div>
+                  <span className={`inline-flex rounded-full border px-3 py-2 text-[8px] font-black uppercase tracking-widest ${getAuditActionStyle(row.action)}`}>
+                    {getAuditActionLabel(row.action)}
+                  </span>
+                  <p className="mt-2 text-[10px] font-bold normal-case text-zinc-500">{formatAuditDate(row.created_at)}</p>
+                </div>
+
+                <div>
+                  <p className="text-sm font-black uppercase italic text-white">
+                    {cert.code ? `${cert.code} | ` : ''}{cert.cert_name || 'Unknown ship certificate'}
+                  </p>
+                  <p className="mt-1 text-[11px] font-bold normal-case text-zinc-500">
+                    {cert.category || 'No category'} {cert.expiry_date ? `| Exp ${formatShipDate(cert.expiry_date)}` : ''}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">By</p>
+                  <p className="mt-1 text-xs font-black normal-case text-zinc-200">{row.actor_name || 'Unknown user'}</p>
+                </div>
+
+                {fileUrl ? (
+                  <a
+                    href={fileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-orange-200 hover:bg-orange-500/20"
+                  >
+                    <ExternalLink size={14} /> File
+                  </a>
+                ) : (
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-700">No file</span>
+                )}
+              </article>
+            )
+          })}
+        </div>
+      )}
+    </section>
   )
 }
 
