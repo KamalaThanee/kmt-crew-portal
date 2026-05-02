@@ -234,6 +234,10 @@ const formatAuditDate = (value?: string | null) => {
 
 const getAuditCertificate = (row: ShipCertHistoryRow) => row.new_data || row.old_data || {}
 
+const getAuditCertificateId = (row: ShipCertHistoryRow) => {
+  return row.ship_certificate_id || row.new_data?.id || row.old_data?.id || null
+}
+
 const getAuditActionLabel = (action?: string | null) => {
   const labels: Record<string, string> = {
     add_certificate: 'Added',
@@ -315,7 +319,7 @@ export default function ShipCertificatesPage() {
       .from('ship_cert_history')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(12)
+      .limit(200)
 
     if (error) return []
     return (data || []) as ShipCertHistoryRow[]
@@ -606,6 +610,15 @@ export default function ShipCertificatesPage() {
     return counts
   }, [categoryFilter, rows])
 
+  const latestHistoryByCert = useMemo(() => {
+    const latest = new Map<string, ShipCertHistoryRow>()
+    for (const history of historyRows) {
+      const certId = getAuditCertificateId(history)
+      if (certId && !latest.has(certId)) latest.set(certId, history)
+    }
+    return latest
+  }, [historyRows])
+
   if (loading) {
     return <div className="min-h-screen bg-black pt-32 text-center text-orange-500 font-black animate-pulse">LOADING SHIP CERTIFICATES...</div>
   }
@@ -761,7 +774,13 @@ export default function ShipCertificatesPage() {
               No ship certificates found
             </div>
           ) : filteredRows.map((row) => (
-            <ShipCertificateRow key={row.id || `${row.category}-${row.code}-${row.cert_name}`} row={row} canEdit={canEdit} onEdit={openEditModal} />
+            <ShipCertificateRow
+              key={row.id || `${row.category}-${row.code}-${row.cert_name}`}
+              row={row}
+              latestHistory={row.id ? latestHistoryByCert.get(row.id) || null : null}
+              canEdit={canEdit}
+              onEdit={openEditModal}
+            />
           ))}
         </section>
 
@@ -798,6 +817,8 @@ export default function ShipCertificatesPage() {
 }
 
 function ShipCertificateAuditTrail({ rows }: { rows: ShipCertHistoryRow[] }) {
+  const latestRows = rows.slice(0, 12)
+
   return (
     <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/80 p-5 shadow-2xl shadow-black/30">
       <div className="mb-5 flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
@@ -810,13 +831,13 @@ function ShipCertificateAuditTrail({ rows }: { rows: ShipCertHistoryRow[] }) {
         </p>
       </div>
 
-      {rows.length === 0 ? (
+      {latestRows.length === 0 ? (
         <div className="rounded-[28px] border border-white/10 bg-black/40 p-8 text-center text-[11px] font-black uppercase tracking-widest text-zinc-600">
           No audit activity yet
         </div>
       ) : (
         <div className="space-y-3">
-          {rows.map((row) => {
+          {latestRows.map((row) => {
             const cert = getAuditCertificate(row)
             const fileUrl = cert.file_url
             return (
@@ -1096,11 +1117,23 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
   )
 }
 
-function ShipCertificateRow({ row, canEdit, onEdit }: { row: ShipCertificate; canEdit: boolean; onEdit: (row: ShipCertificate) => void }) {
+function ShipCertificateRow({
+  row,
+  latestHistory,
+  canEdit,
+  onEdit,
+}: {
+  row: ShipCertificate
+  latestHistory: ShipCertHistoryRow | null
+  canEdit: boolean
+  onEdit: (row: ShipCertificate) => void
+}) {
   const status = getShipCertificateStatus(row)
   const surveyStatus = getShipSurveyStatus(row)
   const expiryDays = daysUntil(row.expiry_date)
   const surveyDays = daysUntil(row.next_survey_date)
+  const latestAction = latestHistory ? getAuditActionLabel(latestHistory.action).toLowerCase() : ''
+  const latestActor = latestHistory?.actor_name || 'Unknown user'
 
   return (
     <article className="grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-5 last:border-0 md:min-w-[1040px] md:grid-cols-[70px_105px_minmax(180px,1.35fr)_120px_120px_170px_minmax(120px,0.8fr)_100px] md:items-center md:gap-3">
@@ -1142,6 +1175,11 @@ function ShipCertificateRow({ row, canEdit, onEdit }: { row: ShipCertificate; ca
           <FileBadge size={13} className="text-zinc-600" />
           <span className="min-w-0 break-words">{cleanCertificateRemark(row.remark) || '-'}</span>
         </div>
+        {latestHistory && (
+          <p className="mt-2 text-[10px] text-orange-200/80">
+            Last {latestAction} by {latestActor} | {formatAuditDate(latestHistory.created_at)}
+          </p>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-2 md:justify-end">
         {row.file_url && (

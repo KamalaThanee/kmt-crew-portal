@@ -297,13 +297,21 @@ function CertificatesContent() {
 }
 
 function CertificateLogPanel({ rows }: { rows: CertificateLogRow[] }) {
-  const [logSearch, setLogSearch] = useState('')
+  const [certFilter, setCertFilter] = useState('all')
+  const [userSearch, setUserSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('all')
   const [monthFilter, setMonthFilter] = useState('all')
   const [yearFilter, setYearFilter] = useState('all')
 
   const actionOptions = useMemo(() => {
     return ['all', ...Array.from(new Set(rows.map((row) => row.action).filter(Boolean) as string[]))]
+  }, [rows])
+
+  const certOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set(rows.map((row) => {
+      const cert = getLogCertificate(row)
+      return [cert.code, cert.cert_name].filter(Boolean).join(' | ')
+    }).filter(Boolean))).sort()]
   }, [rows])
 
   const monthOptions = useMemo(() => {
@@ -325,44 +333,51 @@ function CertificateLogPanel({ rows }: { rows: CertificateLogRow[] }) {
   }, [rows])
 
   const filteredRows = useMemo(() => {
-    const query = logSearch.trim().toLowerCase()
+    const userQuery = userSearch.trim().toLowerCase()
     return rows.filter((row) => {
       const cert = getLogCertificate(row)
       const date = row.created_at ? new Date(row.created_at) : null
       const month = date && !Number.isNaN(date.getTime()) ? String(date.getMonth() + 1).padStart(2, '0') : ''
       const year = date && !Number.isNaN(date.getTime()) ? String(date.getFullYear()) : ''
-      const text = [
-        row.action,
-        row.actor_name,
-        cert.code,
-        cert.cert_name,
-        cert.category,
-        cert.issue_by,
-        cert.remark,
-      ].filter(Boolean).join(' ').toLowerCase()
+      const certLabel = [cert.code, cert.cert_name].filter(Boolean).join(' | ')
+      const certQuery = certFilter.toLowerCase()
+      const userText = [row.actor_name, cert.issue_by].filter(Boolean).join(' ').toLowerCase()
 
       return (
-        (!query || text.includes(query)) &&
+        (certFilter === 'all' || certLabel.toLowerCase().includes(certQuery)) &&
+        (!userQuery || userText.includes(userQuery)) &&
         (actionFilter === 'all' || row.action === actionFilter) &&
         (monthFilter === 'all' || month === monthFilter) &&
         (yearFilter === 'all' || year === yearFilter)
       )
     })
-  }, [actionFilter, monthFilter, logSearch, rows, yearFilter])
+  }, [actionFilter, certFilter, monthFilter, rows, userSearch, yearFilter])
 
   return (
     <section className="space-y-5">
       <div className="rounded-[34px] border border-white/10 bg-black/30 p-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_190px_160px_160px]">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_220px_170px_150px_150px]">
           <label className="flex items-center gap-3 rounded-2xl border border-orange-500/20 bg-black/40 px-4">
             <Search size={16} className="text-orange-500" />
             <input
-              value={logSearch}
-              onChange={(event) => setLogSearch(event.target.value)}
-              placeholder="Search cert, action, or user..."
+              list="certificate-log-cert-options"
+              value={certFilter === 'all' ? '' : certFilter}
+              onChange={(event) => setCertFilter(event.target.value || 'all')}
+              placeholder="Search or pick certificate..."
               className="h-14 w-full bg-transparent text-sm font-bold text-white outline-none placeholder:text-zinc-600"
             />
+            <datalist id="certificate-log-cert-options">
+              {certOptions.filter((cert) => cert !== 'all').map((cert) => (
+                <option key={cert} value={cert} />
+              ))}
+            </datalist>
           </label>
+          <input
+            value={userSearch}
+            onChange={(event) => setUserSearch(event.target.value)}
+            placeholder="Search user..."
+            className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none placeholder:text-zinc-600"
+          />
           <select
             value={actionFilter}
             onChange={(event) => setActionFilter(event.target.value)}
