@@ -1,5 +1,5 @@
 const ADMIN_ROLES = ['safety officer', 'chief officer', 'barge master']
-const SHIP_CERTIFICATE_VIEWER_ROLES = [...ADMIN_ROLES, 'radio operator']
+const SHIP_CERTIFICATE_VIEWER_ROLES = [...ADMIN_ROLES, 'radio operator', 'chief engineer']
 
 export function normalizeRole(value: unknown) {
   return String(value || '')

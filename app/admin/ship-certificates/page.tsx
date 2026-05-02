@@ -619,7 +619,7 @@ export default function ShipCertificatesPage() {
             <p className="text-zinc-500 mt-1 tracking-widest">Vessel Compliance, Expiry, and Class Survey Control</p>
           </div>
 
-          <div className="grid w-full max-w-xl grid-cols-3 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[560px]">
+          <div className="grid w-full max-w-2xl grid-cols-4 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[720px]">
             <button
               type="button"
               onClick={() => router.push('/certificates?tab=personal')}
@@ -639,6 +639,13 @@ export default function ShipCertificatesPage() {
               className="rounded-[22px] bg-orange-600 px-4 py-4 text-white shadow-lg shadow-orange-600/25"
             >
               Ship Certs
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/certificates?tab=log')}
+              className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white"
+            >
+              Certificate Log
             </button>
           </div>
         </div>

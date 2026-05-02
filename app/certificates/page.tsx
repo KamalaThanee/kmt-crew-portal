@@ -8,10 +8,45 @@ import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { createZipBlob, getFileExtension, safeFileName, triggerDownload } from '@/lib/certificateDownloads'
 import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
-import { ShieldCheck } from 'lucide-react'
+import { ExternalLink, ShieldCheck } from 'lucide-react'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
+
+type CertificateLogRow = {
+  id: string
+  action: string | null
+  old_data: Record<string, any> | null
+  new_data: Record<string, any> | null
+  actor_name: string | null
+  created_at: string | null
+}
+
+const formatLogDate = (value?: string | null) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString()
+}
+
+const getLogCertificate = (row: CertificateLogRow) => row.new_data || row.old_data || {}
+
+const getLogActionLabel = (action?: string | null) => {
+  const labels: Record<string, string> = {
+    add_certificate: 'Added',
+    renew_upload: 'Renewed / Uploaded',
+    manual_update: 'Edited',
+    delete_certificate: 'Deleted',
+  }
+  return labels[String(action || '')] || String(action || 'Updated').replace(/_/g, ' ')
+}
+
+const getLogActionStyle = (action?: string | null) => {
+  if (action === 'delete_certificate') return 'border-red-500/30 bg-red-500/10 text-red-200'
+  if (action === 'renew_upload') return 'border-orange-400/30 bg-orange-500/10 text-orange-200'
+  if (action === 'add_certificate') return 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+  return 'border-white/10 bg-white/5 text-zinc-300'
+}
 
 function CertificatesContent() {
   const router = useRouter()
@@ -25,6 +60,7 @@ function CertificatesContent() {
   const [allCerts, setAllCerts] = useState<any[]>([])
   const [crews, setCrews] = useState<any[]>([])
   const [rules, setRules] = useState<any[]>([])
+  const [certificateLogs, setCertificateLogs] = useState<CertificateLogRow[]>([])
   
   // Filter States
   const [searchTerm, setSearchTerm] = useState('')
@@ -39,18 +75,20 @@ function CertificatesContent() {
   const canOpenShipCertificates = useMemo(() => canViewShipCertificates(currentUser?.position), [currentUser]);
 
   const fetchData = async () => {
-    const [m, c, crewsRes, allC, r] = await Promise.all([
+    const [m, c, crewsRes, allC, r, logs] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
       supabase.from('crew_certs').select('*').eq('crew_id', currentUser?.id),
       supabase.from('crews').select('*').order('full_name'),
       supabase.from('crew_certs').select('*'),
-      supabase.from('cert_rules').select('*')
+      supabase.from('cert_rules').select('*'),
+      supabase.from('ship_cert_history').select('*').order('created_at', { ascending: false }).limit(50),
     ]);
     if (m.data) setMatrix(m.data);
     if (c.data) setMyCerts(c.data);
     if (crewsRes.data) setCrews(crewsRes.data.filter(isCrewActive));
     if (allC.data) setAllCerts(allC.data);
     if (r.data) setRules(r.data);
+    if (logs.data) setCertificateLogs(logs.data as unknown as CertificateLogRow[]);
     setLoading(false);
   }
 
@@ -67,6 +105,7 @@ function CertificatesContent() {
 
     if (tab === 'crew' && canManageCertificates) setActiveTab('crew')
     if (tab === 'personal') setActiveTab('personal')
+    if (tab === 'log' && canManageCertificates) setActiveTab('log')
     if (tab === 'ship' && canOpenShipCertificates) router.replace('/admin/ship-certificates')
 
     if (crewFilter && ['all', 'ready', 'warning', 'expired', 'action'].includes(crewFilter)) {
@@ -191,10 +230,11 @@ function CertificatesContent() {
         </div>
         
         {canManageCertificates && (
-          <div className="grid w-full max-w-xl grid-cols-3 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[560px]">
+          <div className="grid w-full max-w-2xl grid-cols-4 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[720px]">
             <button onClick={() => setActiveTab('personal')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'personal' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>My Certs</button>
             <button onClick={() => setActiveTab('crew')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'crew' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>Crew Certificates</button>
             {canOpenShipCertificates && <button onClick={() => router.push('/admin/ship-certificates')} className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white">Ship Certs</button>}
+            <button onClick={() => setActiveTab('log')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'log' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>Certificate Log</button>
           </div>
         )}
       </div>
@@ -231,7 +271,81 @@ function CertificatesContent() {
           onUploadCrewCertificate={(certName, crewId) => router.push(`/certificates/upload?cert=${encodeURIComponent(certName)}&crewId=${crewId}`)}
         />
       )}
+
+      {activeTab === 'log' && canManageCertificates && (
+        <CertificateLogPanel rows={certificateLogs} onOpenShipCertificates={() => router.push('/admin/ship-certificates')} />
+      )}
     </div>
+  )
+}
+
+function CertificateLogPanel({ rows, onOpenShipCertificates }: { rows: CertificateLogRow[]; onOpenShipCertificates: () => void }) {
+  return (
+    <section className="space-y-5">
+      <div className="rounded-[34px] border border-orange-500/15 bg-zinc-950/80 p-6 shadow-2xl shadow-black/30">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">Certificate Log</p>
+            <h2 className="mt-2 text-3xl font-black uppercase italic text-white">Ship certificate activity</h2>
+            <p className="mt-2 text-xs font-bold normal-case text-zinc-500">Track who added, renewed, edited, or deleted ship certificates.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenShipCertificates}
+            className="rounded-3xl border border-orange-500/30 bg-orange-500/10 px-5 py-4 text-xs font-black uppercase tracking-widest text-orange-100 hover:bg-orange-600 hover:text-white"
+          >
+            Open Ship Certs
+          </button>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-[34px] border border-white/10 bg-black/30 p-12 text-center text-sm font-black uppercase tracking-widest text-zinc-600">
+          No certificate log yet
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((row) => {
+            const cert = getLogCertificate(row)
+            const fileUrl = cert.file_url
+            return (
+              <article key={row.id} className="grid gap-4 rounded-[28px] border border-white/10 bg-black/40 p-5 md:grid-cols-[170px_1fr_180px_120px] md:items-center">
+                <div>
+                  <span className={`inline-flex rounded-full border px-3 py-2 text-[8px] font-black uppercase tracking-widest ${getLogActionStyle(row.action)}`}>
+                    {getLogActionLabel(row.action)}
+                  </span>
+                  <p className="mt-2 text-[10px] font-bold normal-case text-zinc-500">{formatLogDate(row.created_at)}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-black uppercase italic text-white">
+                    {cert.code ? `${cert.code} | ` : ''}{cert.cert_name || 'Unknown ship certificate'}
+                  </p>
+                  <p className="mt-1 text-[11px] font-bold normal-case text-zinc-500">
+                    {cert.category || 'No category'} {cert.expiry_date ? `| Exp ${cert.expiry_date}` : ''}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">By</p>
+                  <p className="mt-1 text-xs font-black normal-case text-zinc-200">{row.actor_name || 'Unknown user'}</p>
+                </div>
+                {fileUrl ? (
+                  <a
+                    href={fileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-orange-200 hover:bg-orange-500/20"
+                  >
+                    <ExternalLink size={14} /> File
+                  </a>
+                ) : (
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-700">No file</span>
+                )}
+              </article>
+            )
+          })}
+        </div>
+      )}
+    </section>
   )
 }
 
