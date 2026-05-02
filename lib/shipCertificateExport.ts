@@ -177,11 +177,16 @@ export async function exportShipCertificatesTo1162(rows: ShipCertificate[]) {
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })
 
-  const stamp = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const stamp = [
+    String(now.getDate()).padStart(2, '0'),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    now.getFullYear(),
+  ].join('-')
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `KMT-Ship-Certificate-Checklist-11.62-${stamp}.xlsx`
+  link.download = `KMT-11.62-Ship-Certificate-Checklist-${stamp}.xlsx`
   document.body.appendChild(link)
   link.click()
   link.remove()
