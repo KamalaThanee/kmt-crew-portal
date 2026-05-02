@@ -111,9 +111,7 @@ function fillSheet(doc: Document, sheetName: (typeof formSheets)[number], source
   const rows = getRowsForSheet(sourceRows, sheetName)
 
   setCellValue(doc, getCell(doc, getRow(doc, 5)!, 2, 5), 'Kamala Thanee')
-  if (sheetName === 'Class') {
-    setCellValue(doc, getCell(doc, getRow(doc, 5)!, 8, 5), toExcelDateSerial(new Date().toISOString().slice(0, 10)))
-  }
+  setCellValue(doc, getCell(doc, getRow(doc, 5)!, 8, 5), toExcelDateSerial(new Date().toISOString().slice(0, 10)))
 
   clearTemplateDataRows(doc, sheetName, startRow, Math.max(templateEndRow, startRow + rows.length + 5))
 

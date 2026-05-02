@@ -470,7 +470,8 @@ export default function ShipCertificatesPage() {
     setIsExporting(true)
     setErrorMessage('')
     try {
-      await exportShipCertificatesTo1162(rows)
+      const exportRows = categoryFilter === 'all' ? rows : rows.filter((row) => row.category === categoryFilter)
+      await exportShipCertificatesTo1162(exportRows)
     } catch (error: any) {
       setErrorMessage(`Export failed: ${error.message || 'Unable to create 11.62 Excel file'}`)
     } finally {
@@ -569,7 +570,7 @@ export default function ShipCertificatesPage() {
             className="inline-flex items-center justify-center gap-2 rounded-3xl border border-orange-500/20 bg-orange-500/10 px-5 py-4 text-xs font-black uppercase tracking-widest text-orange-100 hover:border-orange-400 hover:bg-orange-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-            Export 11.62 Excel
+            {categoryFilter === 'all' ? 'Export 11.62 Excel' : `Export ${categoryFilter}`}
           </button>
           {canEdit && (
             <button
