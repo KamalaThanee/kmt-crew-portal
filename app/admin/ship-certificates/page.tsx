@@ -626,6 +626,11 @@ export default function ShipCertificatesPage() {
     return latest
   }, [historyRows])
 
+  const editingCertHistory = useMemo(() => {
+    if (!editingCert?.id) return []
+    return historyRows.filter((history) => getAuditCertificateId(history) === editingCert.id).slice(0, 5)
+  }, [editingCert?.id, historyRows])
+
   if (loading) {
     return <div className="min-h-screen bg-black pt-32 text-center text-orange-500 font-black animate-pulse">LOADING SHIP CERTIFICATES...</div>
   }
@@ -820,6 +825,7 @@ export default function ShipCertificatesPage() {
           uploadFile={uploadFile}
           scanResult={scanResult}
           scanMessage={scanMessage}
+          historyRows={editingCertHistory}
           isScanning={isScanning}
           isSaving={isSaving}
           onFormChange={setEditForm}
@@ -952,6 +958,7 @@ function ShipCertificateModal({
   uploadFile,
   scanResult,
   scanMessage,
+  historyRows,
   isScanning,
   isSaving,
   onFormChange,
@@ -968,6 +975,7 @@ function ShipCertificateModal({
   uploadFile: File | null
   scanResult: ShipCertScanResult | null
   scanMessage: string
+  historyRows: ShipCertHistoryRow[]
   isScanning: boolean
   isSaving: boolean
   onFormChange: (form: ShipCertificateForm) => void
@@ -1102,6 +1110,28 @@ function ShipCertificateModal({
             <a href={certificate.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-orange-500 hover:text-white md:col-span-2">
               <ExternalLink size={14} /> View current file
             </a>
+          )}
+          {!isAddingCert && (
+            <div className="rounded-2xl border border-orange-500/15 bg-black/35 p-4 md:col-span-2">
+              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-orange-500">Certificate Timeline</p>
+              {historyRows.length === 0 ? (
+                <p className="mt-3 text-xs normal-case text-zinc-600">No history recorded for this certificate yet.</p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {historyRows.map((history) => (
+                    <div key={history.id} className="flex flex-col gap-1 rounded-xl border border-white/10 bg-white/5 p-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <span className={`inline-flex rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-widest ${getAuditActionStyle(history.action)}`}>
+                          {getAuditActionLabel(history.action)}
+                        </span>
+                        <p className="mt-1 text-xs font-black normal-case text-white">{history.actor_name || 'Unknown user'}</p>
+                      </div>
+                      <p className="text-[10px] font-bold normal-case text-zinc-500">{formatAuditDate(history.created_at)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
