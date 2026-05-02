@@ -299,16 +299,6 @@ function CertificatesContent() {
 function CertificateLogPanel({ rows }: { rows: CertificateLogRow[] }) {
   return (
     <section className="space-y-5">
-      <div className="rounded-[34px] border border-orange-500/15 bg-zinc-950/80 p-6 shadow-2xl shadow-black/30">
-        <div>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">Certificate Log</p>
-            <h2 className="mt-2 text-3xl font-black uppercase italic text-white">Ship certificate activity</h2>
-            <p className="mt-2 text-xs font-bold normal-case text-zinc-500">Track who added, renewed, edited, or deleted ship certificates.</p>
-          </div>
-        </div>
-      </div>
-
       {rows.length === 0 ? (
         <div className="rounded-[34px] border border-white/10 bg-black/30 p-12 text-center text-sm font-black uppercase tracking-widest text-zinc-600">
           No certificate log yet
