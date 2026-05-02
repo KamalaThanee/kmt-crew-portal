@@ -1,15 +1,13 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { isNoExpiryDate } from '@/lib/certificates'
+import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { getShipCertificateStatus, getShipSurveyStatus } from '@/lib/shipCertificates'
 import { canViewShipCertificates } from '@/lib/roles'
 import { ChevronRight, ShieldCheck, Clock, ShipWheel } from 'lucide-react'
 import Link from 'next/link'
-
-const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 export default function CrewDashboard() {
   const router = useRouter()
@@ -25,8 +23,15 @@ export default function CrewDashboard() {
   }, [router])
 
   async function fetchStats(u: any) {
-    const { data: matrix } = await supabase.from('cert_matrix').select('*')
-    const { data: myCerts } = await supabase.from('crew_certs').select('*').eq('crew_id', u.id)
+    const [
+      matrixRes,
+      myCertsRes,
+      rulesRes,
+    ] = await Promise.all([
+      supabase.from('cert_matrix').select('*'),
+      supabase.from('crew_certs').select('*').eq('crew_id', u.id),
+      supabase.from('cert_rules').select('*'),
+    ])
     const reqQuery = await applyPpeRequestUserFilter(
       supabase.from('ppe_requests')
         .select('*')
@@ -39,22 +44,12 @@ export default function CrewDashboard() {
       ? await supabase.from('ship_certificates').select('*')
       : { data: [] as any[] }
     
-    if (matrix && myCerts) {
-      const uPos = normalize(u.position);
-      const required = matrix.filter(m => normalize(m.position) === uPos && m.requirement_type === 'P')
-      const today = new Date();
-      let ok = 0, warn = 0, exp = 0;
+    const matrix = matrixRes.data || []
+    const myCerts = myCertsRes.data || []
+    const rules = rulesRes.data || []
 
-      required.forEach(req => {
-        const c = myCerts.find(mc => normalize(mc.cert_name) === normalize(req.cert_name))
-        if (c) {
-          if (isNoExpiryDate(c.expiry_date)) ok++;
-          else {
-            const d = (new Date(c.expiry_date).getTime() - today.getTime()) / 86400000;
-            if (d < 0) exp++; else if (d <= 90) warn++; else ok++;
-          }
-        }
-      })
+    if (matrix.length) {
+      const certData = calculateCrewCertificateCompliance({ crew: u, crewCerts: myCerts, matrix, rules })
 
       let sCount = 0, bCount = 0;
       myReqs?.forEach((r: any) => {
@@ -65,8 +60,12 @@ export default function CrewDashboard() {
       })
 
       setStats({
-        total: required.length, ok, warn, exp, miss: required.length - (ok + warn + exp),
-        progress: required.length > 0 ? Math.round(((ok + warn) / required.length) * 100) : 0,
+        total: certData.mandatoryTotal,
+        ok: certData.ok,
+        warn: certData.warning,
+        exp: certData.expired,
+        miss: certData.missing,
+        progress: certData.progress,
         suit: sCount, boot: bCount, lastStatus: myReqs?.[0]?.status || 'No Request'
       })
     }
