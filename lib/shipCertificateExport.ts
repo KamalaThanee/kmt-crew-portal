@@ -4,6 +4,7 @@ const formSheets = ['Class', 'GMDSS', 'FFE', 'LSA'] as const
 
 const classSheetCategories = new Set(['Flag', 'Class', 'Insurance', 'Permit'])
 const tableHeaderRowIndex = 6
+const headerFill = { fgColor: { rgb: 'D9F2DF' } }
 
 const thinBorder = {
   top: { style: 'thin', color: { rgb: '000000' } },
@@ -41,11 +42,11 @@ function buildHeaderRows(sheetName: (typeof formSheets)[number]) {
   const monthLabel = month.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
   return [
+    [null, null, null, null, null, null, null, null, null],
+    ['TRUTH\nMARITIME SERVICES\nCOMPANY LIMITED', 'Title:', 'Ship Certificate Checklist', null, null, 'Revision Number\n0', null, 'Effective Date\n17 May 2021', 'Document Number\n11.62'],
+    [null, null, null, null, null, 'Reviewed By\nDPA', null, 'Approved By\nManaging Director', 'Page 1 of 1'],
     [],
-    [null, null, 'Title:\nShip Certificate Checklist', 'Revision Number\n0', 'Effective Date\n17 May 2021', null, null, null, 'Document Number\n11.62'],
-    [null, null, null, 'Reviewed By\nDPA', 'Approved By\nManaging Director', null, null, null, 'Page 1 of 1'],
-    [],
-    ['Vessel : ', null, 'Kamala Thanee', null, null, sheetName === 'Class' ? 'Month :' : null, null, sheetName === 'Class' ? null : 'Month :', monthLabel],
+    [null, 'Vessel :', 'Kamala Thanee', null, null, null, null, 'Month :', monthLabel],
     [],
   ]
 }
@@ -72,21 +73,24 @@ function applyFormLayout(XLSX: any, worksheet: Record<string, any>, sheetName: (
   const tableRange = XLSX.utils.encode_range({ s: { r: tableHeaderRowIndex, c: 0 }, e: { r: tableEndRow, c: 8 } })
 
   worksheet['!cols'] = [
-    { wch: 10 },
-    { wch: sheetName === 'Class' ? 38 : 44 },
-    { wch: 5 },
-    { wch: sheetName === 'Class' ? 24 : 5 },
-    { wch: sheetName === 'Class' ? 14 : 5 },
-    { wch: 24 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 30 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: sheetName === 'Class' ? 30 : 36 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 20 },
+    { wch: 18 },
   ]
   worksheet['!rows'] = Array.from({ length: rowCount }, (_, index) => ({
-    hpt: index === 1 || index === 2 ? 34 : index === tableHeaderRowIndex ? 24 : index > tableHeaderRowIndex ? 30 : 18,
+    hpt: index === 1 || index === 2 ? 39 : index === tableHeaderRowIndex ? 24 : index > tableHeaderRowIndex ? 30 : 18,
   }))
   worksheet['!merges'] = [
-    { s: { r: 1, c: 2 }, e: { r: 1, c: 2 } },
+    { s: { r: 1, c: 0 }, e: { r: 2, c: 0 } },
+    { s: { r: 1, c: 2 }, e: { r: 2, c: 4 } },
+    { s: { r: 1, c: 5 }, e: { r: 1, c: 6 } },
+    { s: { r: 2, c: 5 }, e: { r: 2, c: 6 } },
     { s: { r: 4, c: 2 }, e: { r: 4, c: 4 } },
   ]
   worksheet['!autofilter'] = { ref: tableRange }
@@ -95,13 +99,33 @@ function applyFormLayout(XLSX: any, worksheet: Record<string, any>, sheetName: (
 
   applyRangeStyle(XLSX, worksheet, 'A2:I3', {
     border: thinBorder,
+    fill: headerFill,
     alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
     font: { bold: true, name: 'Arial', sz: 10 },
   })
   applyRangeStyle(XLSX, worksheet, 'A5:I5', {
     border: thinBorder,
+    fill: headerFill,
     alignment: { vertical: 'center', wrapText: true },
     font: { bold: true, name: 'Arial', sz: 10 },
+  })
+  applyRangeStyle(XLSX, worksheet, 'B2:E3', {
+    border: thinBorder,
+    fill: headerFill,
+    alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+    font: { bold: true, name: 'Arial', sz: 10 },
+  })
+  applyCellStyle(worksheet, 'A2', {
+    border: thinBorder,
+    fill: { fgColor: { rgb: 'FFFFFF' } },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    font: { bold: true, name: 'Arial', sz: 15, color: { rgb: '111111' } },
+  })
+  applyCellStyle(worksheet, 'C2', {
+    border: thinBorder,
+    fill: headerFill,
+    alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+    font: { bold: true, name: 'Arial', sz: 15, color: { rgb: '064B55' } },
   })
   applyRangeStyle(XLSX, worksheet, `A${tableHeaderRowIndex + 1}:I${tableHeaderRowIndex + 1}`, {
     border: thinBorder,
