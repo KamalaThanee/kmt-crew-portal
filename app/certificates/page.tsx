@@ -48,6 +48,21 @@ const getLogActionStyle = (action?: string | null) => {
   return 'border-white/10 bg-white/5 text-zinc-300'
 }
 
+const certificateTabCopy: Record<string, { title: string; subtitle: string }> = {
+  personal: {
+    title: 'My Certificate',
+    subtitle: 'Personal compliance dashboard',
+  },
+  crew: {
+    title: 'Crew Certificate',
+    subtitle: 'Fleet readiness by crew matrix',
+  },
+  log: {
+    title: 'Certificate Log',
+    subtitle: 'Ship certificate activity audit',
+  },
+}
+
 function CertificatesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -220,20 +235,22 @@ function CertificatesContent() {
 
   if (loading || !currentUser) return <div className="min-h-screen bg-black flex items-center justify-center text-orange-500 font-black animate-pulse">VAULT ACCESSING...</div>
 
+  const headerCopy = certificateTabCopy[activeTab] || certificateTabCopy.personal
+
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
       
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-           <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><ShieldCheck className="text-orange-500" size={36}/> Certificate Hub</h1>
-           <p className="text-zinc-500 mt-1 tracking-widest">Enterprise Compliance Dashboard</p>
+           <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><ShieldCheck className="text-orange-500" size={36}/> {headerCopy.title}</h1>
+           <p className="text-zinc-500 mt-1 tracking-widest">{headerCopy.subtitle}</p>
         </div>
         
         {canManageCertificates && (
           <div className="grid w-full max-w-2xl grid-cols-4 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[720px]">
-            <button onClick={() => setActiveTab('personal')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'personal' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>My Certs</button>
-            <button onClick={() => setActiveTab('crew')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'crew' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>Crew Certificates</button>
-            {canOpenShipCertificates && <button onClick={() => router.push('/admin/ship-certificates')} className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white">Ship Certs</button>}
+            <button onClick={() => setActiveTab('personal')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'personal' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>My Certificate</button>
+            <button onClick={() => setActiveTab('crew')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'crew' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>Crew Certificate</button>
+            {canOpenShipCertificates && <button onClick={() => router.push('/admin/ship-certificates')} className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white">Ship Certificate</button>}
             <button onClick={() => setActiveTab('log')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'log' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>Certificate Log</button>
           </div>
         )}
@@ -273,29 +290,22 @@ function CertificatesContent() {
       )}
 
       {activeTab === 'log' && canManageCertificates && (
-        <CertificateLogPanel rows={certificateLogs} onOpenShipCertificates={() => router.push('/admin/ship-certificates')} />
+        <CertificateLogPanel rows={certificateLogs} />
       )}
     </div>
   )
 }
 
-function CertificateLogPanel({ rows, onOpenShipCertificates }: { rows: CertificateLogRow[]; onOpenShipCertificates: () => void }) {
+function CertificateLogPanel({ rows }: { rows: CertificateLogRow[] }) {
   return (
     <section className="space-y-5">
       <div className="rounded-[34px] border border-orange-500/15 bg-zinc-950/80 p-6 shadow-2xl shadow-black/30">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">Certificate Log</p>
             <h2 className="mt-2 text-3xl font-black uppercase italic text-white">Ship certificate activity</h2>
             <p className="mt-2 text-xs font-bold normal-case text-zinc-500">Track who added, renewed, edited, or deleted ship certificates.</p>
           </div>
-          <button
-            type="button"
-            onClick={onOpenShipCertificates}
-            className="rounded-3xl border border-orange-500/30 bg-orange-500/10 px-5 py-4 text-xs font-black uppercase tracking-widest text-orange-100 hover:bg-orange-600 hover:text-white"
-          >
-            Open Ship Certs
-          </button>
         </div>
       </div>
 

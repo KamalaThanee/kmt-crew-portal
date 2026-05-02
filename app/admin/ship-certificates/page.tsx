@@ -625,20 +625,20 @@ export default function ShipCertificatesPage() {
               onClick={() => router.push('/certificates?tab=personal')}
               className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white"
             >
-              My Certs
+              My Certificate
             </button>
             <button
               type="button"
               onClick={() => router.push('/certificates?tab=crew')}
               className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white"
             >
-              Crew Certificates
+              Crew Certificate
             </button>
             <button
               type="button"
               className="rounded-[22px] bg-orange-600 px-4 py-4 text-white shadow-lg shadow-orange-600/25"
             >
-              Ship Certs
+              Ship Certificate
             </button>
             <button
               type="button"
