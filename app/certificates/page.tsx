@@ -356,20 +356,23 @@ function CertificateLogPanel({
     }))
     const fallbackCrewRows = crewCertRows
       .filter((cert) => !hasHistoryFor.has(`${cert.crew_id || ''}:${cert.cert_name || ''}`))
-      .map((cert) => ({
-        id: `crew-current-${cert.id}`,
-        source: 'crew' as const,
-        action: 'current_upload',
-        old_data: null,
-        new_data: {
-          ...cert,
-          crew_name: crewNameById.get(cert.crew_id) || 'Unknown crew',
-        },
-        actor_name: 'Current record',
-        created_at: cert.updated_at || cert.created_at || null,
-        subject: crewNameById.get(cert.crew_id) || 'Unknown crew',
-        file_url: cert.file_url || null,
-      }))
+      .map((cert) => {
+        const crewName = crewNameById.get(cert.crew_id) || 'Unknown crew'
+        return {
+          id: `crew-current-${cert.id}`,
+          source: 'crew' as const,
+          action: 'current_upload',
+          old_data: null,
+          new_data: {
+            ...cert,
+            crew_name: crewName,
+          },
+          actor_name: `Crew: ${crewName}`,
+          created_at: cert.updated_at || cert.created_at || null,
+          subject: crewName,
+          file_url: cert.file_url || null,
+        }
+      })
     const mappedShipRows = shipRows.map((row) => {
       const cert = getLogCertificate(row)
       return {
