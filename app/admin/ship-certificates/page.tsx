@@ -1000,6 +1000,18 @@ export default function ShipCertificatesPage() {
     }).filter(Boolean))).sort()
   }, [rows])
 
+  const priorityQueueRows = useMemo(() => {
+    return rows
+      .filter((row) => getShipCertPriorityRank(row) <= 4)
+      .sort((a, b) => (
+        getShipCertPriorityRank(a) - getShipCertPriorityRank(b) ||
+        toShipCertDateValue(a.expiry_date) - toShipCertDateValue(b.expiry_date) ||
+        toShipCertDateValue(a.next_survey_date) - toShipCertDateValue(b.next_survey_date) ||
+        (a.sort_order || 0) - (b.sort_order || 0)
+      ))
+      .slice(0, 6)
+  }, [rows])
+
   const summary = useMemo(() => {
     const scopedRows = categoryFilter === 'all' ? rows : rows.filter((row) => row.category === categoryFilter)
     const counts = {
@@ -1132,6 +1144,61 @@ export default function ShipCertificatesPage() {
           <SummaryCard label="Survey Due" value={summary.surveyDue} tone="zinc" detail="Class endorsement" active={dashboardFilter === 'surveyDue'} onClick={() => { setDashboardFilter('surveyDue'); setStatusFilter('all'); setPageMemoryFilter('all') }} />
           <SummaryCard label="Memory Ready" value={summary.memoryReady} tone="blue" detail={`${summary.memoryMissing} need mapping`} active={pageMemoryFilter === 'ready'} onClick={() => { setDashboardFilter('all'); setStatusFilter('all'); setPageMemoryFilter(pageMemoryFilter === 'ready' ? 'all' : 'ready') }} />
         </section>
+
+        {priorityQueueRows.length > 0 && (
+          <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/80 p-5 shadow-2xl shadow-black/30">
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">Priority Queue</p>
+                <h2 className="mt-2 text-2xl font-black uppercase italic text-white">Ship certs to act on first</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDashboardFilter('all')
+                  setStatusFilter('all')
+                  setPageMemoryFilter('all')
+                  setSortMode('priority')
+                }}
+                className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-orange-100 hover:bg-orange-600 hover:text-white"
+              >
+                Open Priority Sort
+              </button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {priorityQueueRows.map((row) => {
+                const nextAction = getShipCertNextAction(row)
+                return (
+                  <article key={`queue-${row.id || row.code}`} className="rounded-[26px] border border-white/10 bg-black/45 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-orange-200">{row.code || '-'} | {row.category || '-'}</p>
+                        <h3 className="mt-2 line-clamp-2 text-sm font-black uppercase italic text-white">{row.cert_name || 'Unknown ship certificate'}</h3>
+                      </div>
+                      <span className={`shrink-0 rounded-2xl border px-3 py-2 text-[8px] font-black uppercase tracking-widest ${nextAction.style}`}>
+                        {nextAction.label}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-xs normal-case text-zinc-400">{nextAction.detail}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {row.file_url && (
+                        <a href={row.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-orange-300 hover:bg-orange-600 hover:text-white">
+                          <ExternalLink size={13} /> File
+                        </a>
+                      )}
+                      {canEdit && (
+                        <button onClick={() => openEditModal(row)} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-300 hover:border-orange-500/40 hover:text-white">
+                          <UploadCloud size={13} /> Edit
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         <section className="overflow-x-auto rounded-[28px] border border-orange-500/10 bg-black/25 p-2">
           <div className="flex min-w-max gap-2">
