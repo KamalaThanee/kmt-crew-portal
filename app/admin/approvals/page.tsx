@@ -274,9 +274,9 @@ export default function ApprovalsPage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse">LOADING...</div>
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto pb-32 pt-24 font-sans text-white uppercase font-bold text-[10px]">
-      <div className="mb-10 flex justify-between items-center">
-        <div><h1 className="text-3xl font-black italic text-white flex items-center gap-3"><ShieldCheck className="text-orange-500" size={32}/> Approvals</h1><p className="text-zinc-500 mt-1 uppercase">Pending Crew Requests</p></div>
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div><h1 className="text-3xl md:text-4xl font-black italic text-white flex items-center gap-3"><ShieldCheck className="text-orange-500" size={36}/> Approvals</h1><p className="text-zinc-500 mt-1 tracking-widest">Pending Crew Requests</p></div>
       </div>
       {actionMessage && (
         <div className="mb-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-[10px] text-orange-300 normal-case">

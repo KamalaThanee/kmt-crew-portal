@@ -82,15 +82,44 @@ alter table public.ship_cert_history enable row level security;
 
 drop policy if exists "Allow anon ship cert master read" on public.ship_cert_master;
 drop policy if exists "Allow anon ship certificates read" on public.ship_certificates;
+drop policy if exists "Allow anon ship certificates insert" on public.ship_certificates;
+drop policy if exists "Allow anon ship certificates update" on public.ship_certificates;
 drop policy if exists "Allow anon ship cert surveys read" on public.ship_cert_surveys;
+drop policy if exists "Allow anon ship cert surveys insert" on public.ship_cert_surveys;
 drop policy if exists "Allow anon ship cert page maps read" on public.ship_cert_ai_page_maps;
 drop policy if exists "Allow anon ship cert history read" on public.ship_cert_history;
+drop policy if exists "Allow anon ship cert history insert" on public.ship_cert_history;
 
 create policy "Allow anon ship cert master read" on public.ship_cert_master for select using (true);
 create policy "Allow anon ship certificates read" on public.ship_certificates for select using (true);
+create policy "Allow anon ship certificates insert" on public.ship_certificates for insert with check (true);
+create policy "Allow anon ship certificates update" on public.ship_certificates for update using (true) with check (true);
 create policy "Allow anon ship cert surveys read" on public.ship_cert_surveys for select using (true);
+create policy "Allow anon ship cert surveys insert" on public.ship_cert_surveys for insert with check (true);
 create policy "Allow anon ship cert page maps read" on public.ship_cert_ai_page_maps for select using (true);
 create policy "Allow anon ship cert history read" on public.ship_cert_history for select using (true);
+create policy "Allow anon ship cert history insert" on public.ship_cert_history for insert with check (true);
+
+insert into storage.buckets (id, name, public)
+values ('ship-certificates', 'ship-certificates', true)
+on conflict (id) do update set public = excluded.public;
+
+drop policy if exists "Public read ship certificate files" on storage.objects;
+drop policy if exists "Anon upload ship certificate files" on storage.objects;
+drop policy if exists "Anon update ship certificate files" on storage.objects;
+
+create policy "Public read ship certificate files"
+on storage.objects for select
+using (bucket_id = 'ship-certificates');
+
+create policy "Anon upload ship certificate files"
+on storage.objects for insert
+with check (bucket_id = 'ship-certificates');
+
+create policy "Anon update ship certificate files"
+on storage.objects for update
+using (bucket_id = 'ship-certificates')
+with check (bucket_id = 'ship-certificates');
 
 drop table if exists pg_temp.ship_cert_seed;
 

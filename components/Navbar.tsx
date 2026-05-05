@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, mounted, isAdmin, canViewShipCerts, logout } = useCurrentUser();
+  const { user, mounted, isAdmin, logout } = useCurrentUser();
   const [showProfile, setShowProfile] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [cartCount, setCartCount] = useState(0);
@@ -39,8 +39,13 @@ export default function Navbar() {
   });
 
   const menuItems = useMemo(
-    () => getNavbarMenuItems(isAdmin, canViewShipCerts),
-    [isAdmin, canViewShipCerts],
+    () => getNavbarMenuItems(isAdmin),
+    [isAdmin],
+  );
+
+  const isNavItemActive = (href: string) => (
+    pathname === href ||
+    (href === '/certificates' && pathname.startsWith('/admin/ship-certificates'))
   );
 
   useEffect(() => {
@@ -115,7 +120,7 @@ export default function Navbar() {
                 key={item.href}
                 href={item.href}
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                  pathname === item.href
+                  isNavItemActive(item.href)
                     ? 'text-white bg-orange-600 shadow-lg shadow-orange-600/20'
                     : 'text-zinc-500 hover:text-orange-400'
                 }`}
@@ -194,7 +199,7 @@ export default function Navbar() {
       <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] h-16 bg-black/90 backdrop-blur-2xl border border-orange-500/20 rounded-3xl z-[100] px-2 shadow-2xl flex items-center justify-around">
         {menuItems.slice(0, isAdmin ? 5 : 4).map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const isActive = isNavItemActive(item.href);
           return (
             <Link
               key={item.href}

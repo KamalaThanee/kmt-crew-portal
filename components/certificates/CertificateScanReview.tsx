@@ -1,6 +1,7 @@
 'use client'
 
-import { AlertTriangle, CheckCircle, Loader2 } from 'lucide-react'
+import { useRef } from 'react'
+import { AlertTriangle, CalendarDays, CheckCircle, Loader2 } from 'lucide-react'
 import type { CertPolicy } from '@/lib/certificates'
 import { resolveExpiryDate } from '@/lib/certificates'
 
@@ -31,37 +32,29 @@ export function CertificateScanReview({
   return (
     <div className="bg-slate-900 border border-white/10 rounded-[40px] p-8 space-y-6 animate-in slide-in-from-bottom-4 shadow-2xl">
       <div className="grid grid-cols-2 gap-6">
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Issue Date</label>
-          <input
-            type="date"
-            className="w-full bg-black border border-white/10 p-4 rounded-2xl outline-none focus:border-blue-500 text-white font-bold"
-            value={finalData.issueDate}
-            onChange={(e) =>
-              onFinalDataChange((prev) => ({
-                ...prev,
-                issueDate: e.target.value,
-                expiryDate: scanResult?.expiryFoundInDocument
-                  ? prev.expiryDate
-                  : resolveExpiryDate({
-                      issueDate: e.target.value,
-                      expiryDate: '',
-                      refreshYears: certPolicy.refreshYears,
-                      noExpiry: certPolicy.noExpiry,
-                    }),
-              }))
-            }
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Expiry Date</label>
-          <input
-            type="date"
-            className="w-full bg-black border border-white/10 p-4 rounded-2xl outline-none focus:border-blue-500 text-white font-bold"
-            value={finalData.expiryDate}
-            onChange={(e) => onFinalDataChange((prev) => ({ ...prev, expiryDate: e.target.value }))}
-          />
-        </div>
+        <CertDatePicker
+          label="Issue Date"
+          value={finalData.issueDate}
+          onChange={(value) =>
+            onFinalDataChange((prev) => ({
+              ...prev,
+              issueDate: value,
+              expiryDate: scanResult?.expiryFoundInDocument
+                ? prev.expiryDate
+                : resolveExpiryDate({
+                    issueDate: value,
+                    expiryDate: '',
+                    refreshYears: certPolicy.refreshYears,
+                    noExpiry: certPolicy.noExpiry,
+                  }),
+            }))
+          }
+        />
+        <CertDatePicker
+          label="Expiry Date"
+          value={finalData.expiryDate}
+          onChange={(value) => onFinalDataChange((prev) => ({ ...prev, expiryDate: value }))}
+        />
       </div>
 
       {scanResult && (
@@ -99,6 +92,46 @@ export function CertificateScanReview({
       >
         {isSaving ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />}
         Confirm & Save
+      </button>
+    </div>
+  )
+}
+
+function CertDatePicker({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const openPicker = () => {
+    const input = inputRef.current
+    if (!input) return
+    if (typeof input.showPicker === 'function') {
+      input.showPicker()
+      return
+    }
+    input.focus()
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</label>
+      <button
+        type="button"
+        onClick={openPicker}
+        className="group relative w-full rounded-2xl border border-white/10 bg-black p-4 text-left font-bold text-white outline-none transition-all hover:border-orange-500/60 focus:border-orange-500"
+      >
+        <span className="flex items-center justify-between gap-3">
+          <span>{value || 'Select date'}</span>
+          <span className="flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-orange-400 group-hover:bg-orange-500/10">
+            <CalendarDays size={14} />
+            Pick
+          </span>
+        </span>
+        <input
+          ref={inputRef}
+          type="date"
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
       </button>
     </div>
   )

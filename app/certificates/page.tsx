@@ -4,14 +4,64 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { CrewCertificatesPanel } from '@/components/certificates/CrewCertificatesPanel'
 import { PersonalCertificatesPanel } from '@/components/certificates/PersonalCertificatesPanel'
+import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { createZipBlob, getFileExtension, safeFileName, triggerDownload } from '@/lib/certificateDownloads'
-import { isNoExpiryDate } from '@/lib/certificates'
-import { isAdminRole } from '@/lib/roles'
+import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
-import { ShieldCheck } from 'lucide-react'
+import { ExternalLink, Search, ShieldCheck } from 'lucide-react'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
+
+type CertificateLogRow = {
+  id: string
+  action: string | null
+  old_data: Record<string, any> | null
+  new_data: Record<string, any> | null
+  actor_name: string | null
+  created_at: string | null
+}
+
+const formatLogDate = (value?: string | null) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString()
+}
+
+const getLogCertificate = (row: CertificateLogRow) => row.new_data || row.old_data || {}
+
+const getLogActionLabel = (action?: string | null) => {
+  const labels: Record<string, string> = {
+    add_certificate: 'Added',
+    renew_upload: 'Renewed / Uploaded',
+    manual_update: 'Edited',
+    delete_certificate: 'Deleted',
+  }
+  return labels[String(action || '')] || String(action || 'Updated').replace(/_/g, ' ')
+}
+
+const getLogActionStyle = (action?: string | null) => {
+  if (action === 'delete_certificate') return 'border-red-500/30 bg-red-500/10 text-red-200'
+  if (action === 'renew_upload') return 'border-orange-400/30 bg-orange-500/10 text-orange-200'
+  if (action === 'add_certificate') return 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+  return 'border-white/10 bg-white/5 text-zinc-300'
+}
+
+const certificateTabCopy: Record<string, { title: string; subtitle: string }> = {
+  personal: {
+    title: 'My Certificate',
+    subtitle: 'Personal compliance dashboard',
+  },
+  crew: {
+    title: 'Crew Certificate',
+    subtitle: 'Fleet readiness by crew matrix',
+  },
+  log: {
+    title: 'Certificate Log',
+    subtitle: 'Ship certificate activity audit',
+  },
+}
 
 function CertificatesContent() {
   const router = useRouter()
@@ -25,6 +75,7 @@ function CertificatesContent() {
   const [allCerts, setAllCerts] = useState<any[]>([])
   const [crews, setCrews] = useState<any[]>([])
   const [rules, setRules] = useState<any[]>([])
+  const [certificateLogs, setCertificateLogs] = useState<CertificateLogRow[]>([])
   
   // Filter States
   const [searchTerm, setSearchTerm] = useState('')
@@ -35,21 +86,24 @@ function CertificatesContent() {
   const [expandedCrews, setExpandedCrews] = useState<string[]>([])
   const [isDownloadingCerts, setIsDownloadingCerts] = useState(false)
 
-  const isAdmin = useMemo(() => isAdminRole(currentUser?.position), [currentUser]);
+  const canManageCertificates = useMemo(() => isAdminRole(currentUser?.position) || canViewShipCertificates(currentUser?.position), [currentUser]);
+  const canOpenShipCertificates = useMemo(() => canViewShipCertificates(currentUser?.position), [currentUser]);
 
   const fetchData = async () => {
-    const [m, c, crewsRes, allC, r] = await Promise.all([
+    const [m, c, crewsRes, allC, r, logs] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
       supabase.from('crew_certs').select('*').eq('crew_id', currentUser?.id),
       supabase.from('crews').select('*').order('full_name'),
       supabase.from('crew_certs').select('*'),
-      supabase.from('cert_rules').select('*')
+      supabase.from('cert_rules').select('*'),
+      supabase.from('ship_cert_history').select('*').order('created_at', { ascending: false }).limit(50),
     ]);
     if (m.data) setMatrix(m.data);
     if (c.data) setMyCerts(c.data);
     if (crewsRes.data) setCrews(crewsRes.data.filter(isCrewActive));
     if (allC.data) setAllCerts(allC.data);
     if (r.data) setRules(r.data);
+    if (logs.data) setCertificateLogs(logs.data as unknown as CertificateLogRow[]);
     setLoading(false);
   }
 
@@ -64,9 +118,10 @@ function CertificatesContent() {
     const crewFilter = searchParams.get('filter')
     const personal = searchParams.get('personal')
 
-    if (tab === 'crew' && isAdmin) setActiveTab('crew')
+    if (tab === 'crew' && canManageCertificates) setActiveTab('crew')
     if (tab === 'personal') setActiveTab('personal')
-    if (tab === 'ship' && isAdmin) setActiveTab('ship')
+    if (tab === 'log' && canManageCertificates) setActiveTab('log')
+    if (tab === 'ship' && canOpenShipCertificates) router.replace('/admin/ship-certificates')
 
     if (crewFilter && ['all', 'ready', 'warning', 'expired', 'action'].includes(crewFilter)) {
       setFilterMode(crewFilter)
@@ -75,57 +130,14 @@ function CertificatesContent() {
     if (personal && ['all', 'ok', 'warning', 'expired', 'missing'].includes(personal)) {
       setPersonalFilter(personal)
     }
-  }, [isAdmin, searchParams])
+  }, [canManageCertificates, canOpenShipCertificates, router, searchParams])
 
   useEffect(() => {
     if (currentUser) fetchData();
   }, [currentUser]);
 
   const calculateCerts = (targetCrew: any, crewCertList: any[]) => {
-    if (!matrix.length) return { progress: 0, ok: 0, expired: 0, warning: 0, missing: 0, list: [] };
-    const uPos = normalize(targetCrew.position);
-    let required = matrix.filter(row => normalize(row.position) === uPos && (row.requirement_type === 'P' || row.requirement_type === 'O'))
-      .map(m => ({ ...m, is_mandatory: m.requirement_type === 'P' }));
-    
-    (rules || []).forEach(rule => {
-      if (crewCertList.some(c => normalize(c.cert_name) === normalize(rule.trigger_cert))) {
-        const idx = required.findIndex(req => normalize(req.cert_name) === normalize(rule.required_cert));
-        if (idx === -1) {
-          const info = matrix.find(m => normalize(m.cert_name) === normalize(rule.required_cert));
-          required.push({ cert_name: rule.required_cert, is_mandatory: true, category: info?.category || 'Additional' });
-        } else { required[idx].is_mandatory = true; }
-      }
-    });
-
-    const today = new Date();
-    let ok = 0, expired = 0, warning = 0, missing = 0, mandatoryTotal = 0;
-
-    const list = required.map(req => {
-      if (req.is_mandatory) mandatoryTotal++;
-      const uploaded = crewCertList.find(c => normalize(c.cert_name) === normalize(req.cert_name));
-      let status = req.is_mandatory ? 'missing' : 'optional';
-      let daysLeft = -1;
-      if (uploaded) {
-        if (isNoExpiryDate(uploaded.expiry_date)) { status = 'ok'; ok++; daysLeft = 9999; }
-        else {
-          const expDate = new Date(uploaded.expiry_date);
-          daysLeft = Math.floor((expDate.getTime() - today.getTime()) / 86400000);
-          if (daysLeft < 0) { status = 'expired'; expired++; }
-          else if (daysLeft <= 90) { status = 'warning'; warning++; ok++; }
-          else { status = 'ok'; ok++; }
-        }
-      } else if (req.is_mandatory) missing++;
-      return { ...req, uploaded, status, daysLeft };
-    }).sort((a, b) => {
-       const weight: any = { expired: 1, missing: 2, warning: 3, ok: 4, optional: 5 };
-       return weight[a.status] - weight[b.status];
-    });
-
-    return { 
-      list, 
-      progress: mandatoryTotal > 0 ? Math.round((ok / mandatoryTotal) * 100) : 0, 
-      ok, expired, warning, missing 
-    };
+    return calculateCrewCertificateCompliance({ crew: targetCrew, crewCerts: crewCertList, matrix, rules })
   }
 
   const myCertData = useMemo(() => calculateCerts(currentUser || {}, myCerts), [currentUser, myCerts, matrix, rules]);
@@ -223,20 +235,23 @@ function CertificatesContent() {
 
   if (loading || !currentUser) return <div className="min-h-screen bg-black flex items-center justify-center text-orange-500 font-black animate-pulse">VAULT ACCESSING...</div>
 
+  const headerCopy = certificateTabCopy[activeTab] || certificateTabCopy.personal
+
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
       
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-           <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><ShieldCheck className="text-orange-500" size={36}/> Certificate Hub</h1>
-           <p className="text-zinc-500 mt-1 tracking-widest">Enterprise Compliance Dashboard</p>
+           <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><ShieldCheck className="text-orange-500" size={36}/> {headerCopy.title}</h1>
+           <p className="text-zinc-500 mt-1 tracking-widest">{headerCopy.subtitle}</p>
         </div>
         
-        {isAdmin && (
-          <div className="flex bg-zinc-900 p-1.5 rounded-2xl border border-white/5 w-fit shadow-2xl">
-            <button onClick={() => setActiveTab('personal')} className={`px-8 py-3 rounded-xl transition-all ${activeTab === 'personal' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-zinc-500 hover:text-white'}`}>My Certs</button>
-            <button onClick={() => setActiveTab('crew')} className={`px-8 py-3 rounded-xl transition-all ${activeTab === 'crew' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-zinc-500 hover:text-white'}`}>Crew Certificates</button>
-            <button onClick={() => setActiveTab('ship')} className={`px-8 py-3 rounded-xl transition-all ${activeTab === 'ship' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-zinc-500 hover:text-white'}`}>Ship Certs</button>
+        {canManageCertificates && (
+          <div className="grid w-full max-w-2xl grid-cols-4 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[720px]">
+            <button onClick={() => setActiveTab('personal')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'personal' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>My Certificate</button>
+            <button onClick={() => setActiveTab('crew')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'crew' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>Crew Certificate</button>
+            {canOpenShipCertificates && <button onClick={() => router.push('/admin/ship-certificates')} className="rounded-[22px] px-4 py-4 transition-all hover:bg-white/5 hover:text-white">Ship Certificate</button>}
+            <button onClick={() => setActiveTab('log')} className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === 'log' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}>Certificate Log</button>
           </div>
         )}
       </div>
@@ -250,7 +265,7 @@ function CertificatesContent() {
         />
       )}
 
-      {activeTab === 'crew' && (
+      {activeTab === 'crew' && canManageCertificates && (
         <CrewCertificatesPanel
           allCertTypes={allCertTypes}
           allPositions={allPositions}
@@ -273,8 +288,177 @@ function CertificatesContent() {
           onUploadCrewCertificate={(certName, crewId) => router.push(`/certificates/upload?cert=${encodeURIComponent(certName)}&crewId=${crewId}`)}
         />
       )}
-      {activeTab === 'ship' && <div className="py-40 text-center animate-pulse text-zinc-700 font-black italic text-xl">COMING SOON: SHIP CERTIFICATES</div>}
+
+      {activeTab === 'log' && canManageCertificates && (
+        <CertificateLogPanel rows={certificateLogs} />
+      )}
     </div>
+  )
+}
+
+function CertificateLogPanel({ rows }: { rows: CertificateLogRow[] }) {
+  const [certFilter, setCertFilter] = useState('all')
+  const [userSearch, setUserSearch] = useState('')
+  const [actionFilter, setActionFilter] = useState('all')
+  const [monthFilter, setMonthFilter] = useState('all')
+  const [yearFilter, setYearFilter] = useState('all')
+
+  const actionOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set(rows.map((row) => row.action).filter(Boolean) as string[]))]
+  }, [rows])
+
+  const certOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set(rows.map((row) => {
+      const cert = getLogCertificate(row)
+      return [cert.code, cert.cert_name].filter(Boolean).join(' | ')
+    }).filter(Boolean))).sort()]
+  }, [rows])
+
+  const monthOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set(rows.map((row) => {
+      if (!row.created_at) return ''
+      const date = new Date(row.created_at)
+      if (Number.isNaN(date.getTime())) return ''
+      return String(date.getMonth() + 1).padStart(2, '0')
+    }).filter(Boolean))).sort()]
+  }, [rows])
+
+  const yearOptions = useMemo(() => {
+    return ['all', ...Array.from(new Set(rows.map((row) => {
+      if (!row.created_at) return ''
+      const date = new Date(row.created_at)
+      if (Number.isNaN(date.getTime())) return ''
+      return String(date.getFullYear())
+    }).filter(Boolean))).sort((a, b) => b.localeCompare(a))]
+  }, [rows])
+
+  const filteredRows = useMemo(() => {
+    const userQuery = userSearch.trim().toLowerCase()
+    return rows.filter((row) => {
+      const cert = getLogCertificate(row)
+      const date = row.created_at ? new Date(row.created_at) : null
+      const month = date && !Number.isNaN(date.getTime()) ? String(date.getMonth() + 1).padStart(2, '0') : ''
+      const year = date && !Number.isNaN(date.getTime()) ? String(date.getFullYear()) : ''
+      const certLabel = [cert.code, cert.cert_name].filter(Boolean).join(' | ')
+      const certQuery = certFilter.toLowerCase()
+      const userText = [row.actor_name, cert.issue_by].filter(Boolean).join(' ').toLowerCase()
+
+      return (
+        (certFilter === 'all' || certLabel.toLowerCase().includes(certQuery)) &&
+        (!userQuery || userText.includes(userQuery)) &&
+        (actionFilter === 'all' || row.action === actionFilter) &&
+        (monthFilter === 'all' || month === monthFilter) &&
+        (yearFilter === 'all' || year === yearFilter)
+      )
+    })
+  }, [actionFilter, certFilter, monthFilter, rows, userSearch, yearFilter])
+
+  return (
+    <section className="space-y-5">
+      <div className="rounded-[34px] border border-white/10 bg-black/30 p-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_220px_170px_150px_150px]">
+          <label className="flex items-center gap-3 rounded-2xl border border-orange-500/20 bg-black/40 px-4">
+            <Search size={16} className="text-orange-500" />
+            <input
+              list="certificate-log-cert-options"
+              value={certFilter === 'all' ? '' : certFilter}
+              onChange={(event) => setCertFilter(event.target.value || 'all')}
+              placeholder="Search or pick certificate..."
+              className="h-14 w-full bg-transparent text-sm font-bold text-white outline-none placeholder:text-zinc-600"
+            />
+            <datalist id="certificate-log-cert-options">
+              {certOptions.filter((cert) => cert !== 'all').map((cert) => (
+                <option key={cert} value={cert} />
+              ))}
+            </datalist>
+          </label>
+          <input
+            value={userSearch}
+            onChange={(event) => setUserSearch(event.target.value)}
+            placeholder="Search user..."
+            className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none placeholder:text-zinc-600"
+          />
+          <select
+            value={actionFilter}
+            onChange={(event) => setActionFilter(event.target.value)}
+            className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+          >
+            {actionOptions.map((action) => (
+              <option key={action} value={action}>{action === 'all' ? 'All Actions' : getLogActionLabel(action)}</option>
+            ))}
+          </select>
+          <select
+            value={monthFilter}
+            onChange={(event) => setMonthFilter(event.target.value)}
+            className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+          >
+            {monthOptions.map((month) => (
+              <option key={month} value={month}>{month === 'all' ? 'All Months' : month}</option>
+            ))}
+          </select>
+          <select
+            value={yearFilter}
+            onChange={(event) => setYearFilter(event.target.value)}
+            className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+          >
+            {yearOptions.map((year) => (
+              <option key={year} value={year}>{year === 'all' ? 'All Years' : year}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+        {filteredRows.length} shown / {rows.length} log records
+      </p>
+
+      {filteredRows.length === 0 ? (
+        <div className="rounded-[34px] border border-white/10 bg-black/30 p-12 text-center text-sm font-black uppercase tracking-widest text-zinc-600">
+          No certificate log matches current filters
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredRows.map((row) => {
+            const cert = getLogCertificate(row)
+            const fileUrl = cert.file_url
+            return (
+              <article key={row.id} className="grid gap-4 rounded-[28px] border border-white/10 bg-black/40 p-5 md:grid-cols-[170px_1fr_180px_120px] md:items-center">
+                <div>
+                  <span className={`inline-flex rounded-full border px-3 py-2 text-[8px] font-black uppercase tracking-widest ${getLogActionStyle(row.action)}`}>
+                    {getLogActionLabel(row.action)}
+                  </span>
+                  <p className="mt-2 text-[10px] font-bold normal-case text-zinc-500">{formatLogDate(row.created_at)}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-black uppercase italic text-white">
+                    {cert.code ? `${cert.code} | ` : ''}{cert.cert_name || 'Unknown ship certificate'}
+                  </p>
+                  <p className="mt-1 text-[11px] font-bold normal-case text-zinc-500">
+                    {cert.category || 'No category'} {cert.expiry_date ? `| Exp ${cert.expiry_date}` : ''}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">By</p>
+                  <p className="mt-1 text-xs font-black normal-case text-zinc-200">{row.actor_name || 'Unknown user'}</p>
+                </div>
+                {fileUrl ? (
+                  <a
+                    href={fileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-orange-200 hover:bg-orange-500/20"
+                  >
+                    <ExternalLink size={14} /> File
+                  </a>
+                ) : (
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-700">No file</span>
+                )}
+              </article>
+            )
+          })}
+        </div>
+      )}
+    </section>
   )
 }
 

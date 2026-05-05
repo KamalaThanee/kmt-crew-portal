@@ -209,18 +209,18 @@ export default function AdminHistoryPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 pb-32 pt-24 font-sans text-white md:px-8">
-      <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="flex items-center gap-3 text-3xl font-black italic md:text-4xl">
-            <History className="text-orange-500" size={34} />
+          <h1 className="flex items-center gap-3 text-3xl md:text-4xl font-black italic">
+            <History className="text-orange-500" size={36} />
             Issue History
           </h1>
-          <p className="mt-2 text-[10px] uppercase tracking-[0.25em] text-zinc-500">Request and issue log</p>
+          <p className="text-zinc-500 mt-1 tracking-widest">Request and issue log</p>
         </div>
         <button
           onClick={handleExportExcel}
-          className="flex items-center gap-2 rounded-2xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-xs font-black uppercase text-blue-300"
+          className="flex items-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-5 py-3 text-xs font-black uppercase text-orange-300"
         >
           <FileSpreadsheet size={16} />
           Export Excel

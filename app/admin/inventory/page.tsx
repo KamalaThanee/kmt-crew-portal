@@ -272,7 +272,7 @@ function InventoryContent() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse uppercase text-xs tracking-widest">Accessing Inventory...</div>
 
   return (
-    <div className="p-4 md:p-12 max-w-[1600px] mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <InventoryControls
         categoryConfig={categoryConfig}
         selectedCats={selectedCats}
