@@ -66,37 +66,38 @@ const emptyNotifications: NavbarNotificationData = {
 }
 
 function buildShipCertActions(rows: ShipCertificate[]): CrewActionItem[] {
-  return rows
-    .map((cert) => {
-      const status = getShipCertificateStatus(cert)
-      const survey = getShipSurveyStatus(cert)
-      const expiryAction = ['expired', 'due-30', 'due-60', 'due-90'].includes(status)
-      const surveyAction = ['survey-overdue', 'survey-due-30', 'survey-due-60', 'survey-due-90'].includes(survey)
-      if (!expiryAction && !surveyAction) return null
+  const actions: CrewActionItem[] = []
 
-      const code = cert.code ? `${cert.code} - ` : ''
-      const title = `${code}${cert.cert_name || 'Ship certificate'}`
-      const expiryText = expiryAction
-        ? status === 'expired'
-          ? 'certificate expired'
-          : `expiry ${status.replace('due-', 'due in ')} days`
-        : ''
-      const surveyText = surveyAction
-        ? survey === 'survey-overdue'
-          ? 'survey overdue'
-          : `survey ${survey.replace('survey-due-', 'due in ')} days`
-        : ''
+  for (const cert of rows) {
+    const status = getShipCertificateStatus(cert)
+    const survey = getShipSurveyStatus(cert)
+    const expiryAction = ['expired', 'due-30', 'due-60', 'due-90'].includes(status)
+    const surveyAction = ['survey-overdue', 'survey-due-30', 'survey-due-60', 'survey-due-90'].includes(survey)
+    if (!expiryAction && !surveyAction) continue
 
-      return {
-        id: `ship-cert-${cert.id || cert.master_id || title}`,
-        status: expiryAction ? status : survey,
-        title,
-        description: [expiryText, surveyText].filter(Boolean).join(' / '),
-        href: '/admin/ship-certificates',
-      }
+    const code = cert.code ? `${cert.code} - ` : ''
+    const title = `${code}${cert.cert_name || 'Ship certificate'}`
+    const expiryText = expiryAction
+      ? status === 'expired'
+        ? 'certificate expired'
+        : `expiry ${status.replace('due-', 'due in ')} days`
+      : ''
+    const surveyText = surveyAction
+      ? survey === 'survey-overdue'
+        ? 'survey overdue'
+        : `survey ${survey.replace('survey-due-', 'due in ')} days`
+      : ''
+
+    actions.push({
+      id: `ship-cert-${cert.id || cert.master_id || title}`,
+      status: expiryAction ? status : survey,
+      title,
+      description: [expiryText, surveyText].filter(Boolean).join(' / '),
+      href: '/admin/ship-certificates',
     })
-    .filter((item): item is CrewActionItem => item !== null)
-    .slice(0, 8)
+  }
+
+  return actions.slice(0, 8)
 }
 
 export function useNavbarNotifications({
