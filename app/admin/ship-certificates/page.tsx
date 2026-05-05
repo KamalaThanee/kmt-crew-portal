@@ -37,6 +37,26 @@ type ShipCertHistoryRow = {
   created_at: string | null
 }
 
+type ShipCertPageMapRow = {
+  id?: string
+  master_id: string | null
+  field_name: string
+  preferred_pages: number[] | null
+  fallback_pages: number[] | null
+  extraction_hint: string | null
+  confidence: number | null
+  confirmed_by: string | null
+  confirmed_at: string | null
+  updated_at?: string | null
+}
+
+type ShipCertAiPageMap = Record<string, {
+  pages?: number[]
+  page?: number
+  confidence?: number | string
+  hint?: string
+}>
+
 const categoryCodePrefixes: Record<string, string> = {
   Flag: 'F',
   Class: 'C',
@@ -82,6 +102,7 @@ type ShipCertScanResult = {
   certificateNumber?: string
   certTypeMatch?: boolean
   note?: string
+  pageMap?: ShipCertAiPageMap
   analysisMode?: 'text' | 'vision'
   activeModel?: string
 }
@@ -123,6 +144,55 @@ const cleanCertificateRemark = (value?: string | null) => {
       return true
     })
     .join('\n')
+}
+
+const toPageList = (value: unknown) => {
+  const raw = Array.isArray(value) ? value : typeof value === 'number' ? [value] : []
+  return raw
+    .map((page) => Number(page))
+    .filter((page) => Number.isFinite(page) && page > 0)
+    .map((page) => Math.round(page))
+}
+
+const formatPageList = (pages?: number[] | null) => {
+  const clean = toPageList(pages)
+  return clean.length ? clean.join(', ') : '-'
+}
+
+const buildPageMapHints = (maps: ShipCertPageMapRow[]) => maps.map((map) => ({
+  fieldName: map.field_name,
+  preferredPages: toPageList(map.preferred_pages),
+  fallbackPages: toPageList(map.fallback_pages),
+  extractionHint: map.extraction_hint || '',
+  confidence: map.confidence ?? '',
+}))
+
+const normalizeAiPageMapRows = (
+  pageMap: ShipCertAiPageMap | undefined,
+  masterId: string | null | undefined,
+  confirmedBy: string
+): Array<Omit<ShipCertPageMapRow, 'id'>> => {
+  if (!pageMap || !masterId) return []
+
+  return Object.entries(pageMap)
+    .map(([fieldName, map]) => {
+      const preferredPages = toPageList(map.pages || map.page)
+      if (!fieldName || preferredPages.length === 0) return null
+
+      const confidence = Number(map.confidence)
+      return {
+        master_id: masterId,
+        field_name: fieldName,
+        preferred_pages: preferredPages,
+        fallback_pages: [],
+        extraction_hint: map.hint || `AI observed ${fieldName.replace(/_/g, ' ')}`,
+        confidence: Number.isFinite(confidence) ? confidence : null,
+        confirmed_by: confirmedBy,
+        confirmed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+    })
+    .filter((row): row is Omit<ShipCertPageMapRow, 'id'> => Boolean(row))
 }
 
 const buildFormFromCert = (row: ShipCertificate): ShipCertificateForm => ({
@@ -262,6 +332,7 @@ export default function ShipCertificatesPage() {
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<ShipCertificate[]>([])
   const [historyRows, setHistoryRows] = useState<ShipCertHistoryRow[]>([])
+  const [pageMapRows, setPageMapRows] = useState<ShipCertPageMapRow[]>([])
   const [errorMessage, setErrorMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -296,12 +367,13 @@ export default function ShipCertificatesPage() {
   const fetchData = async () => {
     setLoading(true)
     setErrorMessage('')
-    const [{ data, error }, historyResult] = await Promise.all([
+    const [{ data, error }, historyResult, pageMapResult] = await Promise.all([
       supabase
         .from('ship_certificates')
         .select('*')
         .order('sort_order', { ascending: true }),
       fetchHistoryRows(),
+      fetchPageMapRows(),
     ])
 
     if (error) {
@@ -311,6 +383,7 @@ export default function ShipCertificatesPage() {
       setRows((data || []) as ShipCertificate[])
     }
     setHistoryRows(historyResult)
+    setPageMapRows(pageMapResult)
     setLoading(false)
   }
 
@@ -323,6 +396,16 @@ export default function ShipCertificatesPage() {
 
     if (error) return []
     return (data || []) as ShipCertHistoryRow[]
+  }
+
+  const fetchPageMapRows = async () => {
+    const { data, error } = await supabase
+      .from('ship_cert_ai_page_maps')
+      .select('*')
+      .order('field_name', { ascending: true })
+
+    if (error) return []
+    return (data || []) as ShipCertPageMapRow[]
   }
 
   const openEditModal = (row: ShipCertificate) => {
@@ -369,6 +452,9 @@ export default function ShipCertificatesPage() {
       const isPdf = uploadFile.type === 'application/pdf' || uploadFile.name.toLowerCase().endsWith('.pdf')
       const mimeType = isPdf ? 'application/pdf' : 'image/jpeg'
       const fileBase64 = isPdf ? await readFileAsDataUrl(uploadFile) : await compressImage(uploadFile)
+      const knownPageMaps = editingCert.master_id
+        ? pageMapRows.filter((map) => map.master_id === editingCert.master_id)
+        : []
 
       const modelErrors: string[] = []
       let latestError = 'AI models busy'
@@ -384,6 +470,7 @@ export default function ShipCertificatesPage() {
               certName: isAddingCert ? '' : editForm.cert_name || editingCert.cert_name,
               code: editForm.code || editingCert.code,
               category: editForm.category || editingCert.category,
+              pageMapHints: buildPageMapHints(knownPageMaps),
               analysisFocus: 'full_certificate',
               modelId: model.id,
               provider: model.provider,
@@ -513,6 +600,22 @@ export default function ShipCertificatesPage() {
       new_data: data,
       actor_name: currentUser?.full_name || currentUser?.position || 'Unknown user',
     })
+    const nextPageMaps = normalizeAiPageMapRows(
+      scanResult?.pageMap,
+      (data as ShipCertificate).master_id || editingCert.master_id,
+      currentUser?.full_name || currentUser?.position || 'Unknown user'
+    )
+    if (nextPageMaps.length > 0) {
+      const { error: pageMapError } = await supabase
+        .from('ship_cert_ai_page_maps')
+        .upsert(nextPageMaps, { onConflict: 'master_id,field_name' })
+
+      if (!pageMapError) {
+        setPageMapRows(await fetchPageMapRows())
+      } else {
+        setErrorMessage(`Certificate saved, but page memory was not saved: ${pageMapError.message}`)
+      }
+    }
     setHistoryRows(await fetchHistoryRows())
 
     setRows((prev) => {
@@ -630,6 +733,11 @@ export default function ShipCertificatesPage() {
     if (!editingCert?.id) return []
     return historyRows.filter((history) => getAuditCertificateId(history) === editingCert.id).slice(0, 5)
   }, [editingCert?.id, historyRows])
+
+  const editingCertPageMaps = useMemo(() => {
+    if (!editingCert?.master_id) return []
+    return pageMapRows.filter((map) => map.master_id === editingCert.master_id)
+  }, [editingCert?.master_id, pageMapRows])
 
   if (loading) {
     return <div className="min-h-screen bg-black pt-32 text-center text-orange-500 font-black animate-pulse">LOADING SHIP CERTIFICATES...</div>
@@ -826,6 +934,7 @@ export default function ShipCertificatesPage() {
           scanResult={scanResult}
           scanMessage={scanMessage}
           historyRows={editingCertHistory}
+          pageMapRows={editingCertPageMaps}
           isScanning={isScanning}
           isSaving={isSaving}
           onFormChange={setEditForm}
@@ -959,6 +1068,7 @@ function ShipCertificateModal({
   scanResult,
   scanMessage,
   historyRows,
+  pageMapRows,
   isScanning,
   isSaving,
   onFormChange,
@@ -976,6 +1086,7 @@ function ShipCertificateModal({
   scanResult: ShipCertScanResult | null
   scanMessage: string
   historyRows: ShipCertHistoryRow[]
+  pageMapRows: ShipCertPageMapRow[]
   isScanning: boolean
   isSaving: boolean
   onFormChange: (form: ShipCertificateForm) => void
@@ -987,6 +1098,16 @@ function ShipCertificateModal({
   onSave: () => void
 }) {
   const showExtractedFields = !isAddingCert || !!form.cert_name || !!scanResult
+  const aiPageMapRows = scanResult?.pageMap
+    ? Object.entries(scanResult.pageMap)
+        .map(([fieldName, map]) => ({
+          fieldName,
+          pages: toPageList(map.pages || map.page),
+          confidence: map.confidence,
+          hint: map.hint || '',
+        }))
+        .filter((map) => map.pages.length > 0)
+    : []
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl">
@@ -1070,6 +1191,39 @@ function ShipCertificateModal({
                     <p>Match: <span className={scanResult.certTypeMatch ? 'font-bold text-orange-200' : 'font-bold text-red-300'}>{scanResult.certTypeMatch ? 'Looks matched' : 'Needs manual review'}</span></p>
                     {scanResult.ruleBasis && <p className="pt-1 text-zinc-400">Rule basis: {scanResult.ruleBasis}</p>}
                     {scanResult.note && <p className="pt-1 text-zinc-400">AI note: {scanResult.note}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+            {(pageMapRows.length > 0 || aiPageMapRows.length > 0) && (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {pageMapRows.length > 0 && (
+                  <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Known Page Memory</p>
+                    <div className="mt-3 space-y-2">
+                      {pageMapRows.map((map) => (
+                        <div key={`${map.master_id}-${map.field_name}`} className="rounded-xl bg-white/5 p-3 text-[11px] normal-case text-zinc-300">
+                          <p className="font-black uppercase tracking-widest text-white">{map.field_name.replace(/_/g, ' ')}</p>
+                          <p className="mt-1">Pages: <span className="font-bold text-orange-200">{formatPageList(map.preferred_pages)}</span></p>
+                          {map.extraction_hint && <p className="mt-1 text-zinc-500">{map.extraction_hint}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {aiPageMapRows.length > 0 && (
+                  <div className="rounded-2xl border border-orange-400/20 bg-orange-500/10 p-4">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-orange-400">AI Page Map From This File</p>
+                    <div className="mt-3 space-y-2">
+                      {aiPageMapRows.map((map) => (
+                        <div key={map.fieldName} className="rounded-xl bg-black/35 p-3 text-[11px] normal-case text-zinc-300">
+                          <p className="font-black uppercase tracking-widest text-white">{map.fieldName.replace(/_/g, ' ')}</p>
+                          <p className="mt-1">Pages: <span className="font-bold text-orange-100">{formatPageList(map.pages)}</span></p>
+                          {map.confidence !== undefined && <p className="mt-1 text-zinc-500">Confidence: {String(map.confidence)}</p>}
+                          {map.hint && <p className="mt-1 text-zinc-500">{map.hint}</p>}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
