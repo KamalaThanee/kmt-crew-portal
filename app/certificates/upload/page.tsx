@@ -215,6 +215,22 @@ function UploadContent() {
 
       if (dbError) throw dbError
 
+      await supabase.from('crew_cert_history').insert({
+        crew_id: targetCrew.id || user.id,
+        cert_name: certName,
+        action: 'upload_certificate',
+        old_data: null,
+        new_data: {
+          crew_id: targetCrew.id || user.id,
+          crew_name: targetCrew.full_name || user.full_name,
+          cert_name: certName,
+          issue_date: finalData.issueDate,
+          expiry_date: expiryDate,
+          file_url: publicData.publicUrl,
+        },
+        actor_name: user.full_name || user.position || 'Unknown user',
+      })
+
       toast.success('Certificate saved successfully')
       router.push('/certificates')
     } catch (error: any) {
