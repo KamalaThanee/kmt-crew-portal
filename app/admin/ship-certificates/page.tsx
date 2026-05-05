@@ -248,6 +248,16 @@ const normalizeAiPageMapRows = (
   return rows
 }
 
+const compactPageMapRows = (maps: ShipCertPageMapRow[]) => maps.map((map) => ({
+  field_name: map.field_name,
+  preferred_pages: toPageList(map.preferred_pages),
+  fallback_pages: toPageList(map.fallback_pages),
+  extraction_hint: map.extraction_hint || '',
+  confidence: map.confidence,
+  confirmed_by: map.confirmed_by,
+  confirmed_at: map.confirmed_at,
+}))
+
 const buildFormFromCert = (row: ShipCertificate): ShipCertificateForm => ({
   category: row.category || 'Flag',
   code: row.code || '',
@@ -366,6 +376,7 @@ const getAuditActionLabel = (action?: string | null) => {
     add_certificate: 'Added',
     renew_upload: 'Renewed / Uploaded',
     manual_update: 'Edited',
+    page_memory_update: 'Page Memory',
     delete_certificate: 'Deleted',
   }
   return labels[String(action || '')] || String(action || 'Updated').replace(/_/g, ' ')
@@ -375,6 +386,7 @@ const getAuditActionStyle = (action?: string | null) => {
   if (action === 'delete_certificate') return 'border-red-500/30 bg-red-500/10 text-red-200'
   if (action === 'renew_upload') return 'border-orange-400/30 bg-orange-500/10 text-orange-200'
   if (action === 'add_certificate') return 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+  if (action === 'page_memory_update') return 'border-blue-400/30 bg-blue-500/10 text-blue-200'
   return 'border-white/10 bg-white/5 text-zinc-300'
 }
 
@@ -723,7 +735,20 @@ export default function ShipCertificatesPage() {
     if (error) {
       setErrorMessage(`Page memory save failed: ${error.message}`)
     } else {
-      setPageMapRows(await fetchPageMapRows())
+      const previousMaps = pageMapRows.filter((map) => map.master_id === masterId)
+      const latestMaps = await fetchPageMapRows()
+      const nextMaps = latestMaps.filter((map) => map.master_id === masterId)
+      setPageMapRows(latestMaps)
+      if (editingCert.id) {
+        await supabase.from('ship_cert_history').insert({
+          ship_certificate_id: editingCert.id,
+          action: 'page_memory_update',
+          old_data: { page_memory: compactPageMapRows(previousMaps) },
+          new_data: { page_memory: compactPageMapRows(nextMaps) },
+          actor_name: actorName,
+        })
+        setHistoryRows(await fetchHistoryRows())
+      }
       setScanMessage('Page memory saved. Future AI scans will use these page hints.')
     }
     setIsSavingPageMaps(false)
