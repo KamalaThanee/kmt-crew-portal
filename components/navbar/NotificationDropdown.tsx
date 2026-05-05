@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { CheckCircle2, FileBadge, XCircle } from 'lucide-react'
+import { CheckCircle2, FileBadge, ShipWheel, XCircle } from 'lucide-react'
 import type { AdminActionItem, CrewActionItem, NavbarNotificationData } from '@/hooks/useNavbarNotifications'
 import { NotificationLinkItem } from '@/components/navbar/NotificationLinkItem'
 
@@ -12,7 +12,7 @@ type NotificationDropdownProps = {
 export function NotificationDropdown({ isAdmin, notifData, onClose }: NotificationDropdownProps) {
   const totalPersonalAdminUpdates = (notifData.personalUpdates || []).length
   const hasNoAlerts =
-    notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) === 0 &&
+    notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) + (notifData.shipCertAlertCount || 0) === 0 &&
     (notifData.updates || []).length === 0
 
   return (
@@ -87,6 +87,7 @@ export function NotificationDropdown({ isAdmin, notifData, onClose }: Notificati
             )}
 
             <CertificateAlerts items={notifData.personalCertActions || []} className="px-1 pt-3" onClose={onClose} />
+            <ShipCertificateAlerts items={notifData.shipCertActions || []} className="px-1 pt-3" onClose={onClose} />
           </>
         ) : (
           <>
@@ -107,6 +108,7 @@ export function NotificationDropdown({ isAdmin, notifData, onClose }: Notificati
             })}
 
             <CertificateAlerts items={notifData.personalCertActions || []} className="pt-2" onClose={onClose} />
+            <ShipCertificateAlerts items={notifData.shipCertActions || []} className="pt-2" onClose={onClose} />
 
             {notifData.approvedCount > 0 && <ReadyToReceiveLink count={notifData.approvedCount} onClose={onClose} />}
           </>
@@ -117,6 +119,39 @@ export function NotificationDropdown({ isAdmin, notifData, onClose }: Notificati
             No Alerts
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function ShipCertificateAlerts({
+  items,
+  className,
+  onClose,
+}: {
+  items: CrewActionItem[]
+  className: string
+  onClose: () => void
+}) {
+  if (items.length === 0) return null
+
+  return (
+    <div className={className}>
+      <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-orange-300">
+        Ship Certificates
+      </p>
+      <div className="space-y-2">
+        {items.map((item: CrewActionItem) => (
+          <NotificationLinkItem
+            key={item.id}
+            href={item.href || '/admin/ship-certificates'}
+            onClick={onClose}
+            title={item.title}
+            description={item.description}
+            icon={<ShipWheel size={16} />}
+            tone="amber"
+          />
+        ))}
       </div>
     </div>
   )

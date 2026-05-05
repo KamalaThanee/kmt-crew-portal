@@ -9,6 +9,13 @@ type ShipCertOcrBody = {
   certName?: string
   code?: string
   category?: string
+  pageMapHints?: Array<{
+    fieldName?: string
+    preferredPages?: number[]
+    fallbackPages?: number[]
+    extractionHint?: string
+    confidence?: number | string
+  }>
   analysisFocus?: 'full_certificate' | 'annual_survey'
   modelId?: string
   provider?: string
@@ -17,7 +24,7 @@ type ShipCertOcrBody = {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as ShipCertOcrBody
-    const { fileBase64, mimeType, extractedText, certName, code, category, analysisFocus, modelId, provider } = body
+    const { fileBase64, mimeType, extractedText, certName, code, category, pageMapHints, analysisFocus, modelId, provider } = body
     const apiKey = provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : process.env.GEMINI_API_KEY
 
     if ((!extractedText && (!fileBase64 || !mimeType)) || !modelId || !provider) {
@@ -32,6 +39,9 @@ CHECKLIST ITEM: "${certName ? `${code || ''} ${certName}` : `NEW ${category || '
 CATEGORY: "${category || ''}".
 SOURCE MODE: ${hasExtractedText ? 'OCR/TEXT EXTRACTION FIRST. Use the extracted text below. Do not require vision unless the text is incomplete.' : 'VISION FALLBACK. OCR/text extraction did not provide enough readable text.'}
 ANALYSIS FOCUS: ${analysisFocus === 'annual_survey' ? 'Annual/intermediate/class survey endorsement page. Prioritize handwritten/stamped endorsement dates, surveyor signatures, and next/last annual survey clues.' : 'Full certificate identification and date extraction.'}
+KNOWN PAGE MEMORY FROM PREVIOUS REVIEW:
+${pageMapHints?.length ? pageMapHints.map((hint) => `- ${hint.fieldName}: preferred pages ${hint.preferredPages?.join(', ') || '-'}; fallback ${hint.fallbackPages?.join(', ') || '-'}; hint: ${hint.extractionHint || '-'}`).join('\n') : '- None yet. If page numbers are visible or inferable, create page mapping from this run.'}
+If page memory is provided, use it as the primary navigation guide. Treat preferred pages as the first evidence locations to inspect, fallback pages as secondary locations, and report if the uploaded file appears to use a different layout.
 
 RULES:
 1. Certificate type match must be strict when a checklist item name is provided. Do not treat a different vessel certificate as acceptable just because it is maritime related. If this is a new certificate with no checklist item name, identify the certificate type and set certTypeMatch=true when it is a genuine vessel/ship certificate.
@@ -53,9 +63,11 @@ RULES:
 8. If you infer any interval/date rather than reading it directly, clearly state that in ruleBasis and note.
 9. If genuinely impossible to infer a common maritime interval, leave date empty but still explain why in ruleBasis.
 10. If the uploaded document clearly does not match the selected checklist item, set certTypeMatch=false.
+11. Build a pageMap for future cost-saving reads. For each important field, identify the page number(s) where the evidence appears or is most likely found. If exact page numbers are not printed, estimate from document order and keep confidence lower. Use 1-based page numbers.
+12. pageMap keys should include only relevant known fields: cert_name, certificate_number, issue_by, issued_date, expiry_date, last_survey_date, next_survey_date, annual_survey_endorsement.
 
 Return ONLY raw JSON:
-{"issueBy":"issuer/class/authority or empty","issuedDate":"YYYY-MM-DD or empty","expiryDate":"YYYY-MM-DD or empty","lastSurveyDate":"YYYY-MM-DD or empty","nextSurveyDate":"YYYY-MM-DD or empty","surveyIntervalMonths":12,"expiryIntervalMonths":12,"ruleBasis":"short rule/regulatory/practice basis used, or empty","detectedCertName":"text","certificateNumber":"text or empty","certTypeMatch":true,"note":"short English reasoning"}
+{"issueBy":"issuer/class/authority or empty","issuedDate":"YYYY-MM-DD or empty","expiryDate":"YYYY-MM-DD or empty","lastSurveyDate":"YYYY-MM-DD or empty","nextSurveyDate":"YYYY-MM-DD or empty","surveyIntervalMonths":12,"expiryIntervalMonths":12,"ruleBasis":"short rule/regulatory/practice basis used, or empty","detectedCertName":"text","certificateNumber":"text or empty","certTypeMatch":true,"note":"short English reasoning","pageMap":{"issued_date":{"pages":[1],"confidence":0.8,"hint":"issued date on certificate face page"},"expiry_date":{"pages":[1],"confidence":0.8,"hint":"valid until on certificate face page"},"last_survey_date":{"pages":[3,4],"confidence":0.6,"hint":"latest annual/class endorsement page"}}}
 
 ${hasExtractedText ? `EXTRACTED TEXT:\n${extractedText?.slice(0, 18000)}` : ''}`
 

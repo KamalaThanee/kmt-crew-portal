@@ -26,6 +26,7 @@ const editableCategories = categories.filter((category) => category !== 'all')
 const statusFilters: Array<'all' | ShipCertificateStatus> = ['all', 'expired', 'due-30', 'due-60', 'due-90', 'due-180', 'valid', 'no-expiry']
 const SHIP_CERT_BUCKET = 'ship-certificates'
 type DashboardFilter = 'all' | 'expired' | 'due30' | 'due90' | 'surveyDue'
+type ShipCertSortMode = 'checklist' | 'priority' | 'expiry' | 'survey' | 'code' | 'category'
 
 type ShipCertHistoryRow = {
   id: string
@@ -36,6 +37,47 @@ type ShipCertHistoryRow = {
   actor_name: string | null
   created_at: string | null
 }
+
+type ShipCertPageMapRow = {
+  id?: string
+  master_id: string | null
+  field_name: string
+  preferred_pages: number[] | null
+  fallback_pages: number[] | null
+  extraction_hint: string | null
+  confidence: number | null
+  confirmed_by: string | null
+  confirmed_at: string | null
+  updated_at?: string | null
+}
+
+type ShipCertAiPageMap = Record<string, {
+  pages?: number[]
+  page?: number
+  confidence?: number | string
+  hint?: string
+}>
+
+type PageMapDraft = {
+  fieldName: string
+  pagesText: string
+  fallbackText: string
+  hint: string
+}
+
+const pageMapFieldOptions = [
+  { fieldName: 'cert_name', label: 'Certificate Name', defaultHint: 'certificate title / document heading' },
+  { fieldName: 'certificate_number', label: 'Certificate No.', defaultHint: 'certificate number / reference number' },
+  { fieldName: 'issue_by', label: 'Issue By', defaultHint: 'issuer, class, flag, authority, or service company' },
+  { fieldName: 'issued_date', label: 'Issued Date', defaultHint: 'issued date / completion date / date of inspection' },
+  { fieldName: 'expiry_date', label: 'Expiry Date', defaultHint: 'valid until / expiry date / renewal due date' },
+  { fieldName: 'last_survey_date', label: 'Last Survey Date', defaultHint: 'latest annual/intermediate/class endorsement date' },
+  { fieldName: 'next_survey_date', label: 'Next Survey Date', defaultHint: 'next annual/intermediate/class endorsement due date' },
+  { fieldName: 'annual_survey_endorsement', label: 'Annual Survey Page', defaultHint: 'annual survey endorsement / class signature page' },
+]
+
+type ShipCertAnalysisFocus = 'full_certificate' | 'annual_survey'
+type PageMemoryFilter = 'all' | 'ready' | 'missing'
 
 const categoryCodePrefixes: Record<string, string> = {
   Flag: 'F',
@@ -82,6 +124,7 @@ type ShipCertScanResult = {
   certificateNumber?: string
   certTypeMatch?: boolean
   note?: string
+  pageMap?: ShipCertAiPageMap
   analysisMode?: 'text' | 'vision'
   activeModel?: string
 }
@@ -124,6 +167,98 @@ const cleanCertificateRemark = (value?: string | null) => {
     })
     .join('\n')
 }
+
+const toPageList = (value: unknown) => {
+  const raw = Array.isArray(value) ? value : typeof value === 'number' ? [value] : []
+  return raw
+    .map((page) => Number(page))
+    .filter((page) => Number.isFinite(page) && page > 0)
+    .map((page) => Math.round(page))
+}
+
+const parsePageText = (value: string) => value
+  .split(/[,\s]+/)
+  .map((page) => Number(page.trim()))
+  .filter((page) => Number.isFinite(page) && page > 0)
+  .map((page) => Math.round(page))
+
+const formatPageList = (pages?: number[] | null) => {
+  const clean = toPageList(pages)
+  return clean.length ? clean.join(', ') : '-'
+}
+
+const buildPageMapDrafts = (maps: ShipCertPageMapRow[]) => pageMapFieldOptions.map((field) => {
+  const found = maps.find((map) => map.field_name === field.fieldName)
+  return {
+    fieldName: field.fieldName,
+    pagesText: toPageList(found?.preferred_pages).join(', '),
+    fallbackText: toPageList(found?.fallback_pages).join(', '),
+    hint: found?.extraction_hint || field.defaultHint,
+  }
+})
+
+const mergeAiPageMapIntoDrafts = (drafts: PageMapDraft[], pageMap?: ShipCertAiPageMap) => {
+  if (!pageMap) return drafts
+
+  return drafts.map((draft) => {
+    const aiMap = pageMap[draft.fieldName]
+    const pages = toPageList(aiMap?.pages || aiMap?.page)
+    if (pages.length === 0) return draft
+
+    return {
+      ...draft,
+      pagesText: pages.join(', '),
+      hint: aiMap?.hint || draft.hint,
+    }
+  })
+}
+
+const buildPageMapHints = (maps: ShipCertPageMapRow[]) => maps.map((map) => ({
+  fieldName: map.field_name,
+  preferredPages: toPageList(map.preferred_pages),
+  fallbackPages: toPageList(map.fallback_pages),
+  extractionHint: map.extraction_hint || '',
+  confidence: map.confidence ?? '',
+}))
+
+const normalizeAiPageMapRows = (
+  pageMap: ShipCertAiPageMap | undefined,
+  masterId: string | null | undefined,
+  confirmedBy: string
+): Array<Omit<ShipCertPageMapRow, 'id'>> => {
+  if (!pageMap || !masterId) return []
+
+  const rows: Array<Omit<ShipCertPageMapRow, 'id'>> = []
+  Object.entries(pageMap).forEach(([fieldName, map]) => {
+    const preferredPages = toPageList(map.pages || map.page)
+    if (!fieldName || preferredPages.length === 0) return
+
+    const confidence = Number(map.confidence)
+    rows.push({
+      master_id: masterId,
+      field_name: fieldName,
+      preferred_pages: preferredPages,
+      fallback_pages: [],
+      extraction_hint: map.hint || `AI observed ${fieldName.replace(/_/g, ' ')}`,
+      confidence: Number.isFinite(confidence) ? confidence : null,
+      confirmed_by: confirmedBy,
+      confirmed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+  })
+
+  return rows
+}
+
+const compactPageMapRows = (maps: ShipCertPageMapRow[]) => maps.map((map) => ({
+  field_name: map.field_name,
+  preferred_pages: toPageList(map.preferred_pages),
+  fallback_pages: toPageList(map.fallback_pages),
+  extraction_hint: map.extraction_hint || '',
+  confidence: map.confidence,
+  confirmed_by: map.confirmed_by,
+  confirmed_at: map.confirmed_at,
+}))
 
 const buildFormFromCert = (row: ShipCertificate): ShipCertificateForm => ({
   category: row.category || 'Flag',
@@ -243,6 +378,7 @@ const getAuditActionLabel = (action?: string | null) => {
     add_certificate: 'Added',
     renew_upload: 'Renewed / Uploaded',
     manual_update: 'Edited',
+    page_memory_update: 'Page Memory',
     delete_certificate: 'Deleted',
   }
   return labels[String(action || '')] || String(action || 'Updated').replace(/_/g, ' ')
@@ -252,7 +388,141 @@ const getAuditActionStyle = (action?: string | null) => {
   if (action === 'delete_certificate') return 'border-red-500/30 bg-red-500/10 text-red-200'
   if (action === 'renew_upload') return 'border-orange-400/30 bg-orange-500/10 text-orange-200'
   if (action === 'add_certificate') return 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+  if (action === 'page_memory_update') return 'border-blue-400/30 bg-blue-500/10 text-blue-200'
   return 'border-white/10 bg-white/5 text-zinc-300'
+}
+
+const toShipCertDateValue = (value?: string | null) => {
+  if (!value) return Number.POSITIVE_INFINITY
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time
+}
+
+const getShipCertPriorityRank = (row: ShipCertificate) => {
+  const status = getShipCertificateStatus(row)
+  const survey = getShipSurveyStatus(row)
+  if (status === 'expired') return 0
+  if (status === 'due-30') return 1
+  if (['due-60', 'due-90'].includes(status)) return 2
+  if (['survey-overdue', 'survey-due-30'].includes(survey)) return 3
+  if (['survey-due-60', 'survey-due-90'].includes(survey)) return 4
+  if (status === 'valid') return 5
+  if (status === 'no-expiry') return 6
+  return 7
+}
+
+const getShipCertNextAction = (row: ShipCertificate) => {
+  const status = getShipCertificateStatus(row)
+  const survey = getShipSurveyStatus(row)
+  const expiryDays = daysUntil(row.expiry_date)
+  const surveyDays = daysUntil(row.next_survey_date)
+
+  if (status === 'expired') {
+    return {
+      label: 'Renew now',
+      detail: row.expiry_date ? `Expired ${formatShipDate(row.expiry_date)}` : 'Expired certificate',
+      style: 'border-red-500/30 bg-red-500/10 text-red-200',
+    }
+  }
+  if (status === 'due-30') {
+    return {
+      label: 'Renew now',
+      detail: expiryDays !== null ? `${expiryDays} days left` : 'Within 30 days',
+      style: 'border-orange-500/30 bg-orange-500/10 text-orange-200',
+    }
+  }
+  if (['due-60', 'due-90'].includes(status)) {
+    return {
+      label: 'Plan renewal',
+      detail: expiryDays !== null ? `${expiryDays} days left` : 'Within planning window',
+      style: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+    }
+  }
+  if (survey === 'survey-overdue') {
+    return {
+      label: 'Complete survey',
+      detail: row.next_survey_date ? `Due ${formatShipDate(row.next_survey_date)}` : 'Survey overdue',
+      style: 'border-red-500/30 bg-red-500/10 text-red-200',
+    }
+  }
+  if (['survey-due-30', 'survey-due-60', 'survey-due-90'].includes(survey)) {
+    return {
+      label: 'Plan survey',
+      detail: surveyDays !== null ? `${surveyDays} days left` : 'Class endorsement due',
+      style: 'border-blue-400/30 bg-blue-500/10 text-blue-200',
+    }
+  }
+  if (status === 'no-expiry') {
+    return {
+      label: 'No expiry',
+      detail: row.has_survey ? 'Track survey only' : 'No routine action',
+      style: 'border-white/10 bg-white/5 text-zinc-300',
+    }
+  }
+
+  return {
+    label: 'Monitor',
+    detail: expiryDays !== null ? `${expiryDays} days left` : 'Valid',
+    style: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
+  }
+}
+
+const getAuditChangeSummary = (row: ShipCertHistoryRow) => {
+  if (row.action === 'add_certificate') return 'New certificate record added'
+  if (row.action === 'delete_certificate') return 'Certificate record deleted'
+  if (row.action === 'page_memory_update') return 'AI page memory updated'
+
+  const oldData = row.old_data || {}
+  const newData = row.new_data || {}
+  const trackedFields: Array<keyof ShipCertificate> = [
+    'code',
+    'category',
+    'cert_name',
+    'issue_by',
+    'issued_date',
+    'expiry_date',
+    'last_survey_date',
+    'next_survey_date',
+    'remark',
+    'file_url',
+  ]
+  const changed = trackedFields.filter((field) => String(oldData[field] || '') !== String(newData[field] || ''))
+  if (changed.length === 0) return 'Record updated'
+
+  return `Changed: ${changed
+    .map((field) => String(field).replace(/_/g, ' '))
+    .slice(0, 4)
+    .join(', ')}${changed.length > 4 ? ` +${changed.length - 4} more` : ''}`
+}
+
+type FieldChange = {
+  label: string
+  before: string
+  after: string
+}
+
+const getCertificateFieldChanges = (certificate: ShipCertificate, form: ShipCertificateForm) => {
+  const fields: Array<{ label: string; before: unknown; after: unknown }> = [
+    { label: 'Category', before: certificate.category, after: form.category },
+    { label: 'Cert Code', before: certificate.code, after: form.code },
+    { label: 'Certificate Name', before: certificate.cert_name, after: form.cert_name },
+    { label: 'Issue By', before: certificate.issue_by, after: form.issue_by },
+    { label: 'Issued Date', before: certificate.issued_date, after: form.issued_date },
+    { label: 'Expiry Date', before: certificate.expiry_date, after: form.expiry_date },
+    { label: 'Last Survey Date', before: certificate.last_survey_date, after: form.last_survey_date },
+    { label: 'Next Survey Date', before: certificate.next_survey_date, after: form.next_survey_date },
+    { label: 'Certificate No. / Remark', before: certificate.remark, after: form.remark },
+    { label: 'Track Expiry', before: certificate.has_expiry, after: form.has_expiry },
+    { label: 'Track Survey', before: certificate.has_survey, after: form.has_survey },
+  ]
+
+  return fields
+    .map(({ label, before, after }) => ({
+      label,
+      before: before === true ? 'Yes' : before === false ? 'No' : String(before || '-'),
+      after: after === true ? 'Yes' : after === false ? 'No' : String(after || '-'),
+    }))
+    .filter((field) => field.before !== field.after)
 }
 
 export default function ShipCertificatesPage() {
@@ -262,19 +532,24 @@ export default function ShipCertificatesPage() {
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<ShipCertificate[]>([])
   const [historyRows, setHistoryRows] = useState<ShipCertHistoryRow[]>([])
+  const [pageMapRows, setPageMapRows] = useState<ShipCertPageMapRow[]>([])
   const [errorMessage, setErrorMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<'all' | ShipCertificateStatus>('all')
+  const [pageMemoryFilter, setPageMemoryFilter] = useState<PageMemoryFilter>('all')
   const [dashboardFilter, setDashboardFilter] = useState<DashboardFilter>('all')
+  const [sortMode, setSortMode] = useState<ShipCertSortMode>('checklist')
   const [editingCert, setEditingCert] = useState<ShipCertificate | null>(null)
   const [editForm, setEditForm] = useState<ShipCertificateForm | null>(null)
   const [isAddingCert, setIsAddingCert] = useState(false)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [scanResult, setScanResult] = useState<ShipCertScanResult | null>(null)
   const [scanMessage, setScanMessage] = useState('')
+  const [analysisFocus, setAnalysisFocus] = useState<ShipCertAnalysisFocus>('full_certificate')
   const [isScanning, setIsScanning] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isSavingPageMaps, setIsSavingPageMaps] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
@@ -296,12 +571,13 @@ export default function ShipCertificatesPage() {
   const fetchData = async () => {
     setLoading(true)
     setErrorMessage('')
-    const [{ data, error }, historyResult] = await Promise.all([
+    const [{ data, error }, historyResult, pageMapResult] = await Promise.all([
       supabase
         .from('ship_certificates')
         .select('*')
         .order('sort_order', { ascending: true }),
       fetchHistoryRows(),
+      fetchPageMapRows(),
     ])
 
     if (error) {
@@ -311,6 +587,7 @@ export default function ShipCertificatesPage() {
       setRows((data || []) as ShipCertificate[])
     }
     setHistoryRows(historyResult)
+    setPageMapRows(pageMapResult)
     setLoading(false)
   }
 
@@ -325,6 +602,16 @@ export default function ShipCertificatesPage() {
     return (data || []) as ShipCertHistoryRow[]
   }
 
+  const fetchPageMapRows = async () => {
+    const { data, error } = await supabase
+      .from('ship_cert_ai_page_maps')
+      .select('*')
+      .order('field_name', { ascending: true })
+
+    if (error) return []
+    return (data || []) as ShipCertPageMapRow[]
+  }
+
   const openEditModal = (row: ShipCertificate) => {
     setEditingCert(row)
     setEditForm(buildFormFromCert(row))
@@ -332,6 +619,7 @@ export default function ShipCertificatesPage() {
     setUploadFile(null)
     setScanResult(null)
     setScanMessage('')
+    setAnalysisFocus('full_certificate')
   }
 
   const openAddCertModal = () => {
@@ -347,6 +635,7 @@ export default function ShipCertificatesPage() {
     setUploadFile(null)
     setScanResult(null)
     setScanMessage('')
+    setAnalysisFocus('full_certificate')
   }
 
   const closeEditModal = () => {
@@ -356,6 +645,7 @@ export default function ShipCertificatesPage() {
     setUploadFile(null)
     setScanResult(null)
     setScanMessage('')
+    setAnalysisFocus('full_certificate')
   }
 
   const handleShipAiScan = async () => {
@@ -369,6 +659,9 @@ export default function ShipCertificatesPage() {
       const isPdf = uploadFile.type === 'application/pdf' || uploadFile.name.toLowerCase().endsWith('.pdf')
       const mimeType = isPdf ? 'application/pdf' : 'image/jpeg'
       const fileBase64 = isPdf ? await readFileAsDataUrl(uploadFile) : await compressImage(uploadFile)
+      const knownPageMaps = editingCert.master_id
+        ? pageMapRows.filter((map) => map.master_id === editingCert.master_id)
+        : []
 
       const modelErrors: string[] = []
       let latestError = 'AI models busy'
@@ -384,7 +677,8 @@ export default function ShipCertificatesPage() {
               certName: isAddingCert ? '' : editForm.cert_name || editingCert.cert_name,
               code: editForm.code || editingCert.code,
               category: editForm.category || editingCert.category,
-              analysisFocus: 'full_certificate',
+              pageMapHints: buildPageMapHints(knownPageMaps),
+              analysisFocus,
               modelId: model.id,
               provider: model.provider,
             }),
@@ -513,14 +807,90 @@ export default function ShipCertificatesPage() {
       new_data: data,
       actor_name: currentUser?.full_name || currentUser?.position || 'Unknown user',
     })
+    const nextPageMaps = normalizeAiPageMapRows(
+      scanResult?.pageMap,
+      (data as ShipCertificate).master_id || editingCert.master_id,
+      currentUser?.full_name || currentUser?.position || 'Unknown user'
+    )
+    if (nextPageMaps.length > 0) {
+      const { error: pageMapError } = await supabase
+        .from('ship_cert_ai_page_maps')
+        .upsert(nextPageMaps, { onConflict: 'master_id,field_name' })
+
+      if (!pageMapError) {
+        setPageMapRows(await fetchPageMapRows())
+      } else {
+        setErrorMessage(`Certificate saved, but page memory was not saved: ${pageMapError.message}`)
+      }
+    }
     setHistoryRows(await fetchHistoryRows())
 
-    setRows((prev) => {
-      if (isAddingCert) return [...prev, data as ShipCertificate].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-      return prev.map((row) => (row.id === editingCert.id ? data as ShipCertificate : row))
-    })
+    const savedCertificate = data as ShipCertificate
+    const nextRows = isAddingCert
+      ? [...rows, savedCertificate].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+      : rows.map((row) => (row.id === editingCert.id ? savedCertificate : row))
+    setRows(nextRows)
+
     setIsSaving(false)
     closeEditModal()
+  }
+
+  const savePageMemory = async (drafts: PageMapDraft[]) => {
+    if (!editingCert?.master_id || !currentUser) return
+    const masterId = editingCert.master_id
+    const actorName = currentUser.full_name || currentUser.position || 'Unknown user'
+    setIsSavingPageMaps(true)
+    setErrorMessage('')
+
+    const rowsToSave: Array<Omit<ShipCertPageMapRow, 'id'>> = []
+    drafts.forEach((draft) => {
+      const preferredPages = parsePageText(draft.pagesText)
+      const fallbackPages = parsePageText(draft.fallbackText)
+      if (preferredPages.length === 0 && fallbackPages.length === 0) return
+
+      rowsToSave.push({
+        master_id: masterId,
+        field_name: draft.fieldName,
+        preferred_pages: preferredPages,
+        fallback_pages: fallbackPages,
+        extraction_hint: draft.hint.trim() || `Manual page memory for ${draft.fieldName.replace(/_/g, ' ')}`,
+        confidence: 1,
+        confirmed_by: actorName,
+        confirmed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+    })
+
+    if (rowsToSave.length === 0) {
+      setErrorMessage('Please enter at least one page number before saving page memory.')
+      setIsSavingPageMaps(false)
+      return
+    }
+
+    const { error } = await supabase
+      .from('ship_cert_ai_page_maps')
+      .upsert(rowsToSave, { onConflict: 'master_id,field_name' })
+
+    if (error) {
+      setErrorMessage(`Page memory save failed: ${error.message}`)
+    } else {
+      const previousMaps = pageMapRows.filter((map) => map.master_id === masterId)
+      const latestMaps = await fetchPageMapRows()
+      const nextMaps = latestMaps.filter((map) => map.master_id === masterId)
+      setPageMapRows(latestMaps)
+      if (editingCert.id) {
+        await supabase.from('ship_cert_history').insert({
+          ship_certificate_id: editingCert.id,
+          action: 'page_memory_update',
+          old_data: { page_memory: compactPageMapRows(previousMaps) },
+          new_data: { page_memory: compactPageMapRows(nextMaps) },
+          actor_name: actorName,
+        })
+        setHistoryRows(await fetchHistoryRows())
+      }
+      setScanMessage('Page memory saved. Future AI scans will use these page hints.')
+    }
+    setIsSavingPageMaps(false)
   }
 
   const deleteCertificate = async () => {
@@ -564,13 +934,22 @@ export default function ShipCertificatesPage() {
     }
   }
 
+  const pageMemoryMasterIds = useMemo(() => {
+    const ids = new Set<string>()
+    pageMapRows.forEach((map) => {
+      if (map.master_id && toPageList(map.preferred_pages).length > 0) ids.add(map.master_id)
+    })
+    return ids
+  }, [pageMapRows])
+
   const filteredRows = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
-    return rows.filter((row) => {
+    const matches = rows.filter((row) => {
       const status = getShipCertificateStatus(row)
       const survey = getShipSurveyStatus(row)
       const certLabel = [row.code, row.cert_name].filter(Boolean).join(' | ')
       const text = [certLabel, row.code, row.cert_name, row.issue_by, row.remark, row.category].filter(Boolean).join(' ').toLowerCase()
+      const hasPageMemory = !!row.master_id && pageMemoryMasterIds.has(row.master_id)
       const matchesDashboard =
         dashboardFilter === 'all' ||
         (dashboardFilter === 'expired' && status === 'expired') ||
@@ -582,15 +961,55 @@ export default function ShipCertificatesPage() {
         (!query || text.includes(query)) &&
         (categoryFilter === 'all' || row.category === categoryFilter) &&
         (statusFilter === 'all' || status === statusFilter) &&
+        (pageMemoryFilter === 'all' || (pageMemoryFilter === 'ready' ? hasPageMemory : !hasPageMemory)) &&
         matchesDashboard
       )
     })
-  }, [categoryFilter, dashboardFilter, rows, searchTerm, statusFilter])
+
+    return [...matches].sort((a, b) => {
+      if (sortMode === 'priority') {
+        return (
+          getShipCertPriorityRank(a) - getShipCertPriorityRank(b) ||
+          toShipCertDateValue(a.expiry_date) - toShipCertDateValue(b.expiry_date) ||
+          toShipCertDateValue(a.next_survey_date) - toShipCertDateValue(b.next_survey_date) ||
+          (a.sort_order || 0) - (b.sort_order || 0)
+        )
+      }
+      if (sortMode === 'expiry') {
+        return toShipCertDateValue(a.expiry_date) - toShipCertDateValue(b.expiry_date)
+      }
+      if (sortMode === 'survey') {
+        return toShipCertDateValue(a.next_survey_date) - toShipCertDateValue(b.next_survey_date)
+      }
+      if (sortMode === 'code') {
+        return String(a.code || '').localeCompare(String(b.code || ''), undefined, { numeric: true })
+      }
+      if (sortMode === 'category') {
+        return (
+          String(a.category || '').localeCompare(String(b.category || '')) ||
+          (a.sort_order || 0) - (b.sort_order || 0)
+        )
+      }
+      return (a.sort_order || 0) - (b.sort_order || 0)
+    })
+  }, [categoryFilter, dashboardFilter, pageMemoryFilter, pageMemoryMasterIds, rows, searchTerm, sortMode, statusFilter])
 
   const certOptions = useMemo(() => {
     return Array.from(new Set(rows.map((row) => {
       return [row.code, row.cert_name].filter(Boolean).join(' | ')
     }).filter(Boolean))).sort()
+  }, [rows])
+
+  const priorityQueueRows = useMemo(() => {
+    return rows
+      .filter((row) => getShipCertPriorityRank(row) <= 4)
+      .sort((a, b) => (
+        getShipCertPriorityRank(a) - getShipCertPriorityRank(b) ||
+        toShipCertDateValue(a.expiry_date) - toShipCertDateValue(b.expiry_date) ||
+        toShipCertDateValue(a.next_survey_date) - toShipCertDateValue(b.next_survey_date) ||
+        (a.sort_order || 0) - (b.sort_order || 0)
+      ))
+      .slice(0, 6)
   }, [rows])
 
   const summary = useMemo(() => {
@@ -602,20 +1021,25 @@ export default function ShipCertificatesPage() {
       due90: 0,
       surveyDue: 0,
       noExpiry: 0,
+      memoryReady: 0,
+      memoryMissing: 0,
     }
 
     for (const row of scopedRows) {
       const status = getShipCertificateStatus(row)
       const survey = getShipSurveyStatus(row)
+      const hasPageMemory = !!row.master_id && pageMemoryMasterIds.has(row.master_id)
       if (status === 'expired') counts.expired += 1
       if (status === 'due-30') counts.due30 += 1
       if (['due-30', 'due-60', 'due-90'].includes(status)) counts.due90 += 1
       if (status === 'no-expiry') counts.noExpiry += 1
       if (['survey-overdue', 'survey-due-30', 'survey-due-60', 'survey-due-90'].includes(survey)) counts.surveyDue += 1
+      if (hasPageMemory) counts.memoryReady += 1
+      else counts.memoryMissing += 1
     }
 
     return counts
-  }, [categoryFilter, rows])
+  }, [categoryFilter, pageMemoryMasterIds, rows])
 
   const latestHistoryByCert = useMemo(() => {
     const latest = new Map<string, ShipCertHistoryRow>()
@@ -630,6 +1054,11 @@ export default function ShipCertificatesPage() {
     if (!editingCert?.id) return []
     return historyRows.filter((history) => getAuditCertificateId(history) === editingCert.id).slice(0, 5)
   }, [editingCert?.id, historyRows])
+
+  const editingCertPageMaps = useMemo(() => {
+    if (!editingCert?.master_id) return []
+    return pageMapRows.filter((map) => map.master_id === editingCert.master_id)
+  }, [editingCert?.master_id, pageMapRows])
 
   if (loading) {
     return <div className="min-h-screen bg-black pt-32 text-center text-orange-500 font-black animate-pulse">LOADING SHIP CERTIFICATES...</div>
@@ -687,7 +1116,7 @@ export default function ShipCertificatesPage() {
           </button>
           {canEdit && (
             <button
-              onClick={openAddCertModal}
+              onClick={() => openAddCertModal()}
               className="inline-flex items-center justify-center gap-2 rounded-3xl border border-orange-400/30 bg-orange-600 px-5 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 hover:bg-orange-500"
             >
               <PlusCircle size={16} /> Add New Cert
@@ -707,13 +1136,69 @@ export default function ShipCertificatesPage() {
           </div>
         )}
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-5">
-          <SummaryCard label="Total" value={summary.total} tone="orange" detail="Current category" active={dashboardFilter === 'all' && statusFilter === 'all'} onClick={() => { setDashboardFilter('all'); setStatusFilter('all') }} />
-          <SummaryCard label="Expired" value={summary.expired} tone="red" detail="Needs immediate action" active={dashboardFilter === 'expired'} onClick={() => { setDashboardFilter('expired'); setStatusFilter('all') }} />
-          <SummaryCard label="Due 30d" value={summary.due30} tone="orange" detail="Renew now" active={dashboardFilter === 'due30'} onClick={() => { setDashboardFilter('due30'); setStatusFilter('all') }} />
-          <SummaryCard label="Due 90d" value={summary.due90} tone="amber" detail="Planning window" active={dashboardFilter === 'due90'} onClick={() => { setDashboardFilter('due90'); setStatusFilter('all') }} />
-          <SummaryCard label="Survey Due" value={summary.surveyDue} tone="zinc" detail="Class endorsement" active={dashboardFilter === 'surveyDue'} onClick={() => { setDashboardFilter('surveyDue'); setStatusFilter('all') }} />
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-6">
+          <SummaryCard label="Total" value={summary.total} tone="orange" detail="Current category" active={dashboardFilter === 'all' && statusFilter === 'all' && pageMemoryFilter === 'all'} onClick={() => { setDashboardFilter('all'); setStatusFilter('all'); setPageMemoryFilter('all') }} />
+          <SummaryCard label="Expired" value={summary.expired} tone="red" detail="Needs immediate action" active={dashboardFilter === 'expired'} onClick={() => { setDashboardFilter('expired'); setStatusFilter('all'); setPageMemoryFilter('all') }} />
+          <SummaryCard label="Due 30d" value={summary.due30} tone="orange" detail="Renew now" active={dashboardFilter === 'due30'} onClick={() => { setDashboardFilter('due30'); setStatusFilter('all'); setPageMemoryFilter('all') }} />
+          <SummaryCard label="Due 90d" value={summary.due90} tone="amber" detail="Planning window" active={dashboardFilter === 'due90'} onClick={() => { setDashboardFilter('due90'); setStatusFilter('all'); setPageMemoryFilter('all') }} />
+          <SummaryCard label="Survey Due" value={summary.surveyDue} tone="zinc" detail="Class endorsement" active={dashboardFilter === 'surveyDue'} onClick={() => { setDashboardFilter('surveyDue'); setStatusFilter('all'); setPageMemoryFilter('all') }} />
+          <SummaryCard label="Memory Ready" value={summary.memoryReady} tone="blue" detail={`${summary.memoryMissing} need mapping`} active={pageMemoryFilter === 'ready'} onClick={() => { setDashboardFilter('all'); setStatusFilter('all'); setPageMemoryFilter(pageMemoryFilter === 'ready' ? 'all' : 'ready') }} />
         </section>
+
+        {priorityQueueRows.length > 0 && (
+          <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/80 p-5 shadow-2xl shadow-black/30">
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">Priority Queue</p>
+                <h2 className="mt-2 text-2xl font-black uppercase italic text-white">Ship certs to act on first</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDashboardFilter('all')
+                  setStatusFilter('all')
+                  setPageMemoryFilter('all')
+                  setSortMode('priority')
+                }}
+                className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-orange-100 hover:bg-orange-600 hover:text-white"
+              >
+                Open Priority Sort
+              </button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {priorityQueueRows.map((row) => {
+                const nextAction = getShipCertNextAction(row)
+                return (
+                  <article key={`queue-${row.id || row.code}`} className="rounded-[26px] border border-white/10 bg-black/45 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-orange-200">{row.code || '-'} | {row.category || '-'}</p>
+                        <h3 className="mt-2 line-clamp-2 text-sm font-black uppercase italic text-white">{row.cert_name || 'Unknown ship certificate'}</h3>
+                      </div>
+                      <span className={`shrink-0 rounded-2xl border px-3 py-2 text-[8px] font-black uppercase tracking-widest ${nextAction.style}`}>
+                        {nextAction.label}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-xs normal-case text-zinc-400">{nextAction.detail}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {row.file_url && (
+                        <a href={row.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-orange-300 hover:bg-orange-600 hover:text-white">
+                          <ExternalLink size={13} /> File
+                        </a>
+                      )}
+                      {canEdit && (
+                        <button onClick={() => openEditModal(row)} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-300 hover:border-orange-500/40 hover:text-white">
+                          <UploadCloud size={13} /> Edit
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         <section className="overflow-x-auto rounded-[28px] border border-orange-500/10 bg-black/25 p-2">
           <div className="flex min-w-max gap-2">
@@ -727,6 +1212,7 @@ export default function ShipCertificatesPage() {
                     setCategoryFilter(category)
                     setDashboardFilter('all')
                     setStatusFilter('all')
+                    setPageMemoryFilter('all')
                   }}
                   className={`rounded-2xl border px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
                     active
@@ -743,7 +1229,7 @@ export default function ShipCertificatesPage() {
         </section>
 
         <section className="rounded-[34px] border border-white/10 bg-black/30 p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_150px]">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_170px_170px_150px]">
             <label className="flex items-center gap-3 rounded-2xl border border-orange-500/20 bg-black/40 px-4">
               <Search size={16} className="text-orange-500" />
               <input
@@ -769,13 +1255,40 @@ export default function ShipCertificatesPage() {
             >
               {statusFilters.map((status) => <option key={status} value={status}>{status === 'all' ? 'All Status' : getShipStatusLabel(status)}</option>)}
             </select>
+            <select
+              value={pageMemoryFilter}
+              onChange={(event) => {
+                setPageMemoryFilter(event.target.value as PageMemoryFilter)
+                setDashboardFilter('all')
+                setStatusFilter('all')
+              }}
+              className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+            >
+              <option value="all">All Memory</option>
+              <option value="ready">Memory Ready</option>
+              <option value="missing">Needs Mapping</option>
+            </select>
+            <select
+              value={sortMode}
+              onChange={(event) => setSortMode(event.target.value as ShipCertSortMode)}
+              className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+            >
+              <option value="checklist">Sort: Checklist</option>
+              <option value="priority">Sort: Priority</option>
+              <option value="expiry">Sort: Expiry</option>
+              <option value="survey">Sort: Survey</option>
+              <option value="code">Sort: Code</option>
+              <option value="category">Sort: Category</option>
+            </select>
             <button
               type="button"
               onClick={() => {
                 setSearchTerm('')
                 setCategoryFilter('all')
                 setStatusFilter('all')
+                setPageMemoryFilter('all')
                 setDashboardFilter('all')
+                setSortMode('checklist')
               }}
               className="h-14 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 text-xs font-black uppercase tracking-widest text-orange-100 hover:bg-orange-600 hover:text-white"
             >
@@ -789,13 +1302,14 @@ export default function ShipCertificatesPage() {
         </p>
 
         <section className="overflow-x-auto rounded-[34px] border border-white/10 bg-black/30">
-          <div className="hidden min-w-[1040px] grid-cols-[70px_105px_minmax(180px,1.35fr)_120px_120px_170px_minmax(120px,0.8fr)_100px] gap-3 border-b border-white/10 px-5 py-5 text-[9px] font-black uppercase tracking-widest text-zinc-500 md:grid">
+          <div className="hidden min-w-[1180px] grid-cols-[70px_95px_minmax(180px,1.3fr)_110px_115px_160px_145px_minmax(120px,0.8fr)_100px] gap-3 border-b border-white/10 px-5 py-5 text-[9px] font-black uppercase tracking-widest text-zinc-500 md:grid">
             <span>Code</span>
             <span>Category</span>
             <span>Certificate</span>
             <span>Expiry</span>
             <span>Status</span>
             <span>Survey</span>
+            <span>Next Action</span>
             <span>Remark</span>
             <span>Action</span>
           </div>
@@ -808,6 +1322,7 @@ export default function ShipCertificatesPage() {
               key={row.id || `${row.category}-${row.code}-${row.cert_name}`}
               row={row}
               latestHistory={row.id ? latestHistoryByCert.get(row.id) || null : null}
+              hasPageMemory={!!row.master_id && pageMemoryMasterIds.has(row.master_id)}
               canEdit={canEdit}
               onEdit={openEditModal}
             />
@@ -825,9 +1340,12 @@ export default function ShipCertificatesPage() {
           uploadFile={uploadFile}
           scanResult={scanResult}
           scanMessage={scanMessage}
+          analysisFocus={analysisFocus}
           historyRows={editingCertHistory}
+          pageMapRows={editingCertPageMaps}
           isScanning={isScanning}
           isSaving={isSaving}
+          isSavingPageMaps={isSavingPageMaps}
           onFormChange={setEditForm}
           onCategoryChange={(category) => {
             setEditForm((prev) => prev ? { ...prev, category, code: isAddingCert ? getNextCertCode(rows, category) : prev.code } : prev)
@@ -837,9 +1355,11 @@ export default function ShipCertificatesPage() {
             setScanResult(null)
             setScanMessage('')
           }}
+          onAnalysisFocusChange={setAnalysisFocus}
           onAiScan={handleShipAiScan}
           onClose={closeEditModal}
           onDelete={deleteCertificate}
+          onSavePageMaps={savePageMemory}
           onSave={saveCertificateUpdate}
         />
       )}
@@ -848,7 +1368,29 @@ export default function ShipCertificatesPage() {
 }
 
 function ShipCertificateAuditTrail({ rows }: { rows: ShipCertHistoryRow[] }) {
-  const latestRows = rows.slice(0, 12)
+  const [certFilter, setCertFilter] = useState('')
+  const [actionFilter, setActionFilter] = useState('all')
+  const certOptions = useMemo(() => {
+    const options = new Map<string, string>()
+    rows.forEach((row) => {
+      const cert = getAuditCertificate(row)
+      const label = `${cert.code ? `${cert.code} | ` : ''}${cert.cert_name || 'Unknown ship certificate'}`
+      if (label.trim()) options.set(label, label)
+    })
+    return Array.from(options.values()).sort((a, b) => a.localeCompare(b))
+  }, [rows])
+  const actionOptions = useMemo(() => {
+    const options = new Set(rows.map((row) => row.action).filter(Boolean))
+    return Array.from(options).sort()
+  }, [rows])
+  const filteredRows = useMemo(() => rows.filter((row) => {
+    const cert = getAuditCertificate(row)
+    const label = `${cert.code ? `${cert.code} | ` : ''}${cert.cert_name || 'Unknown ship certificate'}`.toLowerCase()
+    const matchesCert = !certFilter || label.includes(certFilter.toLowerCase())
+    const matchesAction = actionFilter === 'all' || row.action === actionFilter
+    return matchesCert && matchesAction
+  }), [actionFilter, certFilter, rows])
+  const latestRows = filteredRows.slice(0, 12)
 
   return (
     <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/80 p-5 shadow-2xl shadow-black/30">
@@ -858,8 +1400,34 @@ function ShipCertificateAuditTrail({ rows }: { rows: ShipCertHistoryRow[] }) {
           <h2 className="mt-2 text-2xl font-black uppercase italic text-white">Ship certificate changes</h2>
         </div>
         <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
-          Latest upload / edit / delete activity
+          {filteredRows.length} of {rows.length} activities
         </p>
+      </div>
+
+      <div className="mb-5 grid gap-3 md:grid-cols-[1fr_220px]">
+        <label className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
+          <input
+            list="ship-cert-audit-cert-options"
+            value={certFilter}
+            onChange={(event) => setCertFilter(event.target.value)}
+            placeholder="Search or pick certificate..."
+            className="w-full rounded-2xl border border-white/10 bg-black/55 py-4 pl-11 pr-4 text-sm font-bold text-white outline-none focus:border-orange-500"
+          />
+          <datalist id="ship-cert-audit-cert-options">
+            {certOptions.map((option) => <option key={option} value={option} />)}
+          </datalist>
+        </label>
+        <select
+          value={actionFilter}
+          onChange={(event) => setActionFilter(event.target.value)}
+          className="rounded-2xl border border-white/10 bg-black/55 px-4 py-4 text-sm font-bold text-white outline-none focus:border-orange-500"
+        >
+          <option value="all">All Actions</option>
+          {actionOptions.map((action) => (
+            <option key={action} value={action}>{getAuditActionLabel(action)}</option>
+          ))}
+        </select>
       </div>
 
       {latestRows.length === 0 ? (
@@ -886,6 +1454,9 @@ function ShipCertificateAuditTrail({ rows }: { rows: ShipCertHistoryRow[] }) {
                   </p>
                   <p className="mt-1 text-[11px] font-bold normal-case text-zinc-500">
                     {cert.category || 'No category'} {cert.expiry_date ? `| Exp ${formatShipDate(cert.expiry_date)}` : ''}
+                  </p>
+                  <p className="mt-2 text-[11px] font-bold normal-case text-orange-100/80">
+                    {getAuditChangeSummary(row)}
                   </p>
                 </div>
 
@@ -926,7 +1497,7 @@ function SummaryCard({
   label: string
   value: number
   detail: string
-  tone: 'orange' | 'red' | 'amber' | 'zinc'
+  tone: 'orange' | 'red' | 'amber' | 'zinc' | 'blue'
   active: boolean
   onClick: () => void
 }) {
@@ -935,6 +1506,7 @@ function SummaryCard({
     orange: 'border-orange-500/20 bg-orange-500/10 text-orange-200',
     amber: 'border-amber-500/20 bg-amber-500/10 text-amber-200',
     zinc: 'border-white/10 bg-white/5 text-zinc-200',
+    blue: 'border-blue-400/20 bg-blue-500/10 text-blue-200',
   }
 
   return (
@@ -958,15 +1530,20 @@ function ShipCertificateModal({
   uploadFile,
   scanResult,
   scanMessage,
+  analysisFocus,
   historyRows,
+  pageMapRows,
   isScanning,
   isSaving,
+  isSavingPageMaps,
   onFormChange,
   onCategoryChange,
   onFileChange,
+  onAnalysisFocusChange,
   onAiScan,
   onClose,
   onDelete,
+  onSavePageMaps,
   onSave,
 }: {
   certificate: ShipCertificate
@@ -975,18 +1552,62 @@ function ShipCertificateModal({
   uploadFile: File | null
   scanResult: ShipCertScanResult | null
   scanMessage: string
+  analysisFocus: ShipCertAnalysisFocus
   historyRows: ShipCertHistoryRow[]
+  pageMapRows: ShipCertPageMapRow[]
   isScanning: boolean
   isSaving: boolean
+  isSavingPageMaps: boolean
   onFormChange: (form: ShipCertificateForm) => void
   onCategoryChange: (category: string) => void
   onFileChange: (file: File | null) => void
+  onAnalysisFocusChange: (focus: ShipCertAnalysisFocus) => void
   onAiScan: () => void
   onClose: () => void
   onDelete: () => void
+  onSavePageMaps: (drafts: PageMapDraft[]) => void
   onSave: () => void
 }) {
   const showExtractedFields = !isAddingCert || !!form.cert_name || !!scanResult
+  const hasPageMemory = pageMapRows.length > 0
+  const fieldChanges = isAddingCert ? [] : getCertificateFieldChanges(certificate, form)
+  const [pageMapDrafts, setPageMapDrafts] = useState<PageMapDraft[]>(() => buildPageMapDrafts(pageMapRows))
+  useEffect(() => {
+    setPageMapDrafts(buildPageMapDrafts(pageMapRows))
+  }, [pageMapRows])
+
+  useEffect(() => {
+    if (scanResult?.pageMap) {
+      setPageMapDrafts((prev) => mergeAiPageMapIntoDrafts(prev, scanResult.pageMap))
+    }
+  }, [scanResult?.pageMap])
+
+  const updatePageMapDraft = (fieldName: string, patch: Partial<PageMapDraft>) => {
+    setPageMapDrafts((prev) => prev.map((draft) => (
+      draft.fieldName === fieldName ? { ...draft, ...patch } : draft
+    )))
+  }
+
+  const applyAiPageMapToDrafts = () => {
+    setPageMapDrafts((prev) => mergeAiPageMapIntoDrafts(prev, scanResult?.pageMap))
+  }
+
+  useEffect(() => {
+    if (!hasPageMemory && analysisFocus === 'annual_survey') {
+      onAnalysisFocusChange('full_certificate')
+    }
+  }, [analysisFocus, hasPageMemory, onAnalysisFocusChange])
+
+  const aiPageMapRows = scanResult?.pageMap
+    ? Object.entries(scanResult.pageMap)
+        .map(([fieldName, map]) => ({
+          fieldName,
+          pages: toPageList(map.pages || map.page),
+          confidence: map.confidence,
+          hint: map.hint || '',
+        }))
+        .filter((map) => map.pages.length > 0)
+    : []
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl">
@@ -1051,6 +1672,43 @@ function ShipCertificateModal({
                 {isScanning ? 'Analyzing...' : 'AI Vision Analyze'}
               </button>
             </div>
+            <div className="mt-4 grid gap-2 md:grid-cols-2">
+              {([
+                { value: 'full_certificate' as const, label: 'Full Certificate', detail: 'Use for new upload or full renewal.' },
+                { value: 'annual_survey' as const, label: 'Annual Survey Page', detail: 'Use for endorsement/signature pages.' },
+              ]).map((mode) => {
+                const disabledByRule = mode.value === 'annual_survey' && !hasPageMemory
+                return (
+                  <button
+                    key={mode.value}
+                    type="button"
+                    onClick={() => {
+                      if (!disabledByRule) onAnalysisFocusChange(mode.value)
+                    }}
+                    disabled={isScanning || disabledByRule}
+                    className={`rounded-2xl border p-3 text-left transition-all ${
+                      analysisFocus === mode.value
+                        ? 'border-orange-400 bg-orange-600/20 text-white'
+                        : 'border-white/10 bg-black/35 text-zinc-400 hover:border-orange-500/40 hover:text-white'
+                    } disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-black/20 disabled:text-zinc-700`}
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-widest">{mode.label}</p>
+                    <p className="mt-1 text-[11px] normal-case">
+                      {disabledByRule ? 'Locked until page memory exists. Use Full Certificate first or save page memory manually.' : mode.detail}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+            {hasPageMemory ? (
+              <p className="mt-3 rounded-xl border border-orange-500/20 bg-black/30 p-3 text-[11px] normal-case text-orange-100">
+                Page memory active: AI will use saved page hints first, then inspect fallback pages if needed.
+              </p>
+            ) : (
+              <p className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-[11px] normal-case text-zinc-500">
+                No page memory yet. Run Full Certificate AI once, save page memory below, or upload the file and fill fields manually without AI.
+              </p>
+            )}
             {(scanMessage || scanResult) && (
               <div className="mt-4 rounded-2xl border border-orange-400/20 bg-black/40 p-4 text-xs normal-case text-zinc-300">
                 {scanMessage && <p className="font-bold text-orange-200">{scanMessage}</p>}
@@ -1070,6 +1728,49 @@ function ShipCertificateModal({
                     <p>Match: <span className={scanResult.certTypeMatch ? 'font-bold text-orange-200' : 'font-bold text-red-300'}>{scanResult.certTypeMatch ? 'Looks matched' : 'Needs manual review'}</span></p>
                     {scanResult.ruleBasis && <p className="pt-1 text-zinc-400">Rule basis: {scanResult.ruleBasis}</p>}
                     {scanResult.note && <p className="pt-1 text-zinc-400">AI note: {scanResult.note}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+            {(pageMapRows.length > 0 || aiPageMapRows.length > 0) && (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {pageMapRows.length > 0 && (
+                  <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Known Page Memory</p>
+                    <div className="mt-3 space-y-2">
+                      {pageMapRows.map((map) => (
+                        <div key={`${map.master_id}-${map.field_name}`} className="rounded-xl bg-white/5 p-3 text-[11px] normal-case text-zinc-300">
+                          <p className="font-black uppercase tracking-widest text-white">{map.field_name.replace(/_/g, ' ')}</p>
+                          <p className="mt-1">Pages: <span className="font-bold text-orange-200">{formatPageList(map.preferred_pages)}</span></p>
+                          {map.extraction_hint && <p className="mt-1 text-zinc-500">{map.extraction_hint}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {aiPageMapRows.length > 0 && (
+                  <div className="rounded-2xl border border-orange-400/20 bg-orange-500/10 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-orange-400">AI Page Map From This File</p>
+                      <button
+                        type="button"
+                        onClick={applyAiPageMapToDrafts}
+                        className="rounded-xl border border-orange-400/30 bg-black/30 px-3 py-2 text-[8px] font-black uppercase tracking-widest text-orange-100 hover:bg-orange-600 hover:text-white"
+                      >
+                        Apply to Editable Memory
+                      </button>
+                    </div>
+                    <p className="mt-2 text-[11px] normal-case text-orange-100/70">AI page map has also been copied into Editable Page Memory below. Review and adjust before saving.</p>
+                    <div className="mt-3 space-y-2">
+                      {aiPageMapRows.map((map) => (
+                        <div key={map.fieldName} className="rounded-xl bg-black/35 p-3 text-[11px] normal-case text-zinc-300">
+                          <p className="font-black uppercase tracking-widest text-white">{map.fieldName.replace(/_/g, ' ')}</p>
+                          <p className="mt-1">Pages: <span className="font-bold text-orange-100">{formatPageList(map.pages)}</span></p>
+                          {map.confidence !== undefined && <p className="mt-1 text-zinc-500">Confidence: {String(map.confidence)}</p>}
+                          {map.hint && <p className="mt-1 text-zinc-500">{map.hint}</p>}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1104,12 +1805,78 @@ function ShipCertificateModal({
                 <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Remark / Certificate No.</span>
                 <textarea value={form.remark} onChange={(event) => onFormChange({ ...form, remark: event.target.value })} rows={3} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-orange-500" />
               </label>
+              {!isAddingCert && fieldChanges.length > 0 && (
+                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 md:col-span-2">
+                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-orange-400">Review Changes Before Save</p>
+                  <div className="mt-3 grid gap-2">
+                    {fieldChanges.map((change: FieldChange) => (
+                      <div key={change.label} className="grid gap-2 rounded-xl border border-white/10 bg-black/35 p-3 text-[11px] normal-case md:grid-cols-[150px_1fr_1fr]">
+                        <p className="font-black uppercase tracking-widest text-white">{change.label}</p>
+                        <p className="text-zinc-500">Before: <span className="text-zinc-300">{change.before}</span></p>
+                        <p className="text-orange-200">After: <span className="text-white">{change.after}</span></p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
           {certificate.file_url && (
             <a href={certificate.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-orange-500 hover:text-white md:col-span-2">
               <ExternalLink size={14} /> View current file
             </a>
+          )}
+          {!isAddingCert && (
+            <div className="rounded-2xl border border-orange-500/15 bg-black/35 p-4 md:col-span-2">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-orange-500">Editable Page Memory</p>
+                  <p className="mt-1 text-xs normal-case text-zinc-500">Set page numbers once. Future AI scans will use these hints before reading the full certificate.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onSavePageMaps(pageMapDrafts)}
+                  disabled={!certificate.master_id || isSavingPageMaps}
+                  className="rounded-2xl border border-orange-500/30 bg-orange-600 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isSavingPageMaps ? 'Saving Memory...' : 'Save Page Memory'}
+                </button>
+              </div>
+              {!certificate.master_id ? (
+                <p className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs normal-case text-zinc-500">Save this new certificate first before page memory can be stored.</p>
+              ) : (
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {pageMapDrafts.map((draft) => {
+                    const label = pageMapFieldOptions.find((field) => field.fieldName === draft.fieldName)?.label || draft.fieldName
+                    return (
+                      <div key={draft.fieldName} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-white">{label}</p>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <input
+                            value={draft.pagesText}
+                            onChange={(event) => updatePageMapDraft(draft.fieldName, { pagesText: event.target.value })}
+                            placeholder="Pages e.g. 1, 3"
+                            className="rounded-xl border border-white/10 bg-black px-3 py-2 text-xs font-bold normal-case text-white outline-none focus:border-orange-500"
+                          />
+                          <input
+                            value={draft.fallbackText}
+                            onChange={(event) => updatePageMapDraft(draft.fieldName, { fallbackText: event.target.value })}
+                            placeholder="Fallback"
+                            className="rounded-xl border border-white/10 bg-black px-3 py-2 text-xs font-bold normal-case text-white outline-none focus:border-orange-500"
+                          />
+                        </div>
+                        <input
+                          value={draft.hint}
+                          onChange={(event) => updatePageMapDraft(draft.fieldName, { hint: event.target.value })}
+                          placeholder="Extraction hint"
+                          className="mt-2 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-xs font-bold normal-case text-zinc-300 outline-none focus:border-orange-500"
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           )}
           {!isAddingCert && (
             <div className="rounded-2xl border border-orange-500/15 bg-black/35 p-4 md:col-span-2">
@@ -1175,11 +1942,13 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
 function ShipCertificateRow({
   row,
   latestHistory,
+  hasPageMemory,
   canEdit,
   onEdit,
 }: {
   row: ShipCertificate
   latestHistory: ShipCertHistoryRow | null
+  hasPageMemory: boolean
   canEdit: boolean
   onEdit: (row: ShipCertificate) => void
 }) {
@@ -1189,9 +1958,10 @@ function ShipCertificateRow({
   const surveyDays = daysUntil(row.next_survey_date)
   const latestAction = latestHistory ? getAuditActionLabel(latestHistory.action).toLowerCase() : ''
   const latestActor = latestHistory?.actor_name || 'Unknown user'
+  const nextAction = getShipCertNextAction(row)
 
   return (
-    <article className="grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-5 last:border-0 md:min-w-[1040px] md:grid-cols-[70px_105px_minmax(180px,1.35fr)_120px_120px_170px_minmax(120px,0.8fr)_100px] md:items-center md:gap-3">
+    <article className="grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-5 last:border-0 md:min-w-[1180px] md:grid-cols-[70px_95px_minmax(180px,1.3fr)_110px_115px_160px_145px_minmax(120px,0.8fr)_100px] md:items-center md:gap-3">
       <div>
         <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 md:hidden">Code</p>
         <p className="font-black text-orange-200">{row.code || '-'}</p>
@@ -1205,6 +1975,9 @@ function ShipCertificateRow({
         <p className="mt-1 text-[11px] normal-case text-zinc-500">
           Issue by {row.issue_by || '-'} · Issued {formatShipDate(row.issued_date)}
         </p>
+        <span className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-widest ${hasPageMemory ? 'border-blue-400/30 bg-blue-500/10 text-blue-200' : 'border-zinc-500/20 bg-white/5 text-zinc-500'}`}>
+          {hasPageMemory ? 'Memory Ready' : 'Needs Mapping'}
+        </span>
       </div>
       <div>
         <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 md:hidden">Expiry</p>
@@ -1224,6 +1997,10 @@ function ShipCertificateRow({
             Next {formatShipDate(row.next_survey_date)} {surveyDays !== null ? `(${surveyDays}d)` : ''}
           </p>
         )}
+      </div>
+      <div className={`rounded-2xl border px-3 py-2 ${nextAction.style}`}>
+        <p className="text-[8px] font-black uppercase tracking-widest">{nextAction.label}</p>
+        <p className="mt-1 text-[10px] normal-case text-zinc-300">{nextAction.detail}</p>
       </div>
       <div className="min-w-0 text-[11px] normal-case text-zinc-400">
         <div className="flex items-center gap-2">

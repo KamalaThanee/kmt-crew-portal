@@ -1,5 +1,6 @@
 export type ShipCertificate = {
   id?: string
+  master_id?: string | null
   vessel_name?: string | null
   category?: string | null
   code?: string | null

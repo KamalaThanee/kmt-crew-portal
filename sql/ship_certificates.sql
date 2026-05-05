@@ -87,6 +87,8 @@ drop policy if exists "Allow anon ship certificates update" on public.ship_certi
 drop policy if exists "Allow anon ship cert surveys read" on public.ship_cert_surveys;
 drop policy if exists "Allow anon ship cert surveys insert" on public.ship_cert_surveys;
 drop policy if exists "Allow anon ship cert page maps read" on public.ship_cert_ai_page_maps;
+drop policy if exists "Allow anon ship cert page maps insert" on public.ship_cert_ai_page_maps;
+drop policy if exists "Allow anon ship cert page maps update" on public.ship_cert_ai_page_maps;
 drop policy if exists "Allow anon ship cert history read" on public.ship_cert_history;
 drop policy if exists "Allow anon ship cert history insert" on public.ship_cert_history;
 
@@ -97,6 +99,8 @@ create policy "Allow anon ship certificates update" on public.ship_certificates 
 create policy "Allow anon ship cert surveys read" on public.ship_cert_surveys for select using (true);
 create policy "Allow anon ship cert surveys insert" on public.ship_cert_surveys for insert with check (true);
 create policy "Allow anon ship cert page maps read" on public.ship_cert_ai_page_maps for select using (true);
+create policy "Allow anon ship cert page maps insert" on public.ship_cert_ai_page_maps for insert with check (true);
+create policy "Allow anon ship cert page maps update" on public.ship_cert_ai_page_maps for update using (true) with check (true);
 create policy "Allow anon ship cert history read" on public.ship_cert_history for select using (true);
 create policy "Allow anon ship cert history insert" on public.ship_cert_history for insert with check (true);
 
