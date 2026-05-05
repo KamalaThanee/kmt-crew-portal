@@ -195,6 +195,22 @@ const buildPageMapDrafts = (maps: ShipCertPageMapRow[]) => pageMapFieldOptions.m
   }
 })
 
+const mergeAiPageMapIntoDrafts = (drafts: PageMapDraft[], pageMap?: ShipCertAiPageMap) => {
+  if (!pageMap) return drafts
+
+  return drafts.map((draft) => {
+    const aiMap = pageMap[draft.fieldName]
+    const pages = toPageList(aiMap?.pages || aiMap?.page)
+    if (pages.length === 0) return draft
+
+    return {
+      ...draft,
+      pagesText: pages.join(', '),
+      hint: aiMap?.hint || draft.hint,
+    }
+  })
+}
+
 const buildPageMapHints = (maps: ShipCertPageMapRow[]) => maps.map((map) => ({
   fieldName: map.field_name,
   preferredPages: toPageList(map.preferred_pages),
@@ -1203,10 +1219,20 @@ function ShipCertificateModal({
     setPageMapDrafts(buildPageMapDrafts(pageMapRows))
   }, [pageMapRows])
 
+  useEffect(() => {
+    if (scanResult?.pageMap) {
+      setPageMapDrafts((prev) => mergeAiPageMapIntoDrafts(prev, scanResult.pageMap))
+    }
+  }, [scanResult?.pageMap])
+
   const updatePageMapDraft = (fieldName: string, patch: Partial<PageMapDraft>) => {
     setPageMapDrafts((prev) => prev.map((draft) => (
       draft.fieldName === fieldName ? { ...draft, ...patch } : draft
     )))
+  }
+
+  const applyAiPageMapToDrafts = () => {
+    setPageMapDrafts((prev) => mergeAiPageMapIntoDrafts(prev, scanResult?.pageMap))
   }
 
   useEffect(() => {
@@ -1367,7 +1393,17 @@ function ShipCertificateModal({
                 )}
                 {aiPageMapRows.length > 0 && (
                   <div className="rounded-2xl border border-orange-400/20 bg-orange-500/10 p-4">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-orange-400">AI Page Map From This File</p>
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-orange-400">AI Page Map From This File</p>
+                      <button
+                        type="button"
+                        onClick={applyAiPageMapToDrafts}
+                        className="rounded-xl border border-orange-400/30 bg-black/30 px-3 py-2 text-[8px] font-black uppercase tracking-widest text-orange-100 hover:bg-orange-600 hover:text-white"
+                      >
+                        Apply to Editable Memory
+                      </button>
+                    </div>
+                    <p className="mt-2 text-[11px] normal-case text-orange-100/70">AI page map has also been copied into Editable Page Memory below. Review and adjust before saving.</p>
                     <div className="mt-3 space-y-2">
                       {aiPageMapRows.map((map) => (
                         <div key={map.fieldName} className="rounded-xl bg-black/35 p-3 text-[11px] normal-case text-zinc-300">
