@@ -26,6 +26,7 @@ const editableCategories = categories.filter((category) => category !== 'all')
 const statusFilters: Array<'all' | ShipCertificateStatus> = ['all', 'expired', 'due-30', 'due-60', 'due-90', 'due-180', 'valid', 'no-expiry']
 const SHIP_CERT_BUCKET = 'ship-certificates'
 type DashboardFilter = 'all' | 'expired' | 'due30' | 'due90' | 'surveyDue'
+type ShipCertSortMode = 'checklist' | 'priority' | 'expiry' | 'survey' | 'code' | 'category'
 
 type ShipCertHistoryRow = {
   id: string
@@ -391,6 +392,25 @@ const getAuditActionStyle = (action?: string | null) => {
   return 'border-white/10 bg-white/5 text-zinc-300'
 }
 
+const toShipCertDateValue = (value?: string | null) => {
+  if (!value) return Number.POSITIVE_INFINITY
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time
+}
+
+const getShipCertPriorityRank = (row: ShipCertificate) => {
+  const status = getShipCertificateStatus(row)
+  const survey = getShipSurveyStatus(row)
+  if (status === 'expired') return 0
+  if (status === 'due-30') return 1
+  if (['due-60', 'due-90'].includes(status)) return 2
+  if (['survey-overdue', 'survey-due-30'].includes(survey)) return 3
+  if (['survey-due-60', 'survey-due-90'].includes(survey)) return 4
+  if (status === 'valid') return 5
+  if (status === 'no-expiry') return 6
+  return 7
+}
+
 const getAuditChangeSummary = (row: ShipCertHistoryRow) => {
   if (row.action === 'add_certificate') return 'New certificate record added'
   if (row.action === 'delete_certificate') return 'Certificate record deleted'
@@ -463,6 +483,7 @@ export default function ShipCertificatesPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | ShipCertificateStatus>('all')
   const [pageMemoryFilter, setPageMemoryFilter] = useState<PageMemoryFilter>('all')
   const [dashboardFilter, setDashboardFilter] = useState<DashboardFilter>('all')
+  const [sortMode, setSortMode] = useState<ShipCertSortMode>('checklist')
   const [editingCert, setEditingCert] = useState<ShipCertificate | null>(null)
   const [editForm, setEditForm] = useState<ShipCertificateForm | null>(null)
   const [isAddingCert, setIsAddingCert] = useState(false)
@@ -867,7 +888,7 @@ export default function ShipCertificatesPage() {
 
   const filteredRows = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
-    return rows.filter((row) => {
+    const matches = rows.filter((row) => {
       const status = getShipCertificateStatus(row)
       const survey = getShipSurveyStatus(row)
       const certLabel = [row.code, row.cert_name].filter(Boolean).join(' | ')
@@ -888,7 +909,34 @@ export default function ShipCertificatesPage() {
         matchesDashboard
       )
     })
-  }, [categoryFilter, dashboardFilter, pageMemoryFilter, pageMemoryMasterIds, rows, searchTerm, statusFilter])
+
+    return [...matches].sort((a, b) => {
+      if (sortMode === 'priority') {
+        return (
+          getShipCertPriorityRank(a) - getShipCertPriorityRank(b) ||
+          toShipCertDateValue(a.expiry_date) - toShipCertDateValue(b.expiry_date) ||
+          toShipCertDateValue(a.next_survey_date) - toShipCertDateValue(b.next_survey_date) ||
+          (a.sort_order || 0) - (b.sort_order || 0)
+        )
+      }
+      if (sortMode === 'expiry') {
+        return toShipCertDateValue(a.expiry_date) - toShipCertDateValue(b.expiry_date)
+      }
+      if (sortMode === 'survey') {
+        return toShipCertDateValue(a.next_survey_date) - toShipCertDateValue(b.next_survey_date)
+      }
+      if (sortMode === 'code') {
+        return String(a.code || '').localeCompare(String(b.code || ''), undefined, { numeric: true })
+      }
+      if (sortMode === 'category') {
+        return (
+          String(a.category || '').localeCompare(String(b.category || '')) ||
+          (a.sort_order || 0) - (b.sort_order || 0)
+        )
+      }
+      return (a.sort_order || 0) - (b.sort_order || 0)
+    })
+  }, [categoryFilter, dashboardFilter, pageMemoryFilter, pageMemoryMasterIds, rows, searchTerm, sortMode, statusFilter])
 
   const certOptions = useMemo(() => {
     return Array.from(new Set(rows.map((row) => {
@@ -1058,7 +1106,7 @@ export default function ShipCertificatesPage() {
         </section>
 
         <section className="rounded-[34px] border border-white/10 bg-black/30 p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_170px_150px]">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_170px_170px_150px]">
             <label className="flex items-center gap-3 rounded-2xl border border-orange-500/20 bg-black/40 px-4">
               <Search size={16} className="text-orange-500" />
               <input
@@ -1097,6 +1145,18 @@ export default function ShipCertificatesPage() {
               <option value="ready">Memory Ready</option>
               <option value="missing">Needs Mapping</option>
             </select>
+            <select
+              value={sortMode}
+              onChange={(event) => setSortMode(event.target.value as ShipCertSortMode)}
+              className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+            >
+              <option value="checklist">Sort: Checklist</option>
+              <option value="priority">Sort: Priority</option>
+              <option value="expiry">Sort: Expiry</option>
+              <option value="survey">Sort: Survey</option>
+              <option value="code">Sort: Code</option>
+              <option value="category">Sort: Category</option>
+            </select>
             <button
               type="button"
               onClick={() => {
@@ -1105,6 +1165,7 @@ export default function ShipCertificatesPage() {
                 setStatusFilter('all')
                 setPageMemoryFilter('all')
                 setDashboardFilter('all')
+                setSortMode('checklist')
               }}
               className="h-14 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 text-xs font-black uppercase tracking-widest text-orange-100 hover:bg-orange-600 hover:text-white"
             >
