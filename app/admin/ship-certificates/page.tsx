@@ -1197,6 +1197,7 @@ function ShipCertificateModal({
   onSave: () => void
 }) {
   const showExtractedFields = !isAddingCert || !!form.cert_name || !!scanResult
+  const hasPageMemory = pageMapRows.length > 0
   const [pageMapDrafts, setPageMapDrafts] = useState<PageMapDraft[]>(() => buildPageMapDrafts(pageMapRows))
   useEffect(() => {
     setPageMapDrafts(buildPageMapDrafts(pageMapRows))
@@ -1207,6 +1208,12 @@ function ShipCertificateModal({
       draft.fieldName === fieldName ? { ...draft, ...patch } : draft
     )))
   }
+
+  useEffect(() => {
+    if (!hasPageMemory && analysisFocus === 'annual_survey') {
+      onAnalysisFocusChange('full_certificate')
+    }
+  }, [analysisFocus, hasPageMemory, onAnalysisFocusChange])
 
   const aiPageMapRows = scanResult?.pageMap
     ? Object.entries(scanResult.pageMap)
@@ -1286,26 +1293,37 @@ function ShipCertificateModal({
               {([
                 { value: 'full_certificate' as const, label: 'Full Certificate', detail: 'Use for new upload or full renewal.' },
                 { value: 'annual_survey' as const, label: 'Annual Survey Page', detail: 'Use for endorsement/signature pages.' },
-              ]).map((mode) => (
-                <button
-                  key={mode.value}
-                  type="button"
-                  onClick={() => onAnalysisFocusChange(mode.value)}
-                  disabled={isScanning}
-                  className={`rounded-2xl border p-3 text-left transition-all ${
-                    analysisFocus === mode.value
-                      ? 'border-orange-400 bg-orange-600/20 text-white'
-                      : 'border-white/10 bg-black/35 text-zinc-400 hover:border-orange-500/40 hover:text-white'
-                  }`}
-                >
-                  <p className="text-[10px] font-black uppercase tracking-widest">{mode.label}</p>
-                  <p className="mt-1 text-[11px] normal-case">{mode.detail}</p>
-                </button>
-              ))}
+              ]).map((mode) => {
+                const disabledByRule = mode.value === 'annual_survey' && !hasPageMemory
+                return (
+                  <button
+                    key={mode.value}
+                    type="button"
+                    onClick={() => {
+                      if (!disabledByRule) onAnalysisFocusChange(mode.value)
+                    }}
+                    disabled={isScanning || disabledByRule}
+                    className={`rounded-2xl border p-3 text-left transition-all ${
+                      analysisFocus === mode.value
+                        ? 'border-orange-400 bg-orange-600/20 text-white'
+                        : 'border-white/10 bg-black/35 text-zinc-400 hover:border-orange-500/40 hover:text-white'
+                    } disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-black/20 disabled:text-zinc-700`}
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-widest">{mode.label}</p>
+                    <p className="mt-1 text-[11px] normal-case">
+                      {disabledByRule ? 'Locked until page memory exists. Use Full Certificate first or save page memory manually.' : mode.detail}
+                    </p>
+                  </button>
+                )
+              })}
             </div>
-            {pageMapRows.length > 0 && (
+            {hasPageMemory ? (
               <p className="mt-3 rounded-xl border border-orange-500/20 bg-black/30 p-3 text-[11px] normal-case text-orange-100">
                 Page memory active: AI will use saved page hints first, then inspect fallback pages if needed.
+              </p>
+            ) : (
+              <p className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-[11px] normal-case text-zinc-500">
+                No page memory yet. Run Full Certificate AI once, save page memory below, or upload the file and fill fields manually without AI.
               </p>
             )}
             {(scanMessage || scanResult) && (
