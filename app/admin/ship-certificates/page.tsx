@@ -411,6 +411,62 @@ const getShipCertPriorityRank = (row: ShipCertificate) => {
   return 7
 }
 
+const getShipCertNextAction = (row: ShipCertificate) => {
+  const status = getShipCertificateStatus(row)
+  const survey = getShipSurveyStatus(row)
+  const expiryDays = daysUntil(row.expiry_date)
+  const surveyDays = daysUntil(row.next_survey_date)
+
+  if (status === 'expired') {
+    return {
+      label: 'Renew now',
+      detail: row.expiry_date ? `Expired ${formatShipDate(row.expiry_date)}` : 'Expired certificate',
+      style: 'border-red-500/30 bg-red-500/10 text-red-200',
+    }
+  }
+  if (status === 'due-30') {
+    return {
+      label: 'Renew now',
+      detail: expiryDays !== null ? `${expiryDays} days left` : 'Within 30 days',
+      style: 'border-orange-500/30 bg-orange-500/10 text-orange-200',
+    }
+  }
+  if (['due-60', 'due-90'].includes(status)) {
+    return {
+      label: 'Plan renewal',
+      detail: expiryDays !== null ? `${expiryDays} days left` : 'Within planning window',
+      style: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+    }
+  }
+  if (survey === 'survey-overdue') {
+    return {
+      label: 'Complete survey',
+      detail: row.next_survey_date ? `Due ${formatShipDate(row.next_survey_date)}` : 'Survey overdue',
+      style: 'border-red-500/30 bg-red-500/10 text-red-200',
+    }
+  }
+  if (['survey-due-30', 'survey-due-60', 'survey-due-90'].includes(survey)) {
+    return {
+      label: 'Plan survey',
+      detail: surveyDays !== null ? `${surveyDays} days left` : 'Class endorsement due',
+      style: 'border-blue-400/30 bg-blue-500/10 text-blue-200',
+    }
+  }
+  if (status === 'no-expiry') {
+    return {
+      label: 'No expiry',
+      detail: row.has_survey ? 'Track survey only' : 'No routine action',
+      style: 'border-white/10 bg-white/5 text-zinc-300',
+    }
+  }
+
+  return {
+    label: 'Monitor',
+    detail: expiryDays !== null ? `${expiryDays} days left` : 'Valid',
+    style: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
+  }
+}
+
 const getAuditChangeSummary = (row: ShipCertHistoryRow) => {
   if (row.action === 'add_certificate') return 'New certificate record added'
   if (row.action === 'delete_certificate') return 'Certificate record deleted'
@@ -1179,13 +1235,14 @@ export default function ShipCertificatesPage() {
         </p>
 
         <section className="overflow-x-auto rounded-[34px] border border-white/10 bg-black/30">
-          <div className="hidden min-w-[1040px] grid-cols-[70px_105px_minmax(180px,1.35fr)_120px_120px_170px_minmax(120px,0.8fr)_100px] gap-3 border-b border-white/10 px-5 py-5 text-[9px] font-black uppercase tracking-widest text-zinc-500 md:grid">
+          <div className="hidden min-w-[1180px] grid-cols-[70px_95px_minmax(180px,1.3fr)_110px_115px_160px_145px_minmax(120px,0.8fr)_100px] gap-3 border-b border-white/10 px-5 py-5 text-[9px] font-black uppercase tracking-widest text-zinc-500 md:grid">
             <span>Code</span>
             <span>Category</span>
             <span>Certificate</span>
             <span>Expiry</span>
             <span>Status</span>
             <span>Survey</span>
+            <span>Next Action</span>
             <span>Remark</span>
             <span>Action</span>
           </div>
@@ -1834,9 +1891,10 @@ function ShipCertificateRow({
   const surveyDays = daysUntil(row.next_survey_date)
   const latestAction = latestHistory ? getAuditActionLabel(latestHistory.action).toLowerCase() : ''
   const latestActor = latestHistory?.actor_name || 'Unknown user'
+  const nextAction = getShipCertNextAction(row)
 
   return (
-    <article className="grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-5 last:border-0 md:min-w-[1040px] md:grid-cols-[70px_105px_minmax(180px,1.35fr)_120px_120px_170px_minmax(120px,0.8fr)_100px] md:items-center md:gap-3">
+    <article className="grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-5 last:border-0 md:min-w-[1180px] md:grid-cols-[70px_95px_minmax(180px,1.3fr)_110px_115px_160px_145px_minmax(120px,0.8fr)_100px] md:items-center md:gap-3">
       <div>
         <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 md:hidden">Code</p>
         <p className="font-black text-orange-200">{row.code || '-'}</p>
@@ -1872,6 +1930,10 @@ function ShipCertificateRow({
             Next {formatShipDate(row.next_survey_date)} {surveyDays !== null ? `(${surveyDays}d)` : ''}
           </p>
         )}
+      </div>
+      <div className={`rounded-2xl border px-3 py-2 ${nextAction.style}`}>
+        <p className="text-[8px] font-black uppercase tracking-widest">{nextAction.label}</p>
+        <p className="mt-1 text-[10px] normal-case text-zinc-300">{nextAction.detail}</p>
       </div>
       <div className="min-w-0 text-[11px] normal-case text-zinc-400">
         <div className="flex items-center gap-2">
