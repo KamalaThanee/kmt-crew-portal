@@ -391,6 +391,36 @@ const getAuditActionStyle = (action?: string | null) => {
   return 'border-white/10 bg-white/5 text-zinc-300'
 }
 
+type FieldChange = {
+  label: string
+  before: string
+  after: string
+}
+
+const getCertificateFieldChanges = (certificate: ShipCertificate, form: ShipCertificateForm) => {
+  const fields: Array<{ label: string; before: unknown; after: unknown }> = [
+    { label: 'Category', before: certificate.category, after: form.category },
+    { label: 'Cert Code', before: certificate.code, after: form.code },
+    { label: 'Certificate Name', before: certificate.cert_name, after: form.cert_name },
+    { label: 'Issue By', before: certificate.issue_by, after: form.issue_by },
+    { label: 'Issued Date', before: certificate.issued_date, after: form.issued_date },
+    { label: 'Expiry Date', before: certificate.expiry_date, after: form.expiry_date },
+    { label: 'Last Survey Date', before: certificate.last_survey_date, after: form.last_survey_date },
+    { label: 'Next Survey Date', before: certificate.next_survey_date, after: form.next_survey_date },
+    { label: 'Certificate No. / Remark', before: certificate.remark, after: form.remark },
+    { label: 'Track Expiry', before: certificate.has_expiry, after: form.has_expiry },
+    { label: 'Track Survey', before: certificate.has_survey, after: form.has_survey },
+  ]
+
+  return fields
+    .map(({ label, before, after }) => ({
+      label,
+      before: before === true ? 'Yes' : before === false ? 'No' : String(before || '-'),
+      after: after === true ? 'Yes' : after === false ? 'No' : String(after || '-'),
+    }))
+    .filter((field) => field.before !== field.after)
+}
+
 export default function ShipCertificatesPage() {
   const router = useRouter()
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -412,10 +442,13 @@ export default function ShipCertificatesPage() {
   const [scanResult, setScanResult] = useState<ShipCertScanResult | null>(null)
   const [scanMessage, setScanMessage] = useState('')
   const [analysisFocus, setAnalysisFocus] = useState<ShipCertAnalysisFocus>('full_certificate')
+  const [bulkUploadQueue, setBulkUploadQueue] = useState<File[]>([])
+  const [bulkUploadIndex, setBulkUploadIndex] = useState(0)
   const [isScanning, setIsScanning] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isSavingPageMaps, setIsSavingPageMaps] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
+  const [isExportingAudit, setIsExportingAudit] = useState(false)
 
   useEffect(() => {
     const user = readCurrentUser()
@@ -487,7 +520,7 @@ export default function ShipCertificatesPage() {
     setAnalysisFocus('full_certificate')
   }
 
-  const openAddCertModal = () => {
+  const openAddCertModal = (preselectedFile: File | null = null) => {
     const nextSortOrder = Math.max(0, ...rows.map((row) => row.sort_order || 0)) + 1
     const defaultCategory = categoryFilter === 'all' ? 'Flag' : categoryFilter
     const draft = {
@@ -497,9 +530,28 @@ export default function ShipCertificatesPage() {
     setEditingCert(draft)
     setEditForm(buildFormFromCert(draft))
     setIsAddingCert(true)
-    setUploadFile(null)
+    setUploadFile(preselectedFile)
     setScanResult(null)
-    setScanMessage('')
+    setScanMessage(preselectedFile ? `Bulk upload ${bulkUploadIndex + 1} of ${bulkUploadQueue.length || 1}: run AI Vision, review, then save.` : '')
+    setAnalysisFocus('full_certificate')
+  }
+
+  const openBulkUploadQueue = (files: File[]) => {
+    if (files.length === 0) return
+    setBulkUploadQueue(files)
+    setBulkUploadIndex(0)
+    const nextSortOrder = Math.max(0, ...rows.map((row) => row.sort_order || 0)) + 1
+    const defaultCategory = categoryFilter === 'all' ? 'Flag' : categoryFilter
+    const draft = {
+      ...buildBlankShipCert(nextSortOrder, defaultCategory),
+      code: getNextCertCode(rows, defaultCategory),
+    }
+    setEditingCert(draft)
+    setEditForm(buildFormFromCert(draft))
+    setIsAddingCert(true)
+    setUploadFile(files[0])
+    setScanResult(null)
+    setScanMessage(`Bulk upload 1 of ${files.length}: run AI Vision, review, then save.`)
     setAnalysisFocus('full_certificate')
   }
 
@@ -511,6 +563,8 @@ export default function ShipCertificatesPage() {
     setScanResult(null)
     setScanMessage('')
     setAnalysisFocus('full_certificate')
+    setBulkUploadQueue([])
+    setBulkUploadIndex(0)
   }
 
   const handleShipAiScan = async () => {
@@ -690,10 +744,33 @@ export default function ShipCertificatesPage() {
     }
     setHistoryRows(await fetchHistoryRows())
 
-    setRows((prev) => {
-      if (isAddingCert) return [...prev, data as ShipCertificate].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-      return prev.map((row) => (row.id === editingCert.id ? data as ShipCertificate : row))
-    })
+    const savedCertificate = data as ShipCertificate
+    const nextRows = isAddingCert
+      ? [...rows, savedCertificate].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+      : rows.map((row) => (row.id === editingCert.id ? savedCertificate : row))
+    setRows(nextRows)
+
+    if (isAddingCert && bulkUploadQueue.length > 0 && bulkUploadIndex + 1 < bulkUploadQueue.length) {
+      const nextIndex = bulkUploadIndex + 1
+      const defaultCategory = categoryFilter === 'all' ? 'Flag' : categoryFilter
+      const nextSortOrder = Math.max(0, ...nextRows.map((row) => row.sort_order || 0)) + 1
+      const draft = {
+        ...buildBlankShipCert(nextSortOrder, defaultCategory),
+        code: getNextCertCode(nextRows, defaultCategory),
+      }
+      setBulkUploadIndex(nextIndex)
+      setEditingCert(draft)
+      setEditForm(buildFormFromCert(draft))
+      setUploadFile(bulkUploadQueue[nextIndex])
+      setScanResult(null)
+      setScanMessage(`Bulk upload ${nextIndex + 1} of ${bulkUploadQueue.length}: run AI Vision, review, then save.`)
+      setAnalysisFocus('full_certificate')
+      setIsSaving(false)
+      return
+    }
+
+    setBulkUploadQueue([])
+    setBulkUploadIndex(0)
     setIsSaving(false)
     closeEditModal()
   }
@@ -794,6 +871,41 @@ export default function ShipCertificatesPage() {
       setErrorMessage(`Export failed: ${error.message || 'Unable to create 11.62 Excel file'}`)
     } finally {
       setIsExporting(false)
+    }
+  }
+
+  const handleExportAuditLog = async () => {
+    setIsExportingAudit(true)
+    setErrorMessage('')
+    try {
+      const XLSX = await import('xlsx')
+      const auditRows = historyRows.map((row) => {
+        const cert = getAuditCertificate(row)
+        return {
+          Date: formatAuditDate(row.created_at),
+          Action: getAuditActionLabel(row.action),
+          Actor: row.actor_name || 'Unknown user',
+          Code: cert.code || '',
+          Category: cert.category || '',
+          Certificate: cert.cert_name || '',
+          'Issue By': cert.issue_by || '',
+          'Issued Date': cert.issued_date || '',
+          'Expiry Date': cert.expiry_date || '',
+          'Last Survey Date': cert.last_survey_date || '',
+          'Next Survey Date': cert.next_survey_date || '',
+          'Certificate No. / Remark': cleanCertificateRemark(cert.remark),
+          'File URL': cert.file_url || '',
+        }
+      })
+      const worksheet = XLSX.utils.json_to_sheet(auditRows)
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Ship Cert Audit')
+      const fileDate = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(workbook, `KMT-Ship-Certificate-Audit-${fileDate}.xlsx`)
+    } catch (error: any) {
+      setErrorMessage(`Export failed: ${error.message || 'Unable to create audit Excel file'}`)
+    } finally {
+      setIsExportingAudit(false)
     }
   }
 
@@ -938,13 +1050,38 @@ export default function ShipCertificatesPage() {
             {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
             Export 11.62 Excel
           </button>
+          <button
+            type="button"
+            onClick={handleExportAuditLog}
+            disabled={isExportingAudit || historyRows.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-3xl border border-white/10 bg-white/5 px-5 py-4 text-xs font-black uppercase tracking-widest text-zinc-200 hover:border-orange-400 hover:bg-orange-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isExportingAudit ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+            Export Audit
+          </button>
           {canEdit && (
-            <button
-              onClick={openAddCertModal}
-              className="inline-flex items-center justify-center gap-2 rounded-3xl border border-orange-400/30 bg-orange-600 px-5 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 hover:bg-orange-500"
-            >
-              <PlusCircle size={16} /> Add New Cert
-            </button>
+            <>
+              <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-3xl border border-white/10 bg-white/5 px-5 py-4 text-xs font-black uppercase tracking-widest text-zinc-200 hover:border-orange-400 hover:bg-orange-600 hover:text-white">
+                <UploadCloud size={16} /> Bulk Queue
+                <input
+                  type="file"
+                  multiple
+                  accept="application/pdf,image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files || [])
+                    openBulkUploadQueue(files)
+                    event.target.value = ''
+                  }}
+                />
+              </label>
+              <button
+                onClick={() => openAddCertModal()}
+                className="inline-flex items-center justify-center gap-2 rounded-3xl border border-orange-400/30 bg-orange-600 px-5 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 hover:bg-orange-500"
+              >
+                <PlusCircle size={16} /> Add New Cert
+              </button>
+            </>
           )}
         </div>
 
@@ -1274,6 +1411,7 @@ function ShipCertificateModal({
 }) {
   const showExtractedFields = !isAddingCert || !!form.cert_name || !!scanResult
   const hasPageMemory = pageMapRows.length > 0
+  const fieldChanges = isAddingCert ? [] : getCertificateFieldChanges(certificate, form)
   const [pageMapDrafts, setPageMapDrafts] = useState<PageMapDraft[]>(() => buildPageMapDrafts(pageMapRows))
   useEffect(() => {
     setPageMapDrafts(buildPageMapDrafts(pageMapRows))
@@ -1508,6 +1646,20 @@ function ShipCertificateModal({
                 <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Remark / Certificate No.</span>
                 <textarea value={form.remark} onChange={(event) => onFormChange({ ...form, remark: event.target.value })} rows={3} className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none focus:border-orange-500" />
               </label>
+              {!isAddingCert && fieldChanges.length > 0 && (
+                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4 md:col-span-2">
+                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-orange-400">Review Changes Before Save</p>
+                  <div className="mt-3 grid gap-2">
+                    {fieldChanges.map((change: FieldChange) => (
+                      <div key={change.label} className="grid gap-2 rounded-xl border border-white/10 bg-black/35 p-3 text-[11px] normal-case md:grid-cols-[150px_1fr_1fr]">
+                        <p className="font-black uppercase tracking-widest text-white">{change.label}</p>
+                        <p className="text-zinc-500">Before: <span className="text-zinc-300">{change.before}</span></p>
+                        <p className="text-orange-200">After: <span className="text-white">{change.after}</span></p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
           {certificate.file_url && (
