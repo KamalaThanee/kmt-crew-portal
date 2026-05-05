@@ -22,6 +22,17 @@ type CertificateLogRow = {
   created_at: string | null
 }
 
+type CrewCertificateLogRow = CertificateLogRow & {
+  crew_id?: string | null
+  cert_name?: string | null
+}
+
+type UnifiedCertificateLogRow = CertificateLogRow & {
+  source: 'crew' | 'ship'
+  subject: string
+  file_url?: string | null
+}
+
 const formatLogDate = (value?: string | null) => {
   if (!value) return '-'
   const date = new Date(value)
@@ -37,13 +48,15 @@ const getLogActionLabel = (action?: string | null) => {
     renew_upload: 'Renewed / Uploaded',
     manual_update: 'Edited',
     delete_certificate: 'Deleted',
+    upload_certificate: 'Uploaded',
+    current_upload: 'Current Upload',
   }
   return labels[String(action || '')] || String(action || 'Updated').replace(/_/g, ' ')
 }
 
 const getLogActionStyle = (action?: string | null) => {
   if (action === 'delete_certificate') return 'border-red-500/30 bg-red-500/10 text-red-200'
-  if (action === 'renew_upload') return 'border-orange-400/30 bg-orange-500/10 text-orange-200'
+  if (['renew_upload', 'upload_certificate', 'current_upload'].includes(String(action))) return 'border-orange-400/30 bg-orange-500/10 text-orange-200'
   if (action === 'add_certificate') return 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
   return 'border-white/10 bg-white/5 text-zinc-300'
 }
@@ -76,6 +89,7 @@ function CertificatesContent() {
   const [crews, setCrews] = useState<any[]>([])
   const [rules, setRules] = useState<any[]>([])
   const [certificateLogs, setCertificateLogs] = useState<CertificateLogRow[]>([])
+  const [crewCertificateLogs, setCrewCertificateLogs] = useState<CrewCertificateLogRow[]>([])
   
   // Filter States
   const [searchTerm, setSearchTerm] = useState('')
@@ -90,13 +104,14 @@ function CertificatesContent() {
   const canOpenShipCertificates = useMemo(() => canViewShipCertificates(currentUser?.position), [currentUser]);
 
   const fetchData = async () => {
-    const [m, c, crewsRes, allC, r, logs] = await Promise.all([
+    const [m, c, crewsRes, allC, r, logs, crewLogs] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
       supabase.from('crew_certs').select('*').eq('crew_id', currentUser?.id),
       supabase.from('crews').select('*').order('full_name'),
       supabase.from('crew_certs').select('*'),
       supabase.from('cert_rules').select('*'),
       supabase.from('ship_cert_history').select('*').order('created_at', { ascending: false }).limit(50),
+      supabase.from('crew_cert_history').select('*').order('created_at', { ascending: false }).limit(100),
     ]);
     if (m.data) setMatrix(m.data);
     if (c.data) setMyCerts(c.data);
@@ -104,6 +119,7 @@ function CertificatesContent() {
     if (allC.data) setAllCerts(allC.data);
     if (r.data) setRules(r.data);
     if (logs.data) setCertificateLogs(logs.data as unknown as CertificateLogRow[]);
+    if (crewLogs.data) setCrewCertificateLogs(crewLogs.data as unknown as CrewCertificateLogRow[]);
     setLoading(false);
   }
 
@@ -290,18 +306,87 @@ function CertificatesContent() {
       )}
 
       {activeTab === 'log' && canManageCertificates && (
-        <CertificateLogPanel rows={certificateLogs} />
+        <CertificateLogPanel
+          crewCertRows={allCerts}
+          crewRows={crews}
+          crewRowsFromHistory={crewCertificateLogs}
+          shipRows={certificateLogs}
+        />
       )}
     </div>
   )
 }
 
-function CertificateLogPanel({ rows }: { rows: CertificateLogRow[] }) {
+function CertificateLogPanel({
+  crewCertRows,
+  crewRows,
+  crewRowsFromHistory,
+  shipRows,
+}: {
+  crewCertRows: any[]
+  crewRows: any[]
+  crewRowsFromHistory: CrewCertificateLogRow[]
+  shipRows: CertificateLogRow[]
+}) {
+  const [typeFilter, setTypeFilter] = useState<'all' | 'crew' | 'ship'>('all')
   const [certFilter, setCertFilter] = useState('all')
   const [userSearch, setUserSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('all')
   const [monthFilter, setMonthFilter] = useState('all')
   const [yearFilter, setYearFilter] = useState('all')
+
+  const rows = useMemo<UnifiedCertificateLogRow[]>(() => {
+    const crewNameById = new Map(crewRows.map((crew) => [crew.id, crew.full_name || 'Unknown crew']))
+    const crewHistoryRows = crewRowsFromHistory.map((row) => {
+      const cert = getLogCertificate(row)
+      const crewId = row.crew_id || cert.crew_id
+      const subject = cert.crew_name || crewNameById.get(crewId) || 'Unknown crew'
+      return {
+        ...row,
+        id: `crew-history-${row.id}`,
+        source: 'crew' as const,
+        subject,
+        file_url: cert.file_url || null,
+      }
+    })
+
+    const hasHistoryFor = new Set(crewHistoryRows.map((row) => {
+      const cert = getLogCertificate(row)
+      return `${cert.crew_id || ''}:${cert.cert_name || ''}`
+    }))
+    const fallbackCrewRows = crewCertRows
+      .filter((cert) => !hasHistoryFor.has(`${cert.crew_id || ''}:${cert.cert_name || ''}`))
+      .map((cert) => ({
+        id: `crew-current-${cert.id}`,
+        source: 'crew' as const,
+        action: 'current_upload',
+        old_data: null,
+        new_data: {
+          ...cert,
+          crew_name: crewNameById.get(cert.crew_id) || 'Unknown crew',
+        },
+        actor_name: 'Current record',
+        created_at: cert.updated_at || cert.created_at || null,
+        subject: crewNameById.get(cert.crew_id) || 'Unknown crew',
+        file_url: cert.file_url || null,
+      }))
+    const mappedShipRows = shipRows.map((row) => {
+      const cert = getLogCertificate(row)
+      return {
+        ...row,
+        id: `ship-${row.id}`,
+        source: 'ship' as const,
+        subject: cert.vessel_name || 'Kamala Thanee',
+        file_url: cert.file_url || null,
+      }
+    })
+
+    return [...crewHistoryRows, ...fallbackCrewRows, ...mappedShipRows].sort((a, b) => {
+      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0
+      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0
+      return bTime - aTime
+    })
+  }, [crewCertRows, crewRows, crewRowsFromHistory, shipRows])
 
   const actionOptions = useMemo(() => {
     return ['all', ...Array.from(new Set(rows.map((row) => row.action).filter(Boolean) as string[]))]
@@ -341,9 +426,10 @@ function CertificateLogPanel({ rows }: { rows: CertificateLogRow[] }) {
       const year = date && !Number.isNaN(date.getTime()) ? String(date.getFullYear()) : ''
       const certLabel = [cert.code, cert.cert_name].filter(Boolean).join(' | ')
       const certQuery = certFilter.toLowerCase()
-      const userText = [row.actor_name, cert.issue_by].filter(Boolean).join(' ').toLowerCase()
+      const userText = [row.actor_name, row.subject, cert.crew_name, cert.issue_by].filter(Boolean).join(' ').toLowerCase()
 
       return (
+        (typeFilter === 'all' || row.source === typeFilter) &&
         (certFilter === 'all' || certLabel.toLowerCase().includes(certQuery)) &&
         (!userQuery || userText.includes(userQuery)) &&
         (actionFilter === 'all' || row.action === actionFilter) &&
@@ -351,10 +437,27 @@ function CertificateLogPanel({ rows }: { rows: CertificateLogRow[] }) {
         (yearFilter === 'all' || year === yearFilter)
       )
     })
-  }, [actionFilter, certFilter, monthFilter, rows, userSearch, yearFilter])
+  }, [actionFilter, certFilter, monthFilter, rows, typeFilter, userSearch, yearFilter])
 
   return (
     <section className="space-y-5">
+      <div className="grid w-full max-w-lg grid-cols-3 rounded-[26px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500">
+        {([
+          { value: 'all', label: 'All' },
+          { value: 'crew', label: 'Crew Cert' },
+          { value: 'ship', label: 'Ship Cert' },
+        ] as const).map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setTypeFilter(option.value)}
+            className={`rounded-[20px] px-4 py-3 transition-all ${typeFilter === option.value ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
       <div className="rounded-[34px] border border-white/10 bg-black/30 p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_220px_170px_150px_150px]">
           <label className="flex items-center gap-3 rounded-2xl border border-orange-500/20 bg-black/40 px-4">
@@ -427,14 +530,17 @@ function CertificateLogPanel({ rows }: { rows: CertificateLogRow[] }) {
                   <span className={`inline-flex rounded-full border px-3 py-2 text-[8px] font-black uppercase tracking-widest ${getLogActionStyle(row.action)}`}>
                     {getLogActionLabel(row.action)}
                   </span>
+                  <span className={`ml-2 inline-flex rounded-full border px-3 py-2 text-[8px] font-black uppercase tracking-widest ${row.source === 'crew' ? 'border-blue-400/30 bg-blue-500/10 text-blue-200' : 'border-orange-400/30 bg-orange-500/10 text-orange-200'}`}>
+                    {row.source === 'crew' ? 'Crew Cert' : 'Ship Cert'}
+                  </span>
                   <p className="mt-2 text-[10px] font-bold normal-case text-zinc-500">{formatLogDate(row.created_at)}</p>
                 </div>
                 <div>
                   <p className="text-sm font-black uppercase italic text-white">
-                    {cert.code ? `${cert.code} | ` : ''}{cert.cert_name || 'Unknown ship certificate'}
+                    {cert.code ? `${cert.code} | ` : ''}{cert.cert_name || 'Unknown certificate'}
                   </p>
                   <p className="mt-1 text-[11px] font-bold normal-case text-zinc-500">
-                    {cert.category || 'No category'} {cert.expiry_date ? `| Exp ${cert.expiry_date}` : ''}
+                    {row.subject} {cert.expiry_date ? `| Exp ${cert.expiry_date}` : ''}
                   </p>
                 </div>
                 <div>
