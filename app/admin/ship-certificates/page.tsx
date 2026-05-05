@@ -76,6 +76,7 @@ const pageMapFieldOptions = [
 ]
 
 type ShipCertAnalysisFocus = 'full_certificate' | 'annual_survey'
+type PageMemoryFilter = 'all' | 'ready' | 'missing'
 
 const categoryCodePrefixes: Record<string, string> = {
   Flag: 'F',
@@ -402,6 +403,7 @@ export default function ShipCertificatesPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<'all' | ShipCertificateStatus>('all')
+  const [pageMemoryFilter, setPageMemoryFilter] = useState<PageMemoryFilter>('all')
   const [dashboardFilter, setDashboardFilter] = useState<DashboardFilter>('all')
   const [editingCert, setEditingCert] = useState<ShipCertificate | null>(null)
   const [editForm, setEditForm] = useState<ShipCertificateForm | null>(null)
@@ -795,6 +797,14 @@ export default function ShipCertificatesPage() {
     }
   }
 
+  const pageMemoryMasterIds = useMemo(() => {
+    const ids = new Set<string>()
+    pageMapRows.forEach((map) => {
+      if (map.master_id && toPageList(map.preferred_pages).length > 0) ids.add(map.master_id)
+    })
+    return ids
+  }, [pageMapRows])
+
   const filteredRows = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
     return rows.filter((row) => {
@@ -802,6 +812,7 @@ export default function ShipCertificatesPage() {
       const survey = getShipSurveyStatus(row)
       const certLabel = [row.code, row.cert_name].filter(Boolean).join(' | ')
       const text = [certLabel, row.code, row.cert_name, row.issue_by, row.remark, row.category].filter(Boolean).join(' ').toLowerCase()
+      const hasPageMemory = !!row.master_id && pageMemoryMasterIds.has(row.master_id)
       const matchesDashboard =
         dashboardFilter === 'all' ||
         (dashboardFilter === 'expired' && status === 'expired') ||
@@ -813,10 +824,11 @@ export default function ShipCertificatesPage() {
         (!query || text.includes(query)) &&
         (categoryFilter === 'all' || row.category === categoryFilter) &&
         (statusFilter === 'all' || status === statusFilter) &&
+        (pageMemoryFilter === 'all' || (pageMemoryFilter === 'ready' ? hasPageMemory : !hasPageMemory)) &&
         matchesDashboard
       )
     })
-  }, [categoryFilter, dashboardFilter, rows, searchTerm, statusFilter])
+  }, [categoryFilter, dashboardFilter, pageMemoryFilter, pageMemoryMasterIds, rows, searchTerm, statusFilter])
 
   const certOptions = useMemo(() => {
     return Array.from(new Set(rows.map((row) => {
@@ -833,20 +845,25 @@ export default function ShipCertificatesPage() {
       due90: 0,
       surveyDue: 0,
       noExpiry: 0,
+      memoryReady: 0,
+      memoryMissing: 0,
     }
 
     for (const row of scopedRows) {
       const status = getShipCertificateStatus(row)
       const survey = getShipSurveyStatus(row)
+      const hasPageMemory = !!row.master_id && pageMemoryMasterIds.has(row.master_id)
       if (status === 'expired') counts.expired += 1
       if (status === 'due-30') counts.due30 += 1
       if (['due-30', 'due-60', 'due-90'].includes(status)) counts.due90 += 1
       if (status === 'no-expiry') counts.noExpiry += 1
       if (['survey-overdue', 'survey-due-30', 'survey-due-60', 'survey-due-90'].includes(survey)) counts.surveyDue += 1
+      if (hasPageMemory) counts.memoryReady += 1
+      else counts.memoryMissing += 1
     }
 
     return counts
-  }, [categoryFilter, rows])
+  }, [categoryFilter, pageMemoryMasterIds, rows])
 
   const latestHistoryByCert = useMemo(() => {
     const latest = new Map<string, ShipCertHistoryRow>()
@@ -943,12 +960,13 @@ export default function ShipCertificatesPage() {
           </div>
         )}
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-5">
-          <SummaryCard label="Total" value={summary.total} tone="orange" detail="Current category" active={dashboardFilter === 'all' && statusFilter === 'all'} onClick={() => { setDashboardFilter('all'); setStatusFilter('all') }} />
-          <SummaryCard label="Expired" value={summary.expired} tone="red" detail="Needs immediate action" active={dashboardFilter === 'expired'} onClick={() => { setDashboardFilter('expired'); setStatusFilter('all') }} />
-          <SummaryCard label="Due 30d" value={summary.due30} tone="orange" detail="Renew now" active={dashboardFilter === 'due30'} onClick={() => { setDashboardFilter('due30'); setStatusFilter('all') }} />
-          <SummaryCard label="Due 90d" value={summary.due90} tone="amber" detail="Planning window" active={dashboardFilter === 'due90'} onClick={() => { setDashboardFilter('due90'); setStatusFilter('all') }} />
-          <SummaryCard label="Survey Due" value={summary.surveyDue} tone="zinc" detail="Class endorsement" active={dashboardFilter === 'surveyDue'} onClick={() => { setDashboardFilter('surveyDue'); setStatusFilter('all') }} />
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-6">
+          <SummaryCard label="Total" value={summary.total} tone="orange" detail="Current category" active={dashboardFilter === 'all' && statusFilter === 'all' && pageMemoryFilter === 'all'} onClick={() => { setDashboardFilter('all'); setStatusFilter('all'); setPageMemoryFilter('all') }} />
+          <SummaryCard label="Expired" value={summary.expired} tone="red" detail="Needs immediate action" active={dashboardFilter === 'expired'} onClick={() => { setDashboardFilter('expired'); setStatusFilter('all'); setPageMemoryFilter('all') }} />
+          <SummaryCard label="Due 30d" value={summary.due30} tone="orange" detail="Renew now" active={dashboardFilter === 'due30'} onClick={() => { setDashboardFilter('due30'); setStatusFilter('all'); setPageMemoryFilter('all') }} />
+          <SummaryCard label="Due 90d" value={summary.due90} tone="amber" detail="Planning window" active={dashboardFilter === 'due90'} onClick={() => { setDashboardFilter('due90'); setStatusFilter('all'); setPageMemoryFilter('all') }} />
+          <SummaryCard label="Survey Due" value={summary.surveyDue} tone="zinc" detail="Class endorsement" active={dashboardFilter === 'surveyDue'} onClick={() => { setDashboardFilter('surveyDue'); setStatusFilter('all'); setPageMemoryFilter('all') }} />
+          <SummaryCard label="Memory Ready" value={summary.memoryReady} tone="blue" detail={`${summary.memoryMissing} need mapping`} active={pageMemoryFilter === 'ready'} onClick={() => { setDashboardFilter('all'); setStatusFilter('all'); setPageMemoryFilter(pageMemoryFilter === 'ready' ? 'all' : 'ready') }} />
         </section>
 
         <section className="overflow-x-auto rounded-[28px] border border-orange-500/10 bg-black/25 p-2">
@@ -963,6 +981,7 @@ export default function ShipCertificatesPage() {
                     setCategoryFilter(category)
                     setDashboardFilter('all')
                     setStatusFilter('all')
+                    setPageMemoryFilter('all')
                   }}
                   className={`rounded-2xl border px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
                     active
@@ -979,7 +998,7 @@ export default function ShipCertificatesPage() {
         </section>
 
         <section className="rounded-[34px] border border-white/10 bg-black/30 p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_150px]">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_170px_150px]">
             <label className="flex items-center gap-3 rounded-2xl border border-orange-500/20 bg-black/40 px-4">
               <Search size={16} className="text-orange-500" />
               <input
@@ -1005,12 +1024,26 @@ export default function ShipCertificatesPage() {
             >
               {statusFilters.map((status) => <option key={status} value={status}>{status === 'all' ? 'All Status' : getShipStatusLabel(status)}</option>)}
             </select>
+            <select
+              value={pageMemoryFilter}
+              onChange={(event) => {
+                setPageMemoryFilter(event.target.value as PageMemoryFilter)
+                setDashboardFilter('all')
+                setStatusFilter('all')
+              }}
+              className="h-14 rounded-2xl border border-orange-500/20 bg-black/60 px-4 text-xs font-black uppercase text-white outline-none"
+            >
+              <option value="all">All Memory</option>
+              <option value="ready">Memory Ready</option>
+              <option value="missing">Needs Mapping</option>
+            </select>
             <button
               type="button"
               onClick={() => {
                 setSearchTerm('')
                 setCategoryFilter('all')
                 setStatusFilter('all')
+                setPageMemoryFilter('all')
                 setDashboardFilter('all')
               }}
               className="h-14 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 text-xs font-black uppercase tracking-widest text-orange-100 hover:bg-orange-600 hover:text-white"
@@ -1044,6 +1077,7 @@ export default function ShipCertificatesPage() {
               key={row.id || `${row.category}-${row.code}-${row.cert_name}`}
               row={row}
               latestHistory={row.id ? latestHistoryByCert.get(row.id) || null : null}
+              hasPageMemory={!!row.master_id && pageMemoryMasterIds.has(row.master_id)}
               canEdit={canEdit}
               onEdit={openEditModal}
             />
@@ -1167,7 +1201,7 @@ function SummaryCard({
   label: string
   value: number
   detail: string
-  tone: 'orange' | 'red' | 'amber' | 'zinc'
+  tone: 'orange' | 'red' | 'amber' | 'zinc' | 'blue'
   active: boolean
   onClick: () => void
 }) {
@@ -1176,6 +1210,7 @@ function SummaryCard({
     orange: 'border-orange-500/20 bg-orange-500/10 text-orange-200',
     amber: 'border-amber-500/20 bg-amber-500/10 text-amber-200',
     zinc: 'border-white/10 bg-white/5 text-zinc-200',
+    blue: 'border-blue-400/20 bg-blue-500/10 text-blue-200',
   }
 
   return (
@@ -1596,11 +1631,13 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
 function ShipCertificateRow({
   row,
   latestHistory,
+  hasPageMemory,
   canEdit,
   onEdit,
 }: {
   row: ShipCertificate
   latestHistory: ShipCertHistoryRow | null
+  hasPageMemory: boolean
   canEdit: boolean
   onEdit: (row: ShipCertificate) => void
 }) {
@@ -1626,6 +1663,9 @@ function ShipCertificateRow({
         <p className="mt-1 text-[11px] normal-case text-zinc-500">
           Issue by {row.issue_by || '-'} · Issued {formatShipDate(row.issued_date)}
         </p>
+        <span className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-widest ${hasPageMemory ? 'border-blue-400/30 bg-blue-500/10 text-blue-200' : 'border-zinc-500/20 bg-white/5 text-zinc-500'}`}>
+          {hasPageMemory ? 'Memory Ready' : 'Needs Mapping'}
+        </span>
       </div>
       <div>
         <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 md:hidden">Expiry</p>
