@@ -391,6 +391,34 @@ const getAuditActionStyle = (action?: string | null) => {
   return 'border-white/10 bg-white/5 text-zinc-300'
 }
 
+const getAuditChangeSummary = (row: ShipCertHistoryRow) => {
+  if (row.action === 'add_certificate') return 'New certificate record added'
+  if (row.action === 'delete_certificate') return 'Certificate record deleted'
+  if (row.action === 'page_memory_update') return 'AI page memory updated'
+
+  const oldData = row.old_data || {}
+  const newData = row.new_data || {}
+  const trackedFields: Array<keyof ShipCertificate> = [
+    'code',
+    'category',
+    'cert_name',
+    'issue_by',
+    'issued_date',
+    'expiry_date',
+    'last_survey_date',
+    'next_survey_date',
+    'remark',
+    'file_url',
+  ]
+  const changed = trackedFields.filter((field) => String(oldData[field] || '') !== String(newData[field] || ''))
+  if (changed.length === 0) return 'Record updated'
+
+  return `Changed: ${changed
+    .map((field) => String(field).replace(/_/g, ' '))
+    .slice(0, 4)
+    .join(', ')}${changed.length > 4 ? ` +${changed.length - 4} more` : ''}`
+}
+
 type FieldChange = {
   label: string
   before: string
@@ -442,13 +470,10 @@ export default function ShipCertificatesPage() {
   const [scanResult, setScanResult] = useState<ShipCertScanResult | null>(null)
   const [scanMessage, setScanMessage] = useState('')
   const [analysisFocus, setAnalysisFocus] = useState<ShipCertAnalysisFocus>('full_certificate')
-  const [bulkUploadQueue, setBulkUploadQueue] = useState<File[]>([])
-  const [bulkUploadIndex, setBulkUploadIndex] = useState(0)
   const [isScanning, setIsScanning] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isSavingPageMaps, setIsSavingPageMaps] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
-  const [isExportingAudit, setIsExportingAudit] = useState(false)
 
   useEffect(() => {
     const user = readCurrentUser()
@@ -520,7 +545,7 @@ export default function ShipCertificatesPage() {
     setAnalysisFocus('full_certificate')
   }
 
-  const openAddCertModal = (preselectedFile: File | null = null) => {
+  const openAddCertModal = () => {
     const nextSortOrder = Math.max(0, ...rows.map((row) => row.sort_order || 0)) + 1
     const defaultCategory = categoryFilter === 'all' ? 'Flag' : categoryFilter
     const draft = {
@@ -530,28 +555,9 @@ export default function ShipCertificatesPage() {
     setEditingCert(draft)
     setEditForm(buildFormFromCert(draft))
     setIsAddingCert(true)
-    setUploadFile(preselectedFile)
+    setUploadFile(null)
     setScanResult(null)
-    setScanMessage(preselectedFile ? `Bulk upload ${bulkUploadIndex + 1} of ${bulkUploadQueue.length || 1}: run AI Vision, review, then save.` : '')
-    setAnalysisFocus('full_certificate')
-  }
-
-  const openBulkUploadQueue = (files: File[]) => {
-    if (files.length === 0) return
-    setBulkUploadQueue(files)
-    setBulkUploadIndex(0)
-    const nextSortOrder = Math.max(0, ...rows.map((row) => row.sort_order || 0)) + 1
-    const defaultCategory = categoryFilter === 'all' ? 'Flag' : categoryFilter
-    const draft = {
-      ...buildBlankShipCert(nextSortOrder, defaultCategory),
-      code: getNextCertCode(rows, defaultCategory),
-    }
-    setEditingCert(draft)
-    setEditForm(buildFormFromCert(draft))
-    setIsAddingCert(true)
-    setUploadFile(files[0])
-    setScanResult(null)
-    setScanMessage(`Bulk upload 1 of ${files.length}: run AI Vision, review, then save.`)
+    setScanMessage('')
     setAnalysisFocus('full_certificate')
   }
 
@@ -563,8 +569,6 @@ export default function ShipCertificatesPage() {
     setScanResult(null)
     setScanMessage('')
     setAnalysisFocus('full_certificate')
-    setBulkUploadQueue([])
-    setBulkUploadIndex(0)
   }
 
   const handleShipAiScan = async () => {
@@ -750,27 +754,6 @@ export default function ShipCertificatesPage() {
       : rows.map((row) => (row.id === editingCert.id ? savedCertificate : row))
     setRows(nextRows)
 
-    if (isAddingCert && bulkUploadQueue.length > 0 && bulkUploadIndex + 1 < bulkUploadQueue.length) {
-      const nextIndex = bulkUploadIndex + 1
-      const defaultCategory = categoryFilter === 'all' ? 'Flag' : categoryFilter
-      const nextSortOrder = Math.max(0, ...nextRows.map((row) => row.sort_order || 0)) + 1
-      const draft = {
-        ...buildBlankShipCert(nextSortOrder, defaultCategory),
-        code: getNextCertCode(nextRows, defaultCategory),
-      }
-      setBulkUploadIndex(nextIndex)
-      setEditingCert(draft)
-      setEditForm(buildFormFromCert(draft))
-      setUploadFile(bulkUploadQueue[nextIndex])
-      setScanResult(null)
-      setScanMessage(`Bulk upload ${nextIndex + 1} of ${bulkUploadQueue.length}: run AI Vision, review, then save.`)
-      setAnalysisFocus('full_certificate')
-      setIsSaving(false)
-      return
-    }
-
-    setBulkUploadQueue([])
-    setBulkUploadIndex(0)
     setIsSaving(false)
     closeEditModal()
   }
@@ -871,41 +854,6 @@ export default function ShipCertificatesPage() {
       setErrorMessage(`Export failed: ${error.message || 'Unable to create 11.62 Excel file'}`)
     } finally {
       setIsExporting(false)
-    }
-  }
-
-  const handleExportAuditLog = async () => {
-    setIsExportingAudit(true)
-    setErrorMessage('')
-    try {
-      const XLSX = await import('xlsx')
-      const auditRows = historyRows.map((row) => {
-        const cert = getAuditCertificate(row)
-        return {
-          Date: formatAuditDate(row.created_at),
-          Action: getAuditActionLabel(row.action),
-          Actor: row.actor_name || 'Unknown user',
-          Code: cert.code || '',
-          Category: cert.category || '',
-          Certificate: cert.cert_name || '',
-          'Issue By': cert.issue_by || '',
-          'Issued Date': cert.issued_date || '',
-          'Expiry Date': cert.expiry_date || '',
-          'Last Survey Date': cert.last_survey_date || '',
-          'Next Survey Date': cert.next_survey_date || '',
-          'Certificate No. / Remark': cleanCertificateRemark(cert.remark),
-          'File URL': cert.file_url || '',
-        }
-      })
-      const worksheet = XLSX.utils.json_to_sheet(auditRows)
-      const workbook = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Ship Cert Audit')
-      const fileDate = new Date().toISOString().slice(0, 10)
-      XLSX.writeFile(workbook, `KMT-Ship-Certificate-Audit-${fileDate}.xlsx`)
-    } catch (error: any) {
-      setErrorMessage(`Export failed: ${error.message || 'Unable to create audit Excel file'}`)
-    } finally {
-      setIsExportingAudit(false)
     }
   }
 
@@ -1050,38 +998,13 @@ export default function ShipCertificatesPage() {
             {isExporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
             Export 11.62 Excel
           </button>
-          <button
-            type="button"
-            onClick={handleExportAuditLog}
-            disabled={isExportingAudit || historyRows.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-3xl border border-white/10 bg-white/5 px-5 py-4 text-xs font-black uppercase tracking-widest text-zinc-200 hover:border-orange-400 hover:bg-orange-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isExportingAudit ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-            Export Audit
-          </button>
           {canEdit && (
-            <>
-              <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-3xl border border-white/10 bg-white/5 px-5 py-4 text-xs font-black uppercase tracking-widest text-zinc-200 hover:border-orange-400 hover:bg-orange-600 hover:text-white">
-                <UploadCloud size={16} /> Bulk Queue
-                <input
-                  type="file"
-                  multiple
-                  accept="application/pdf,image/*"
-                  className="hidden"
-                  onChange={(event) => {
-                    const files = Array.from(event.target.files || [])
-                    openBulkUploadQueue(files)
-                    event.target.value = ''
-                  }}
-                />
-              </label>
-              <button
-                onClick={() => openAddCertModal()}
-                className="inline-flex items-center justify-center gap-2 rounded-3xl border border-orange-400/30 bg-orange-600 px-5 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 hover:bg-orange-500"
-              >
-                <PlusCircle size={16} /> Add New Cert
-              </button>
-            </>
+            <button
+              onClick={() => openAddCertModal()}
+              className="inline-flex items-center justify-center gap-2 rounded-3xl border border-orange-400/30 bg-orange-600 px-5 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 hover:bg-orange-500"
+            >
+              <PlusCircle size={16} /> Add New Cert
+            </button>
           )}
         </div>
 
@@ -1260,7 +1183,29 @@ export default function ShipCertificatesPage() {
 }
 
 function ShipCertificateAuditTrail({ rows }: { rows: ShipCertHistoryRow[] }) {
-  const latestRows = rows.slice(0, 12)
+  const [certFilter, setCertFilter] = useState('')
+  const [actionFilter, setActionFilter] = useState('all')
+  const certOptions = useMemo(() => {
+    const options = new Map<string, string>()
+    rows.forEach((row) => {
+      const cert = getAuditCertificate(row)
+      const label = `${cert.code ? `${cert.code} | ` : ''}${cert.cert_name || 'Unknown ship certificate'}`
+      if (label.trim()) options.set(label, label)
+    })
+    return Array.from(options.values()).sort((a, b) => a.localeCompare(b))
+  }, [rows])
+  const actionOptions = useMemo(() => {
+    const options = new Set(rows.map((row) => row.action).filter(Boolean))
+    return Array.from(options).sort()
+  }, [rows])
+  const filteredRows = useMemo(() => rows.filter((row) => {
+    const cert = getAuditCertificate(row)
+    const label = `${cert.code ? `${cert.code} | ` : ''}${cert.cert_name || 'Unknown ship certificate'}`.toLowerCase()
+    const matchesCert = !certFilter || label.includes(certFilter.toLowerCase())
+    const matchesAction = actionFilter === 'all' || row.action === actionFilter
+    return matchesCert && matchesAction
+  }), [actionFilter, certFilter, rows])
+  const latestRows = filteredRows.slice(0, 12)
 
   return (
     <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/80 p-5 shadow-2xl shadow-black/30">
@@ -1270,8 +1215,34 @@ function ShipCertificateAuditTrail({ rows }: { rows: ShipCertHistoryRow[] }) {
           <h2 className="mt-2 text-2xl font-black uppercase italic text-white">Ship certificate changes</h2>
         </div>
         <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
-          Latest upload / edit / delete activity
+          {filteredRows.length} of {rows.length} activities
         </p>
+      </div>
+
+      <div className="mb-5 grid gap-3 md:grid-cols-[1fr_220px]">
+        <label className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
+          <input
+            list="ship-cert-audit-cert-options"
+            value={certFilter}
+            onChange={(event) => setCertFilter(event.target.value)}
+            placeholder="Search or pick certificate..."
+            className="w-full rounded-2xl border border-white/10 bg-black/55 py-4 pl-11 pr-4 text-sm font-bold text-white outline-none focus:border-orange-500"
+          />
+          <datalist id="ship-cert-audit-cert-options">
+            {certOptions.map((option) => <option key={option} value={option} />)}
+          </datalist>
+        </label>
+        <select
+          value={actionFilter}
+          onChange={(event) => setActionFilter(event.target.value)}
+          className="rounded-2xl border border-white/10 bg-black/55 px-4 py-4 text-sm font-bold text-white outline-none focus:border-orange-500"
+        >
+          <option value="all">All Actions</option>
+          {actionOptions.map((action) => (
+            <option key={action} value={action}>{getAuditActionLabel(action)}</option>
+          ))}
+        </select>
       </div>
 
       {latestRows.length === 0 ? (
@@ -1298,6 +1269,9 @@ function ShipCertificateAuditTrail({ rows }: { rows: ShipCertHistoryRow[] }) {
                   </p>
                   <p className="mt-1 text-[11px] font-bold normal-case text-zinc-500">
                     {cert.category || 'No category'} {cert.expiry_date ? `| Exp ${formatShipDate(cert.expiry_date)}` : ''}
+                  </p>
+                  <p className="mt-2 text-[11px] font-bold normal-case text-orange-100/80">
+                    {getAuditChangeSummary(row)}
                   </p>
                 </div>
 
