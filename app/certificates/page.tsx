@@ -367,7 +367,7 @@ function CertificateLogPanel({
             ...cert,
             crew_name: crewName,
           },
-          actor_name: `Crew: ${crewName}`,
+          actor_name: crewName,
           created_at: cert.updated_at || cert.created_at || null,
           subject: crewName,
           file_url: cert.file_url || null,
