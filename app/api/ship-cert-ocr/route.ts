@@ -41,6 +41,7 @@ SOURCE MODE: ${hasExtractedText ? 'OCR/TEXT EXTRACTION FIRST. Use the extracted 
 ANALYSIS FOCUS: ${analysisFocus === 'annual_survey' ? 'Annual/intermediate/class survey endorsement page. Prioritize handwritten/stamped endorsement dates, surveyor signatures, and next/last annual survey clues.' : 'Full certificate identification and date extraction.'}
 KNOWN PAGE MEMORY FROM PREVIOUS REVIEW:
 ${pageMapHints?.length ? pageMapHints.map((hint) => `- ${hint.fieldName}: preferred pages ${hint.preferredPages?.join(', ') || '-'}; fallback ${hint.fallbackPages?.join(', ') || '-'}; hint: ${hint.extractionHint || '-'}`).join('\n') : '- None yet. If page numbers are visible or inferable, create page mapping from this run.'}
+If page memory is provided, use it as the primary navigation guide. Treat preferred pages as the first evidence locations to inspect, fallback pages as secondary locations, and report if the uploaded file appears to use a different layout.
 
 RULES:
 1. Certificate type match must be strict when a checklist item name is provided. Do not treat a different vessel certificate as acceptable just because it is maritime related. If this is a new certificate with no checklist item name, identify the certificate type and set certTypeMatch=true when it is a genuine vessel/ship certificate.

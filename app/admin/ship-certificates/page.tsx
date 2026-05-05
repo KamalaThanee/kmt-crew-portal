@@ -75,6 +75,8 @@ const pageMapFieldOptions = [
   { fieldName: 'annual_survey_endorsement', label: 'Annual Survey Page', defaultHint: 'annual survey endorsement / class signature page' },
 ]
 
+type ShipCertAnalysisFocus = 'full_certificate' | 'annual_survey'
+
 const categoryCodePrefixes: Record<string, string> = {
   Flag: 'F',
   Class: 'C',
@@ -379,6 +381,7 @@ export default function ShipCertificatesPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [scanResult, setScanResult] = useState<ShipCertScanResult | null>(null)
   const [scanMessage, setScanMessage] = useState('')
+  const [analysisFocus, setAnalysisFocus] = useState<ShipCertAnalysisFocus>('full_certificate')
   const [isScanning, setIsScanning] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isSavingPageMaps, setIsSavingPageMaps] = useState(false)
@@ -451,6 +454,7 @@ export default function ShipCertificatesPage() {
     setUploadFile(null)
     setScanResult(null)
     setScanMessage('')
+    setAnalysisFocus('full_certificate')
   }
 
   const openAddCertModal = () => {
@@ -466,6 +470,7 @@ export default function ShipCertificatesPage() {
     setUploadFile(null)
     setScanResult(null)
     setScanMessage('')
+    setAnalysisFocus('full_certificate')
   }
 
   const closeEditModal = () => {
@@ -475,6 +480,7 @@ export default function ShipCertificatesPage() {
     setUploadFile(null)
     setScanResult(null)
     setScanMessage('')
+    setAnalysisFocus('full_certificate')
   }
 
   const handleShipAiScan = async () => {
@@ -507,7 +513,7 @@ export default function ShipCertificatesPage() {
               code: editForm.code || editingCert.code,
               category: editForm.category || editingCert.category,
               pageMapHints: buildPageMapHints(knownPageMaps),
-              analysisFocus: 'full_certificate',
+              analysisFocus,
               modelId: model.id,
               provider: model.provider,
             }),
@@ -1014,6 +1020,7 @@ export default function ShipCertificatesPage() {
           uploadFile={uploadFile}
           scanResult={scanResult}
           scanMessage={scanMessage}
+          analysisFocus={analysisFocus}
           historyRows={editingCertHistory}
           pageMapRows={editingCertPageMaps}
           isScanning={isScanning}
@@ -1028,6 +1035,7 @@ export default function ShipCertificatesPage() {
             setScanResult(null)
             setScanMessage('')
           }}
+          onAnalysisFocusChange={setAnalysisFocus}
           onAiScan={handleShipAiScan}
           onClose={closeEditModal}
           onDelete={deleteCertificate}
@@ -1150,6 +1158,7 @@ function ShipCertificateModal({
   uploadFile,
   scanResult,
   scanMessage,
+  analysisFocus,
   historyRows,
   pageMapRows,
   isScanning,
@@ -1158,6 +1167,7 @@ function ShipCertificateModal({
   onFormChange,
   onCategoryChange,
   onFileChange,
+  onAnalysisFocusChange,
   onAiScan,
   onClose,
   onDelete,
@@ -1170,6 +1180,7 @@ function ShipCertificateModal({
   uploadFile: File | null
   scanResult: ShipCertScanResult | null
   scanMessage: string
+  analysisFocus: ShipCertAnalysisFocus
   historyRows: ShipCertHistoryRow[]
   pageMapRows: ShipCertPageMapRow[]
   isScanning: boolean
@@ -1178,6 +1189,7 @@ function ShipCertificateModal({
   onFormChange: (form: ShipCertificateForm) => void
   onCategoryChange: (category: string) => void
   onFileChange: (file: File | null) => void
+  onAnalysisFocusChange: (focus: ShipCertAnalysisFocus) => void
   onAiScan: () => void
   onClose: () => void
   onDelete: () => void
@@ -1270,6 +1282,32 @@ function ShipCertificateModal({
                 {isScanning ? 'Analyzing...' : 'AI Vision Analyze'}
               </button>
             </div>
+            <div className="mt-4 grid gap-2 md:grid-cols-2">
+              {([
+                { value: 'full_certificate' as const, label: 'Full Certificate', detail: 'Use for new upload or full renewal.' },
+                { value: 'annual_survey' as const, label: 'Annual Survey Page', detail: 'Use for endorsement/signature pages.' },
+              ]).map((mode) => (
+                <button
+                  key={mode.value}
+                  type="button"
+                  onClick={() => onAnalysisFocusChange(mode.value)}
+                  disabled={isScanning}
+                  className={`rounded-2xl border p-3 text-left transition-all ${
+                    analysisFocus === mode.value
+                      ? 'border-orange-400 bg-orange-600/20 text-white'
+                      : 'border-white/10 bg-black/35 text-zinc-400 hover:border-orange-500/40 hover:text-white'
+                  }`}
+                >
+                  <p className="text-[10px] font-black uppercase tracking-widest">{mode.label}</p>
+                  <p className="mt-1 text-[11px] normal-case">{mode.detail}</p>
+                </button>
+              ))}
+            </div>
+            {pageMapRows.length > 0 && (
+              <p className="mt-3 rounded-xl border border-orange-500/20 bg-black/30 p-3 text-[11px] normal-case text-orange-100">
+                Page memory active: AI will use saved page hints first, then inspect fallback pages if needed.
+              </p>
+            )}
             {(scanMessage || scanResult) && (
               <div className="mt-4 rounded-2xl border border-orange-400/20 bg-black/40 p-4 text-xs normal-case text-zinc-300">
                 {scanMessage && <p className="font-bold text-orange-200">{scanMessage}</p>}
