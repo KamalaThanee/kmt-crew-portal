@@ -174,25 +174,26 @@ const normalizeAiPageMapRows = (
 ): Array<Omit<ShipCertPageMapRow, 'id'>> => {
   if (!pageMap || !masterId) return []
 
-  return Object.entries(pageMap)
-    .map(([fieldName, map]) => {
-      const preferredPages = toPageList(map.pages || map.page)
-      if (!fieldName || preferredPages.length === 0) return null
+  const rows: Array<Omit<ShipCertPageMapRow, 'id'>> = []
+  Object.entries(pageMap).forEach(([fieldName, map]) => {
+    const preferredPages = toPageList(map.pages || map.page)
+    if (!fieldName || preferredPages.length === 0) return
 
-      const confidence = Number(map.confidence)
-      return {
-        master_id: masterId,
-        field_name: fieldName,
-        preferred_pages: preferredPages,
-        fallback_pages: [],
-        extraction_hint: map.hint || `AI observed ${fieldName.replace(/_/g, ' ')}`,
-        confidence: Number.isFinite(confidence) ? confidence : null,
-        confirmed_by: confirmedBy,
-        confirmed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
+    const confidence = Number(map.confidence)
+    rows.push({
+      master_id: masterId,
+      field_name: fieldName,
+      preferred_pages: preferredPages,
+      fallback_pages: [],
+      extraction_hint: map.hint || `AI observed ${fieldName.replace(/_/g, ' ')}`,
+      confidence: Number.isFinite(confidence) ? confidence : null,
+      confirmed_by: confirmedBy,
+      confirmed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
-    .filter((row): row is Omit<ShipCertPageMapRow, 'id'> => Boolean(row))
+  })
+
+  return rows
 }
 
 const buildFormFromCert = (row: ShipCertificate): ShipCertificateForm => ({
