@@ -57,6 +57,24 @@ type ShipCertAiPageMap = Record<string, {
   hint?: string
 }>
 
+type PageMapDraft = {
+  fieldName: string
+  pagesText: string
+  fallbackText: string
+  hint: string
+}
+
+const pageMapFieldOptions = [
+  { fieldName: 'cert_name', label: 'Certificate Name', defaultHint: 'certificate title / document heading' },
+  { fieldName: 'certificate_number', label: 'Certificate No.', defaultHint: 'certificate number / reference number' },
+  { fieldName: 'issue_by', label: 'Issue By', defaultHint: 'issuer, class, flag, authority, or service company' },
+  { fieldName: 'issued_date', label: 'Issued Date', defaultHint: 'issued date / completion date / date of inspection' },
+  { fieldName: 'expiry_date', label: 'Expiry Date', defaultHint: 'valid until / expiry date / renewal due date' },
+  { fieldName: 'last_survey_date', label: 'Last Survey Date', defaultHint: 'latest annual/intermediate/class endorsement date' },
+  { fieldName: 'next_survey_date', label: 'Next Survey Date', defaultHint: 'next annual/intermediate/class endorsement due date' },
+  { fieldName: 'annual_survey_endorsement', label: 'Annual Survey Page', defaultHint: 'annual survey endorsement / class signature page' },
+]
+
 const categoryCodePrefixes: Record<string, string> = {
   Flag: 'F',
   Class: 'C',
@@ -154,10 +172,26 @@ const toPageList = (value: unknown) => {
     .map((page) => Math.round(page))
 }
 
+const parsePageText = (value: string) => value
+  .split(/[,\s]+/)
+  .map((page) => Number(page.trim()))
+  .filter((page) => Number.isFinite(page) && page > 0)
+  .map((page) => Math.round(page))
+
 const formatPageList = (pages?: number[] | null) => {
   const clean = toPageList(pages)
   return clean.length ? clean.join(', ') : '-'
 }
+
+const buildPageMapDrafts = (maps: ShipCertPageMapRow[]) => pageMapFieldOptions.map((field) => {
+  const found = maps.find((map) => map.field_name === field.fieldName)
+  return {
+    fieldName: field.fieldName,
+    pagesText: toPageList(found?.preferred_pages).join(', '),
+    fallbackText: toPageList(found?.fallback_pages).join(', '),
+    hint: found?.extraction_hint || field.defaultHint,
+  }
+})
 
 const buildPageMapHints = (maps: ShipCertPageMapRow[]) => maps.map((map) => ({
   fieldName: map.field_name,
@@ -347,6 +381,7 @@ export default function ShipCertificatesPage() {
   const [scanMessage, setScanMessage] = useState('')
   const [isScanning, setIsScanning] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isSavingPageMaps, setIsSavingPageMaps] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
@@ -625,6 +660,51 @@ export default function ShipCertificatesPage() {
     })
     setIsSaving(false)
     closeEditModal()
+  }
+
+  const savePageMemory = async (drafts: PageMapDraft[]) => {
+    if (!editingCert?.master_id || !currentUser) return
+    const masterId = editingCert.master_id
+    const actorName = currentUser.full_name || currentUser.position || 'Unknown user'
+    setIsSavingPageMaps(true)
+    setErrorMessage('')
+
+    const rowsToSave: Array<Omit<ShipCertPageMapRow, 'id'>> = []
+    drafts.forEach((draft) => {
+      const preferredPages = parsePageText(draft.pagesText)
+      const fallbackPages = parsePageText(draft.fallbackText)
+      if (preferredPages.length === 0 && fallbackPages.length === 0) return
+
+      rowsToSave.push({
+        master_id: masterId,
+        field_name: draft.fieldName,
+        preferred_pages: preferredPages,
+        fallback_pages: fallbackPages,
+        extraction_hint: draft.hint.trim() || `Manual page memory for ${draft.fieldName.replace(/_/g, ' ')}`,
+        confidence: 1,
+        confirmed_by: actorName,
+        confirmed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+    })
+
+    if (rowsToSave.length === 0) {
+      setErrorMessage('Please enter at least one page number before saving page memory.')
+      setIsSavingPageMaps(false)
+      return
+    }
+
+    const { error } = await supabase
+      .from('ship_cert_ai_page_maps')
+      .upsert(rowsToSave, { onConflict: 'master_id,field_name' })
+
+    if (error) {
+      setErrorMessage(`Page memory save failed: ${error.message}`)
+    } else {
+      setPageMapRows(await fetchPageMapRows())
+      setScanMessage('Page memory saved. Future AI scans will use these page hints.')
+    }
+    setIsSavingPageMaps(false)
   }
 
   const deleteCertificate = async () => {
@@ -938,6 +1018,7 @@ export default function ShipCertificatesPage() {
           pageMapRows={editingCertPageMaps}
           isScanning={isScanning}
           isSaving={isSaving}
+          isSavingPageMaps={isSavingPageMaps}
           onFormChange={setEditForm}
           onCategoryChange={(category) => {
             setEditForm((prev) => prev ? { ...prev, category, code: isAddingCert ? getNextCertCode(rows, category) : prev.code } : prev)
@@ -950,6 +1031,7 @@ export default function ShipCertificatesPage() {
           onAiScan={handleShipAiScan}
           onClose={closeEditModal}
           onDelete={deleteCertificate}
+          onSavePageMaps={savePageMemory}
           onSave={saveCertificateUpdate}
         />
       )}
@@ -1072,12 +1154,14 @@ function ShipCertificateModal({
   pageMapRows,
   isScanning,
   isSaving,
+  isSavingPageMaps,
   onFormChange,
   onCategoryChange,
   onFileChange,
   onAiScan,
   onClose,
   onDelete,
+  onSavePageMaps,
   onSave,
 }: {
   certificate: ShipCertificate
@@ -1090,15 +1174,28 @@ function ShipCertificateModal({
   pageMapRows: ShipCertPageMapRow[]
   isScanning: boolean
   isSaving: boolean
+  isSavingPageMaps: boolean
   onFormChange: (form: ShipCertificateForm) => void
   onCategoryChange: (category: string) => void
   onFileChange: (file: File | null) => void
   onAiScan: () => void
   onClose: () => void
   onDelete: () => void
+  onSavePageMaps: (drafts: PageMapDraft[]) => void
   onSave: () => void
 }) {
   const showExtractedFields = !isAddingCert || !!form.cert_name || !!scanResult
+  const [pageMapDrafts, setPageMapDrafts] = useState<PageMapDraft[]>(() => buildPageMapDrafts(pageMapRows))
+  useEffect(() => {
+    setPageMapDrafts(buildPageMapDrafts(pageMapRows))
+  }, [pageMapRows])
+
+  const updatePageMapDraft = (fieldName: string, patch: Partial<PageMapDraft>) => {
+    setPageMapDrafts((prev) => prev.map((draft) => (
+      draft.fieldName === fieldName ? { ...draft, ...patch } : draft
+    )))
+  }
+
   const aiPageMapRows = scanResult?.pageMap
     ? Object.entries(scanResult.pageMap)
         .map(([fieldName, map]) => ({
@@ -1265,6 +1362,58 @@ function ShipCertificateModal({
             <a href={certificate.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-orange-500 hover:text-white md:col-span-2">
               <ExternalLink size={14} /> View current file
             </a>
+          )}
+          {!isAddingCert && (
+            <div className="rounded-2xl border border-orange-500/15 bg-black/35 p-4 md:col-span-2">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-orange-500">Editable Page Memory</p>
+                  <p className="mt-1 text-xs normal-case text-zinc-500">Set page numbers once. Future AI scans will use these hints before reading the full certificate.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onSavePageMaps(pageMapDrafts)}
+                  disabled={!certificate.master_id || isSavingPageMaps}
+                  className="rounded-2xl border border-orange-500/30 bg-orange-600 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isSavingPageMaps ? 'Saving Memory...' : 'Save Page Memory'}
+                </button>
+              </div>
+              {!certificate.master_id ? (
+                <p className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs normal-case text-zinc-500">Save this new certificate first before page memory can be stored.</p>
+              ) : (
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {pageMapDrafts.map((draft) => {
+                    const label = pageMapFieldOptions.find((field) => field.fieldName === draft.fieldName)?.label || draft.fieldName
+                    return (
+                      <div key={draft.fieldName} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-white">{label}</p>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <input
+                            value={draft.pagesText}
+                            onChange={(event) => updatePageMapDraft(draft.fieldName, { pagesText: event.target.value })}
+                            placeholder="Pages e.g. 1, 3"
+                            className="rounded-xl border border-white/10 bg-black px-3 py-2 text-xs font-bold normal-case text-white outline-none focus:border-orange-500"
+                          />
+                          <input
+                            value={draft.fallbackText}
+                            onChange={(event) => updatePageMapDraft(draft.fieldName, { fallbackText: event.target.value })}
+                            placeholder="Fallback"
+                            className="rounded-xl border border-white/10 bg-black px-3 py-2 text-xs font-bold normal-case text-white outline-none focus:border-orange-500"
+                          />
+                        </div>
+                        <input
+                          value={draft.hint}
+                          onChange={(event) => updatePageMapDraft(draft.fieldName, { hint: event.target.value })}
+                          placeholder="Extraction hint"
+                          className="mt-2 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-xs font-bold normal-case text-zinc-300 outline-none focus:border-orange-500"
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           )}
           {!isAddingCert && (
             <div className="rounded-2xl border border-orange-500/15 bg-black/35 p-4 md:col-span-2">
