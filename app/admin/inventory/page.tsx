@@ -142,7 +142,14 @@ function InventoryContent() {
     if (crewRes.error) {
       toast.error(crewRes.error.message || 'Unable to load crew size data')
     } else {
-      setCrewSizeRows((crewRes.data || []).filter((crew: any) => crew?.is_active !== false && !crew?.resigned_at))
+      setCrewSizeRows(
+        (crewRes.data || []).filter((crew: any) =>
+          crew?.registered === true &&
+          !!crew?.pin &&
+          crew?.is_active !== false &&
+          !crew?.resigned_at
+        ),
+      )
     }
 
     if (windowRes.error) {
@@ -276,24 +283,26 @@ function InventoryContent() {
   const ppeSizeSummary = useMemo(() => {
     const suit = new Map<string, number>()
     const boots = new Map<string, number>()
-    const missing: any[] = []
+    const hasConfirmedCurrentRound = (crew: any) => {
+      if (!activeSizeWindow?.id) return !!crew.ppe_size_confirmed_at
+      return String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id)
+    }
 
-    crewSizeRows.forEach((crew) => {
+    const confirmedRows = crewSizeRows.filter(hasConfirmedCurrentRound)
+    const pendingRows = crewSizeRows.filter((crew) => !hasConfirmedCurrentRound(crew))
+    const missingSizeRows = crewSizeRows.filter((crew) => !crew.suit_color || !crew.suit_size || !crew.boot_size)
+
+    confirmedRows.forEach((crew) => {
       const suitKey = [crew.suit_color || 'No Color', crew.suit_size || 'No Size'].join(' | ')
       const bootKey = crew.boot_size || 'No Size'
       if (crew.suit_color && crew.suit_size) suit.set(suitKey, (suit.get(suitKey) || 0) + 1)
       if (crew.boot_size) boots.set(bootKey, (boots.get(bootKey) || 0) + 1)
-      if (!crew.suit_color || !crew.suit_size || !crew.boot_size) missing.push(crew)
     })
 
-    const confirmed = crewSizeRows.filter((crew) => {
-      if (!activeSizeWindow?.id) return !!crew.ppe_size_confirmed_at
-      return String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id)
-    }).length
-
     return {
-      confirmed,
-      missing,
+      confirmed: confirmedRows.length,
+      pendingRows,
+      missing: missingSizeRows,
       suitRows: Array.from(suit.entries()).map(([key, qty]) => {
         const [color, size] = key.split(' | ')
         return { Color: color, Size: size, 'Required Qty': qty }
@@ -353,7 +362,9 @@ function InventoryContent() {
       'Suit Size': crew.suit_size || '',
       'Boot Size': crew.boot_size || '',
       'Confirmed At': formatDateTime(crew.ppe_size_confirmed_at),
-      Status: activeSizeWindow?.id && String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id) ? 'Confirmed' : 'Not confirmed',
+      Status: activeSizeWindow?.id
+        ? String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id) ? 'Confirmed' : 'Waiting'
+        : crew.ppe_size_confirmed_at ? 'Confirmed' : 'Waiting',
     }))
     const rows = [
       { Section: 'Boiler Suit Required Summary', Color: '', Size: '', 'Required Qty': '' },
@@ -519,7 +530,7 @@ function InventoryContent() {
             <div className="max-h-[72vh] space-y-5 overflow-y-auto p-7">
               <div className="grid gap-4 md:grid-cols-4">
                 <div className="rounded-[28px] border border-white/10 bg-black/40 p-5">
-                  <p className="text-[9px] tracking-[0.25em] text-zinc-500">CREW</p>
+                  <p className="text-[9px] tracking-[0.25em] text-zinc-500">REGISTERED CREW</p>
                   <p className="mt-2 text-3xl font-black text-white">{crewSizeRows.length}</p>
                 </div>
                 <div className="rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-5">
@@ -527,8 +538,8 @@ function InventoryContent() {
                   <p className="mt-2 text-3xl font-black text-white">{ppeSizeSummary.confirmed}</p>
                 </div>
                 <div className="rounded-[28px] border border-red-500/20 bg-red-500/10 p-5">
-                  <p className="text-[9px] tracking-[0.25em] text-red-200">MISSING SIZE</p>
-                  <p className="mt-2 text-3xl font-black text-white">{ppeSizeSummary.missing.length}</p>
+                  <p className="text-[9px] tracking-[0.25em] text-red-200">WAITING</p>
+                  <p className="mt-2 text-3xl font-black text-white">{ppeSizeSummary.pendingRows.length}</p>
                 </div>
                 <div className="rounded-[28px] border border-amber-500/20 bg-amber-500/10 p-5">
                   <p className="text-[9px] tracking-[0.25em] text-amber-200">WINDOW</p>
@@ -561,7 +572,7 @@ function InventoryContent() {
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
                   <p className="mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-amber-200">Boiler Suit</p>
-                  <p className="mb-4 text-[10px] normal-case text-zinc-500">Required quantity by color and size.</p>
+                  <p className="mb-4 text-[10px] normal-case text-zinc-500">Required quantity by color and size from confirmed crew only.</p>
                   <div className="space-y-2">
                     {ppeSizeSummary.suitRows.length > 0 ? ppeSizeSummary.suitRows.map((row) => (
                       <div key={`${row.Color}-${row.Size}`} className="grid grid-cols-[1fr_90px] items-center gap-3 rounded-xl bg-white/5 px-4 py-3 text-xs">
@@ -573,7 +584,7 @@ function InventoryContent() {
                 </div>
                 <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
                   <p className="mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-amber-200">Safety Boots</p>
-                  <p className="mb-4 text-[10px] normal-case text-zinc-500">Required quantity by boots size.</p>
+                  <p className="mb-4 text-[10px] normal-case text-zinc-500">Required quantity by boots size from confirmed crew only.</p>
                   <div className="space-y-2">
                     {ppeSizeSummary.bootRows.length > 0 ? ppeSizeSummary.bootRows.map((row) => (
                       <div key={row.Size} className="grid grid-cols-[1fr_90px] items-center gap-3 rounded-xl bg-white/5 px-4 py-3 text-xs">
