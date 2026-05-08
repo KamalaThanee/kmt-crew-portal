@@ -143,12 +143,10 @@ function InventoryContent() {
       toast.error(crewRes.error.message || 'Unable to load crew size data')
     } else {
       setCrewSizeRows(
-        (crewRes.data || []).filter((crew: any) =>
-          crew?.registered === true &&
-          !!crew?.pin &&
-          crew?.is_active !== false &&
-          !crew?.resigned_at
-        ),
+        (crewRes.data || []).filter((crew: any) => {
+          const hasPpeSize = !!crew?.suit_color || !!crew?.suit_size || !!crew?.boot_size
+          return (crew?.registered === true || hasPpeSize) && crew?.is_active !== false && !crew?.resigned_at
+        }),
       )
     }
 
