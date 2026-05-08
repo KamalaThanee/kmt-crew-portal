@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { CheckCircle2, FileBadge, ShipWheel, XCircle } from 'lucide-react'
+import { CheckCircle2, FileBadge, Ruler, ShipWheel, XCircle } from 'lucide-react'
 import type { AdminActionItem, CrewActionItem, NavbarNotificationData } from '@/hooks/useNavbarNotifications'
 import { NotificationLinkItem } from '@/components/navbar/NotificationLinkItem'
 
@@ -12,7 +12,7 @@ type NotificationDropdownProps = {
 export function NotificationDropdown({ isAdmin, notifData, onClose }: NotificationDropdownProps) {
   const totalPersonalAdminUpdates = (notifData.personalUpdates || []).length
   const hasNoAlerts =
-    notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) + (notifData.shipCertAlertCount || 0) === 0 &&
+    notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) + (notifData.shipCertAlertCount || 0) + (notifData.ppeSizeAlertCount || 0) === 0 &&
     (notifData.updates || []).length === 0
 
   return (
@@ -86,6 +86,7 @@ export function NotificationDropdown({ isAdmin, notifData, onClose }: Notificati
               <ReadyToReceiveLink count={notifData.personalApprovedCount} className="mx-1" onClose={onClose} />
             )}
 
+            <PpeSizeAlerts items={notifData.ppeSizeActions || []} className="px-1 pt-3" onClose={onClose} />
             <CertificateAlerts items={notifData.personalCertActions || []} className="px-1 pt-3" onClose={onClose} />
             <ShipCertificateAlerts items={notifData.shipCertActions || []} className="px-1 pt-3" onClose={onClose} />
           </>
@@ -107,6 +108,7 @@ export function NotificationDropdown({ isAdmin, notifData, onClose }: Notificati
               )
             })}
 
+            <PpeSizeAlerts items={notifData.ppeSizeActions || []} className="pt-2" onClose={onClose} />
             <CertificateAlerts items={notifData.personalCertActions || []} className="pt-2" onClose={onClose} />
             <ShipCertificateAlerts items={notifData.shipCertActions || []} className="pt-2" onClose={onClose} />
 
@@ -119,6 +121,39 @@ export function NotificationDropdown({ isAdmin, notifData, onClose }: Notificati
             No Alerts
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function PpeSizeAlerts({
+  items,
+  className,
+  onClose,
+}: {
+  items: CrewActionItem[]
+  className: string
+  onClose: () => void
+}) {
+  if (items.length === 0) return null
+
+  return (
+    <div className={className}>
+      <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-amber-300">
+        PPE Size Update
+      </p>
+      <div className="space-y-2">
+        {items.map((item: CrewActionItem) => (
+          <NotificationLinkItem
+            key={item.id}
+            href={item.href || '/dashboard'}
+            onClick={onClose}
+            title={item.title}
+            description={item.description}
+            icon={<Ruler size={16} />}
+            tone="amber"
+          />
+        ))}
       </div>
     </div>
   )

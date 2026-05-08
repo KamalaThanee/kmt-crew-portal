@@ -26,6 +26,24 @@ import { InventoryList } from '@/components/inventory/InventoryList'
 import { ReceiveShipmentModal } from '@/components/inventory/ReceiveShipmentModal'
 import { ReceiveShipmentContent } from '@/components/inventory/ReceiveShipmentContent'
 
+type PpeSizeWindow = {
+  id?: string
+  title?: string | null
+  status?: string | null
+  deadline_at?: string | null
+  opened_by?: string | null
+  opened_at?: string | null
+  closed_by?: string | null
+  closed_at?: string | null
+}
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString()
+}
+
 function InventoryContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -42,7 +60,13 @@ function InventoryContent() {
   const [editingItem, setEditingItem] = useState<any>(null)
   const [isItemModalOpen, setIsItemModalOpen] = useState(false)
   const [isRestockModalOpen, setIsRestockModalOpen] = useState(false)
+  const [isSizeSummaryOpen, setIsSizeSummaryOpen] = useState(false)
   const [restockView, setRestockView] = useState<'entry' | 'history' | 'issue-log'>('entry')
+  const [crewSizeRows, setCrewSizeRows] = useState<any[]>([])
+  const [activeSizeWindow, setActiveSizeWindow] = useState<PpeSizeWindow | null>(null)
+  const [sizeWindowTitle, setSizeWindowTitle] = useState(`PPE Size Update ${new Date().toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`)
+  const [sizeWindowDeadline, setSizeWindowDeadline] = useState('')
+  const [isProcessingSizeWindow, setIsProcessingSizeWindow] = useState(false)
 
   const [restockEntries, setRestockEntries] = useState([{ id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }])
   const [doNumber, setDoNumber] = useState('')
@@ -91,6 +115,34 @@ function InventoryContent() {
     if (hist) setHistory(hist)
     await fetchStockTransactions(false)
     setLoading(false)
+  }
+
+  const fetchPpeSizeSummary = async () => {
+    const [crewRes, windowRes] = await Promise.all([
+      supabase.from('crews').select('*').order('full_name'),
+      supabase
+        .from('ppe_size_windows')
+        .select('*')
+        .eq('status', 'open')
+        .order('opened_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+
+    if (crewRes.error) {
+      toast.error(crewRes.error.message || 'Unable to load crew size data')
+    } else {
+      setCrewSizeRows((crewRes.data || []).filter((crew: any) => crew?.is_active !== false && !crew?.resigned_at))
+    }
+
+    if (windowRes.error) {
+      setActiveSizeWindow(null)
+      if (!String(windowRes.error.message || '').includes('ppe_size_windows')) {
+        toast.error(windowRes.error.message)
+      }
+    } else {
+      setActiveSizeWindow((windowRes.data || null) as PpeSizeWindow | null)
+    }
   }
 
   useEffect(() => {
@@ -211,6 +263,100 @@ function InventoryContent() {
     toast.success(`Exported ${rows.length} inventory rows`)
   }
 
+  const ppeSizeSummary = useMemo(() => {
+    const suit = new Map<string, number>()
+    const boots = new Map<string, number>()
+    const missing: any[] = []
+
+    crewSizeRows.forEach((crew) => {
+      const suitKey = [crew.suit_color || 'No Color', crew.suit_size || 'No Size'].join(' | ')
+      const bootKey = crew.boot_size || 'No Size'
+      if (crew.suit_color && crew.suit_size) suit.set(suitKey, (suit.get(suitKey) || 0) + 1)
+      if (crew.boot_size) boots.set(bootKey, (boots.get(bootKey) || 0) + 1)
+      if (!crew.suit_color || !crew.suit_size || !crew.boot_size) missing.push(crew)
+    })
+
+    const confirmed = crewSizeRows.filter((crew) => {
+      if (!activeSizeWindow?.id) return !!crew.ppe_size_confirmed_at
+      return String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id)
+    }).length
+
+    return {
+      confirmed,
+      missing,
+      suitRows: Array.from(suit.entries()).map(([key, qty]) => {
+        const [color, size] = key.split(' | ')
+        return { Color: color, Size: size, Qty: qty }
+      }),
+      bootRows: Array.from(boots.entries()).map(([size, qty]) => ({ Size: size, Qty: qty })),
+    }
+  }, [activeSizeWindow?.id, crewSizeRows])
+
+  const openPpeSizeSummary = async () => {
+    setIsSizeSummaryOpen(true)
+    await fetchPpeSizeSummary()
+  }
+
+  const handleOpenSizeWindow = async () => {
+    if (!sizeWindowTitle.trim()) return toast.error('Enter update window title')
+    setIsProcessingSizeWindow(true)
+    const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
+    const { error } = await supabase.from('ppe_size_windows').insert({
+      title: sizeWindowTitle.trim(),
+      status: 'open',
+      deadline_at: sizeWindowDeadline ? new Date(sizeWindowDeadline).toISOString() : null,
+      opened_by: admin.full_name || admin.position || 'Admin',
+    })
+    setIsProcessingSizeWindow(false)
+    if (error) return toast.error(`${error.message}. Run sql/ppe_size_update_window.sql first.`)
+    toast.success('PPE size update window opened')
+    window.dispatchEvent(new Event('new-notification'))
+    await fetchPpeSizeSummary()
+  }
+
+  const handleCloseSizeWindow = async () => {
+    if (!activeSizeWindow?.id) return
+    if (!confirm(`Close ${activeSizeWindow.title || 'current PPE size update window'}?`)) return
+    setIsProcessingSizeWindow(true)
+    const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
+    const { error } = await supabase.from('ppe_size_windows').update({
+      status: 'closed',
+      closed_by: admin.full_name || admin.position || 'Admin',
+      closed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', activeSizeWindow.id)
+    setIsProcessingSizeWindow(false)
+    if (error) return toast.error(error.message)
+    toast.success('PPE size update window closed')
+    window.dispatchEvent(new Event('new-notification'))
+    await fetchPpeSizeSummary()
+  }
+
+  const handleExportPpeSizeSummary = async () => {
+    if (crewSizeRows.length === 0) return toast.error('No crew size data to export')
+    const detailRows = crewSizeRows.map((crew) => ({
+      Crew: crew.full_name || '',
+      Position: crew.position || '',
+      'Suit Color': crew.suit_color || '',
+      'Suit Size': crew.suit_size || '',
+      'Boot Size': crew.boot_size || '',
+      'Confirmed At': formatDateTime(crew.ppe_size_confirmed_at),
+      Status: activeSizeWindow?.id && String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id) ? 'Confirmed' : 'Not confirmed',
+    }))
+    const rows = [
+      { Section: 'Boiler Suit Summary', Color: '', Size: '', Qty: '' },
+      ...ppeSizeSummary.suitRows.map((row) => ({ Section: 'Boiler Suit', ...row })),
+      { Section: '', Color: '', Size: '', Qty: '' },
+      { Section: 'Safety Boots Summary', Color: '', Size: '', Qty: '' },
+      ...ppeSizeSummary.bootRows.map((row) => ({ Section: 'Safety Boots', Color: '', ...row })),
+      { Section: '', Color: '', Size: '', Qty: '' },
+      ...detailRows.map((row) => ({ Section: 'Crew Detail', ...row })),
+    ]
+    const stamp = new Date().toISOString().slice(0, 10)
+    await exportJsonRowsToExcel({ fileName: `kmt-ppe-size-summary-${stamp}.xlsx`, rows, sheetName: 'PPE Size Summary' })
+    toast.success('Exported PPE size summary')
+  }
+
   const handleExportRestockBatch = async (batch: any) => {
     const rows = buildRestockBatchExportRows(batch)
 
@@ -279,6 +425,7 @@ function InventoryContent() {
         showLowStock={showLowStock}
         onAddItem={() => { setEditingItem({ item_name: '', category: 'Other', quantity: 0, threshold: 1, item_id_code: generateNextCode('Other') }); setIsItemModalOpen(true); }}
         onExportExcel={handleExportExcel}
+        onOpenPpeSizeSummary={openPpeSizeSummary}
         onOpenReceiveStock={() => { setRestockView('entry'); setIsRestockModalOpen(true); }}
         onSearchTermChange={setSearchTerm}
         onShowLowStockChange={setShowLowStock}
@@ -344,6 +491,89 @@ function InventoryContent() {
             onUpdateRow={updateRow}
           />
         </ReceiveShipmentModal>
+      )}
+
+      {isSizeSummaryOpen && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/95 p-4 backdrop-blur-2xl">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-[48px] border border-amber-500/25 bg-zinc-950 shadow-2xl">
+            <div className="flex flex-col gap-4 border-b border-white/10 p-7 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-300">PPE Size Update Window</p>
+                <h2 className="mt-2 text-3xl font-black italic text-white">Boiler Suit & Safety Boots Summary</h2>
+                <p className="mt-1 text-xs normal-case text-zinc-500">Open a window for crew to confirm sizes, then export the summary for ordering.</p>
+              </div>
+              <button onClick={() => setIsSizeSummaryOpen(false)} className="rounded-2xl bg-white/5 px-4 py-3 text-xs font-black uppercase text-zinc-300 hover:bg-white/10">Close</button>
+            </div>
+            <div className="max-h-[72vh] space-y-5 overflow-y-auto p-7">
+              <div className="grid gap-4 md:grid-cols-4">
+                <div className="rounded-[28px] border border-white/10 bg-black/40 p-5">
+                  <p className="text-[9px] tracking-[0.25em] text-zinc-500">CREW</p>
+                  <p className="mt-2 text-3xl font-black text-white">{crewSizeRows.length}</p>
+                </div>
+                <div className="rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-5">
+                  <p className="text-[9px] tracking-[0.25em] text-emerald-200">CONFIRMED</p>
+                  <p className="mt-2 text-3xl font-black text-white">{ppeSizeSummary.confirmed}</p>
+                </div>
+                <div className="rounded-[28px] border border-red-500/20 bg-red-500/10 p-5">
+                  <p className="text-[9px] tracking-[0.25em] text-red-200">MISSING SIZE</p>
+                  <p className="mt-2 text-3xl font-black text-white">{ppeSizeSummary.missing.length}</p>
+                </div>
+                <div className="rounded-[28px] border border-amber-500/20 bg-amber-500/10 p-5">
+                  <p className="text-[9px] tracking-[0.25em] text-amber-200">WINDOW</p>
+                  <p className="mt-2 text-sm font-black text-white">{activeSizeWindow ? 'OPEN' : 'CLOSED'}</p>
+                </div>
+              </div>
+
+              <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
+                {activeSizeWindow ? (
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm font-black text-white">{activeSizeWindow.title}</p>
+                      <p className="mt-1 text-xs normal-case text-zinc-500">Deadline: {formatDateTime(activeSizeWindow.deadline_at)} | Opened by {activeSizeWindow.opened_by || '-'}</p>
+                    </div>
+                    <button onClick={handleCloseSizeWindow} disabled={isProcessingSizeWindow} className="rounded-2xl bg-red-600 px-5 py-3 text-xs font-black uppercase text-white disabled:opacity-50">Close Window</button>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
+                    <input value={sizeWindowTitle} onChange={(event) => setSizeWindowTitle(event.target.value)} className="rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none focus:border-amber-500" />
+                    <input type="datetime-local" value={sizeWindowDeadline} onChange={(event) => setSizeWindowDeadline(event.target.value)} className="rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none focus:border-amber-500" />
+                    <button onClick={handleOpenSizeWindow} disabled={isProcessingSizeWindow} className="rounded-2xl bg-amber-600 px-5 py-3 text-xs font-black uppercase text-white disabled:opacity-50">Open Window</button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end">
+                <button onClick={handleExportPpeSizeSummary} className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-xs font-black uppercase text-blue-200 hover:bg-blue-500 hover:text-white">Export Summary</button>
+              </div>
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
+                  <p className="mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-amber-200">Boiler Suit</p>
+                  <div className="space-y-2">{ppeSizeSummary.suitRows.map((row) => <div key={`${row.Color}-${row.Size}`} className="flex justify-between rounded-xl bg-white/5 px-4 py-3 text-xs"><span>{row.Color} | {row.Size}</span><b>{row.Qty}</b></div>)}</div>
+                </div>
+                <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
+                  <p className="mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-amber-200">Safety Boots</p>
+                  <div className="space-y-2">{ppeSizeSummary.bootRows.map((row) => <div key={row.Size} className="flex justify-between rounded-xl bg-white/5 px-4 py-3 text-xs"><span>{row.Size}</span><b>{row.Qty}</b></div>)}</div>
+                </div>
+              </div>
+
+              <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
+                <p className="mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">Crew Detail</p>
+                <div className="space-y-2">
+                  {crewSizeRows.map((crew) => (
+                    <div key={crew.id} className="grid gap-2 rounded-xl bg-white/5 px-4 py-3 text-xs normal-case md:grid-cols-[1fr_120px_120px_120px_180px]">
+                      <b className="text-white">{crew.full_name}</b>
+                      <span>{crew.suit_color || '-'}</span>
+                      <span>{crew.suit_size || '-'}</span>
+                      <span>{crew.boot_size || '-'}</span>
+                      <span className="text-zinc-500">{formatDateTime(crew.ppe_size_confirmed_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
