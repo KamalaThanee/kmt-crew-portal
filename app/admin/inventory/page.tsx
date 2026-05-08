@@ -44,6 +44,16 @@ const formatDateTime = (value?: string | null) => {
   return date.toLocaleString()
 }
 
+const sizeSort = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+
+const colorSort = (a: string, b: string) => {
+  const order = ['white', 'orange']
+  const aIndex = order.indexOf(a.toLowerCase())
+  const bIndex = order.indexOf(b.toLowerCase())
+  if (aIndex !== -1 || bIndex !== -1) return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex)
+  return a.localeCompare(b)
+}
+
 function InventoryContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -286,9 +296,11 @@ function InventoryContent() {
       missing,
       suitRows: Array.from(suit.entries()).map(([key, qty]) => {
         const [color, size] = key.split(' | ')
-        return { Color: color, Size: size, Qty: qty }
-      }),
-      bootRows: Array.from(boots.entries()).map(([size, qty]) => ({ Size: size, Qty: qty })),
+        return { Color: color, Size: size, 'Required Qty': qty }
+      }).sort((a, b) => colorSort(a.Color, b.Color) || sizeSort(a.Size, b.Size)),
+      bootRows: Array.from(boots.entries())
+        .map(([size, qty]) => ({ Size: size, 'Required Qty': qty }))
+        .sort((a, b) => sizeSort(a.Size, b.Size)),
     }
   }, [activeSizeWindow?.id, crewSizeRows])
 
@@ -344,12 +356,12 @@ function InventoryContent() {
       Status: activeSizeWindow?.id && String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id) ? 'Confirmed' : 'Not confirmed',
     }))
     const rows = [
-      { Section: 'Boiler Suit Summary', Color: '', Size: '', Qty: '' },
+      { Section: 'Boiler Suit Required Summary', Color: '', Size: '', 'Required Qty': '' },
       ...ppeSizeSummary.suitRows.map((row) => ({ Section: 'Boiler Suit', ...row })),
-      { Section: '', Color: '', Size: '', Qty: '' },
-      { Section: 'Safety Boots Summary', Color: '', Size: '', Qty: '' },
+      { Section: '', Color: '', Size: '', 'Required Qty': '' },
+      { Section: 'Safety Boots Required Summary', Color: '', Size: '', 'Required Qty': '' },
       ...ppeSizeSummary.bootRows.map((row) => ({ Section: 'Safety Boots', Color: '', ...row })),
-      { Section: '', Color: '', Size: '', Qty: '' },
+      { Section: '', Color: '', Size: '', 'Required Qty': '' },
       ...detailRows.map((row) => ({ Section: 'Crew Detail', ...row })),
     ]
     const stamp = new Date().toISOString().slice(0, 10)
@@ -549,11 +561,27 @@ function InventoryContent() {
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
                   <p className="mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-amber-200">Boiler Suit</p>
-                  <div className="space-y-2">{ppeSizeSummary.suitRows.map((row) => <div key={`${row.Color}-${row.Size}`} className="flex justify-between rounded-xl bg-white/5 px-4 py-3 text-xs"><span>{row.Color} | {row.Size}</span><b>{row.Qty}</b></div>)}</div>
+                  <p className="mb-4 text-[10px] normal-case text-zinc-500">Required quantity by color and size.</p>
+                  <div className="space-y-2">
+                    {ppeSizeSummary.suitRows.length > 0 ? ppeSizeSummary.suitRows.map((row) => (
+                      <div key={`${row.Color}-${row.Size}`} className="grid grid-cols-[1fr_90px] items-center gap-3 rounded-xl bg-white/5 px-4 py-3 text-xs">
+                        <span><b className="text-white">{row.Color}</b> | {row.Size}</span>
+                        <span className="text-right"><b className="text-lg text-amber-200">{row['Required Qty']}</b> <span className="text-[9px] text-zinc-500">pcs</span></span>
+                      </div>
+                    )) : <p className="rounded-xl bg-white/5 px-4 py-3 text-xs text-zinc-500">No boiler suit sizes recorded</p>}
+                  </div>
                 </div>
                 <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
                   <p className="mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-amber-200">Safety Boots</p>
-                  <div className="space-y-2">{ppeSizeSummary.bootRows.map((row) => <div key={row.Size} className="flex justify-between rounded-xl bg-white/5 px-4 py-3 text-xs"><span>{row.Size}</span><b>{row.Qty}</b></div>)}</div>
+                  <p className="mb-4 text-[10px] normal-case text-zinc-500">Required quantity by boots size.</p>
+                  <div className="space-y-2">
+                    {ppeSizeSummary.bootRows.length > 0 ? ppeSizeSummary.bootRows.map((row) => (
+                      <div key={row.Size} className="grid grid-cols-[1fr_90px] items-center gap-3 rounded-xl bg-white/5 px-4 py-3 text-xs">
+                        <span>{row.Size}</span>
+                        <span className="text-right"><b className="text-lg text-amber-200">{row['Required Qty']}</b> <span className="text-[9px] text-zinc-500">pairs</span></span>
+                      </div>
+                    )) : <p className="rounded-xl bg-white/5 px-4 py-3 text-xs text-zinc-500">No safety boots sizes recorded</p>}
+                  </div>
                 </div>
               </div>
 
