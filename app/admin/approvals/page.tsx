@@ -9,7 +9,7 @@ import { getApprovalCrewName, isApprovedByForeignKeyError, isMissingColumnError,
 import { ApprovalActionModals } from '@/components/approvals/ApprovalActionModals'
 import { ApprovalRequestCard } from '@/components/approvals/ApprovalRequestCard'
 import { toast } from 'sonner'
-import { ShieldCheck } from 'lucide-react'
+import { History, ShieldCheck } from 'lucide-react'
 import type { PpeRequest, PpeRequestUpdateResult } from '@/lib/approvalTypes'
 
 type StoredCrewUser = {
@@ -277,6 +277,18 @@ export default function ApprovalsPage() {
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div><h1 className="text-3xl md:text-4xl font-black italic text-white flex items-center gap-3"><ShieldCheck className="text-orange-500" size={36}/> Approvals</h1><p className="text-zinc-500 mt-1 tracking-widest">Pending Crew Requests</p></div>
+        <div className="grid w-full max-w-md grid-cols-2 rounded-[26px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[420px]">
+          <button type="button" className="rounded-[20px] bg-orange-600 px-4 py-3 text-white shadow-lg shadow-orange-600/25">
+            Pending Requests
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/admin/history')}
+            className="flex items-center justify-center gap-2 rounded-[20px] px-4 py-3 transition-all hover:bg-white/5 hover:text-white"
+          >
+            <History size={14} /> Request History
+          </button>
+        </div>
       </div>
       {actionMessage && (
         <div className="mb-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-[10px] text-orange-300 normal-case">
