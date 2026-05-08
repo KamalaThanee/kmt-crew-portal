@@ -71,8 +71,8 @@ function InventoryContent() {
 
       setStockTransactions(movements || [])
       if (showToast) {
-        if ((movements || []).length > 0) toast.success(`Loaded ${movements?.length || 0} issue transactions`)
-        else toast.info('No issue transactions yet. Run the SQL backfill if old received requests should appear.')
+        if ((movements || []).length > 0) toast.success(`Loaded ${movements?.length || 0} stock movements`)
+        else toast.info('No stock movements yet. Run the SQL backfill if old received requests should appear.')
       }
     } finally {
       setIsRefreshingTransactions(false)

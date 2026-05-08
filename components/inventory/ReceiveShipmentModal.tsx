@@ -34,7 +34,7 @@ export function ReceiveShipmentModal({
             <div className="flex flex-wrap gap-2 mt-6 bg-black/60 p-1.5 rounded-[20px] w-fit">
               <button onClick={() => onViewChange('entry')} className={getTabClassName('entry')}>New Entry</button>
               <button onClick={() => onViewChange('history')} className={getTabClassName('history')}>Restock History</button>
-              <button onClick={() => onViewChange('issue-log')} className={getTabClassName('issue-log')}>Issue Log</button>
+              <button onClick={() => onViewChange('issue-log')} className={getTabClassName('issue-log')}>Stock Movement</button>
             </div>
           </div>
           <button onClick={onClose} className="p-4 bg-white/5 rounded-full hover:bg-red-500 text-white transition-all self-start shadow-xl">

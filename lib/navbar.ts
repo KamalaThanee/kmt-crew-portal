@@ -11,7 +11,6 @@ export const getNavbarMenuItems = (isAdmin: boolean): NavbarMenuItem[] => {
   if (isAdmin) {
     return [
       { name: 'APPROVALS', href: '/admin/approvals', icon: ClipboardCheck },
-      { name: 'HISTORY', href: '/admin/history', icon: History },
       { name: 'INVENTORY', href: '/admin/inventory', icon: Package },
       { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
       { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
