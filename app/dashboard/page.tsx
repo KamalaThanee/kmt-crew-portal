@@ -36,6 +36,15 @@ export default function CrewDashboard() {
     fetchStats(u);
   }, [router])
 
+  useEffect(() => {
+    if (!activePpeSizeWindow) return
+    if (window.location.hash !== '#ppe-size-update' && !window.location.search.includes('ppe=size')) return
+
+    window.setTimeout(() => {
+      document.getElementById('ppe-size-update')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 150)
+  }, [activePpeSizeWindow])
+
   async function fetchStats(u: any) {
     const [
       matrixRes,
@@ -174,7 +183,7 @@ export default function CrewDashboard() {
 
         <div className="grid grid-cols-2 gap-6">
           {activePpeSizeWindow && (
-            <div className="col-span-2 bg-amber-500/10 border border-amber-500/30 p-6 rounded-[36px] shadow-xl">
+            <div id="ppe-size-update" className="col-span-2 scroll-mt-28 bg-amber-500/10 border border-amber-500/30 p-6 rounded-[36px] shadow-xl">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <div className="bg-amber-500/15 border border-amber-500/20 p-4 rounded-[24px] text-amber-300"><Ruler size={24}/></div>

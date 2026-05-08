@@ -84,7 +84,7 @@ function buildPpeSizeActions(windowRow: PpeSizeWindow | null, user: CurrentUser 
     status: 'ppe-size',
     title: windowRow.title || 'Confirm PPE sizes',
     description: deadline,
-    href: '/dashboard?ppe=size',
+    href: '/dashboard?ppe=size#ppe-size-update',
   }]
 }
 

@@ -283,6 +283,8 @@ function InventoryContent() {
   const ppeSizeSummary = useMemo(() => {
     const suit = new Map<string, number>()
     const boots = new Map<string, number>()
+    const profileSuit = new Map<string, number>()
+    const profileBoots = new Map<string, number>()
     const hasConfirmedCurrentRound = (crew: any) => {
       if (!activeSizeWindow?.id) return !!crew.ppe_size_confirmed_at
       return String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id)
@@ -291,6 +293,13 @@ function InventoryContent() {
     const confirmedRows = crewSizeRows.filter(hasConfirmedCurrentRound)
     const pendingRows = crewSizeRows.filter((crew) => !hasConfirmedCurrentRound(crew))
     const missingSizeRows = crewSizeRows.filter((crew) => !crew.suit_color || !crew.suit_size || !crew.boot_size)
+
+    crewSizeRows.forEach((crew) => {
+      const suitKey = [crew.suit_color || 'No Color', crew.suit_size || 'No Size'].join(' | ')
+      const bootKey = crew.boot_size || 'No Size'
+      if (crew.suit_color && crew.suit_size) profileSuit.set(suitKey, (profileSuit.get(suitKey) || 0) + 1)
+      if (crew.boot_size) profileBoots.set(bootKey, (profileBoots.get(bootKey) || 0) + 1)
+    })
 
     confirmedRows.forEach((crew) => {
       const suitKey = [crew.suit_color || 'No Color', crew.suit_size || 'No Size'].join(' | ')
@@ -309,6 +318,13 @@ function InventoryContent() {
       }).sort((a, b) => colorSort(a.Color, b.Color) || sizeSort(a.Size, b.Size)),
       bootRows: Array.from(boots.entries())
         .map(([size, qty]) => ({ Size: size, 'Required Qty': qty }))
+        .sort((a, b) => sizeSort(a.Size, b.Size)),
+      profileSuitRows: Array.from(profileSuit.entries()).map(([key, qty]) => {
+        const [color, size] = key.split(' | ')
+        return { Color: color, Size: size, Qty: qty }
+      }).sort((a, b) => colorSort(a.Color, b.Color) || sizeSort(a.Size, b.Size)),
+      profileBootRows: Array.from(profileBoots.entries())
+        .map(([size, qty]) => ({ Size: size, Qty: qty }))
         .sort((a, b) => sizeSort(a.Size, b.Size)),
     }
   }, [activeSizeWindow?.id, crewSizeRows])
@@ -579,7 +595,20 @@ function InventoryContent() {
                         <span><b className="text-white">{row.Color}</b> | {row.Size}</span>
                         <span className="text-right"><b className="text-lg text-amber-200">{row['Required Qty']}</b> <span className="text-[9px] text-zinc-500">pcs</span></span>
                       </div>
-                    )) : <p className="rounded-xl bg-white/5 px-4 py-3 text-xs text-zinc-500">No boiler suit sizes recorded</p>}
+                    )) : <p className="rounded-xl bg-white/5 px-4 py-3 text-xs text-zinc-500">No confirmed boiler suit sizes yet</p>}
+                    {ppeSizeSummary.suitRows.length === 0 && ppeSizeSummary.profileSuitRows.length > 0 && (
+                      <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                        <p className="mb-3 text-[9px] font-black uppercase tracking-[0.25em] text-zinc-500">Current profile snapshot, not order qty</p>
+                        <div className="space-y-2">
+                          {ppeSizeSummary.profileSuitRows.map((row) => (
+                            <div key={`profile-${row.Color}-${row.Size}`} className="grid grid-cols-[1fr_70px] rounded-xl bg-black/30 px-3 py-2 text-[11px] text-zinc-400">
+                              <span><b className="text-zinc-200">{row.Color}</b> | {row.Size}</span>
+                              <span className="text-right">{row.Qty}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
@@ -591,7 +620,20 @@ function InventoryContent() {
                         <span>{row.Size}</span>
                         <span className="text-right"><b className="text-lg text-amber-200">{row['Required Qty']}</b> <span className="text-[9px] text-zinc-500">pairs</span></span>
                       </div>
-                    )) : <p className="rounded-xl bg-white/5 px-4 py-3 text-xs text-zinc-500">No safety boots sizes recorded</p>}
+                    )) : <p className="rounded-xl bg-white/5 px-4 py-3 text-xs text-zinc-500">No confirmed safety boots sizes yet</p>}
+                    {ppeSizeSummary.bootRows.length === 0 && ppeSizeSummary.profileBootRows.length > 0 && (
+                      <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                        <p className="mb-3 text-[9px] font-black uppercase tracking-[0.25em] text-zinc-500">Current profile snapshot, not order qty</p>
+                        <div className="space-y-2">
+                          {ppeSizeSummary.profileBootRows.map((row) => (
+                            <div key={`profile-${row.Size}`} className="grid grid-cols-[1fr_70px] rounded-xl bg-black/30 px-3 py-2 text-[11px] text-zinc-400">
+                              <span>{row.Size}</span>
+                              <span className="text-right">{row.Qty}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
