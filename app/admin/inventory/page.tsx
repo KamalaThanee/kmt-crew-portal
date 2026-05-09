@@ -294,7 +294,7 @@ function InventoryContent() {
     const profileSuit = new Map<string, number>()
     const profileBoots = new Map<string, number>()
     const hasConfirmedCurrentRound = (crew: any) => {
-      if (!activeSizeWindow?.id) return !!crew.ppe_size_confirmed_at
+      if (!activeSizeWindow?.id) return false
       return String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id)
     }
 
@@ -346,14 +346,26 @@ function InventoryContent() {
     if (!sizeWindowTitle.trim()) return toast.error('Enter update window title')
     setIsProcessingSizeWindow(true)
     const admin = JSON.parse(localStorage.getItem('kmt_user') || '{}')
-    const { error } = await supabase.from('ppe_size_windows').insert({
+
+    await supabase
+      .from('ppe_size_windows')
+      .update({
+        status: 'closed',
+        closed_by: admin.full_name || admin.position || 'Admin',
+        closed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('status', 'open')
+
+    const { data, error } = await supabase.from('ppe_size_windows').insert({
       title: sizeWindowTitle.trim(),
       status: 'open',
       deadline_at: sizeWindowDeadline ? new Date(sizeWindowDeadline).toISOString() : null,
       opened_by: admin.full_name || admin.position || 'Admin',
-    })
+    }).select('*').single()
     setIsProcessingSizeWindow(false)
     if (error) return toast.error(`${error.message}. Run sql/ppe_size_update_window.sql first.`)
+    setActiveSizeWindow((data || null) as PpeSizeWindow | null)
     toast.success('PPE size update window opened')
     window.dispatchEvent(new Event('new-notification'))
     await fetchPpeSizeSummary()
@@ -388,7 +400,7 @@ function InventoryContent() {
       'Confirmed At': formatDateTime(crew.ppe_size_confirmed_at),
       Status: activeSizeWindow?.id
         ? String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id) ? 'Confirmed' : 'Waiting'
-        : crew.ppe_size_confirmed_at ? 'Confirmed' : 'Waiting',
+        : 'Waiting',
     }))
     const rows = [
       { Section: 'Boiler Suit Required Summary', Color: '', Size: '', 'Required Qty': '' },
