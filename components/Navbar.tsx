@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { NotificationDropdown } from '@/components/navbar/NotificationDropdown';
 import { ProfileMenu } from '@/components/navbar/ProfileMenu';
 import { PushNudge } from '@/components/navbar/PushNudge';
+import { PpeSizeUpdateModal } from '@/components/navbar/PpeSizeUpdateModal';
 import {
   Bell,
   ShieldCheck,
@@ -27,6 +28,7 @@ export default function Navbar() {
   const [cartCount, setCartCount] = useState(0);
   const [oneSignalStatus, setOneSignalStatus] = useState<Record<string, string>>({});
   const [showPushNudge, setShowPushNudge] = useState(false);
+  const [showPpeSizeModal, setShowPpeSizeModal] = useState(false);
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -67,16 +69,19 @@ export default function Navbar() {
 
   useEffect(() => {
     const handleCartUpdate = (e: any) => setCartCount(e.detail);
+    const handleOpenPpeSizeUpdate = () => setShowPpeSizeModal(true);
     const handleClickOutside = (e: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setShowProfile(false);
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotif(false);
     };
 
     window.addEventListener('cart-updated', handleCartUpdate);
+    window.addEventListener('open-ppe-size-update', handleOpenPpeSizeUpdate);
     document.addEventListener("mousedown", handleClickOutside);
 
     return () => {
       window.removeEventListener('cart-updated', handleCartUpdate);
+      window.removeEventListener('open-ppe-size-update', handleOpenPpeSizeUpdate);
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
@@ -157,6 +162,7 @@ export default function Navbar() {
                 isAdmin={isAdmin}
                 notifData={notifData}
                 onClose={() => setShowNotif(false)}
+                onOpenPpeSizeModal={() => setShowPpeSizeModal(true)}
               />
             )}
           </div>
@@ -218,6 +224,20 @@ export default function Navbar() {
           );
         })}
       </nav>
+
+      {showPpeSizeModal && user && (
+        <PpeSizeUpdateModal
+          user={user}
+          onClose={() => setShowPpeSizeModal(false)}
+          onSaved={(nextUser) => {
+            void nextUser;
+            setShowPpeSizeModal(false);
+            window.dispatchEvent(new Event('kmt-user-changed'));
+            window.dispatchEvent(new Event('new-notification'));
+            toast.success('PPE sizes confirmed');
+          }}
+        />
+      )}
     </>
   );
 }

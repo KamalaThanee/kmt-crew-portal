@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { CheckCircle2, FileBadge, ShipWheel, XCircle } from 'lucide-react'
+import { ArrowRight, CheckCircle2, FileBadge, Ruler, ShipWheel, XCircle } from 'lucide-react'
 import type { AdminActionItem, CrewActionItem, NavbarNotificationData } from '@/hooks/useNavbarNotifications'
 import { NotificationLinkItem } from '@/components/navbar/NotificationLinkItem'
 
@@ -7,12 +7,13 @@ type NotificationDropdownProps = {
   isAdmin: boolean
   notifData: NavbarNotificationData
   onClose: () => void
+  onOpenPpeSizeModal?: () => void
 }
 
-export function NotificationDropdown({ isAdmin, notifData, onClose }: NotificationDropdownProps) {
+export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSizeModal }: NotificationDropdownProps) {
   const totalPersonalAdminUpdates = (notifData.personalUpdates || []).length
   const hasNoAlerts =
-    notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) + (notifData.shipCertAlertCount || 0) === 0 &&
+    notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) + (notifData.shipCertAlertCount || 0) + (notifData.ppeSizeAlertCount || 0) === 0 &&
     (notifData.updates || []).length === 0
 
   return (
@@ -86,6 +87,7 @@ export function NotificationDropdown({ isAdmin, notifData, onClose }: Notificati
               <ReadyToReceiveLink count={notifData.personalApprovedCount} className="mx-1" onClose={onClose} />
             )}
 
+            <PpeSizeAlerts items={notifData.ppeSizeActions || []} className="px-1 pt-3" onClose={onClose} onOpenModal={onOpenPpeSizeModal} />
             <CertificateAlerts items={notifData.personalCertActions || []} className="px-1 pt-3" onClose={onClose} />
             <ShipCertificateAlerts items={notifData.shipCertActions || []} className="px-1 pt-3" onClose={onClose} />
           </>
@@ -107,6 +109,7 @@ export function NotificationDropdown({ isAdmin, notifData, onClose }: Notificati
               )
             })}
 
+            <PpeSizeAlerts items={notifData.ppeSizeActions || []} className="pt-2" onClose={onClose} onOpenModal={onOpenPpeSizeModal} />
             <CertificateAlerts items={notifData.personalCertActions || []} className="pt-2" onClose={onClose} />
             <ShipCertificateAlerts items={notifData.shipCertActions || []} className="pt-2" onClose={onClose} />
 
@@ -119,6 +122,51 @@ export function NotificationDropdown({ isAdmin, notifData, onClose }: Notificati
             No Alerts
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function PpeSizeAlerts({
+  items,
+  className,
+  onClose,
+  onOpenModal,
+}: {
+  items: CrewActionItem[]
+  className: string
+  onClose: () => void
+  onOpenModal?: () => void
+}) {
+  if (items.length === 0) return null
+
+  return (
+    <div className={className}>
+      <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-amber-300">
+        PPE Size Update
+      </p>
+      <div className="space-y-2">
+        {items.map((item: CrewActionItem) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => {
+              onClose()
+              if (onOpenModal) onOpenModal()
+              else window.dispatchEvent(new Event('open-ppe-size-update'))
+            }}
+            className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-500/10 bg-amber-500/[0.04] p-4 text-left transition-all hover:bg-white/5"
+          >
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/15 p-2 text-amber-300"><Ruler size={16} /></div>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-bold uppercase text-white">{item.title}</p>
+                <p className="mt-1 line-clamp-2 text-[9px] normal-case text-zinc-400">{item.description}</p>
+              </div>
+            </div>
+            <ArrowRight size={14} className="shrink-0 text-zinc-600 group-hover:text-orange-400" />
+          </button>
+        ))}
       </div>
     </div>
   )

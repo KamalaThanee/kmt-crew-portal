@@ -76,6 +76,11 @@ const certificateTabCopy: Record<string, { title: string; subtitle: string }> = 
   },
 }
 
+const crewColumns = 'id, full_name, position, is_active, resigned_at'
+const crewCertColumns = 'id, crew_id, cert_name, issue_date, expiry_date, file_url, created_at, updated_at'
+const certLogColumns = 'id, action, old_data, new_data, actor_name, created_at'
+const crewCertLogColumns = 'id, action, old_data, new_data, actor_name, created_at, crew_id, cert_name'
+
 function CertificatesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -106,12 +111,12 @@ function CertificatesContent() {
   const fetchData = async () => {
     const [m, c, crewsRes, allC, r, logs, crewLogs] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
-      supabase.from('crew_certs').select('*').eq('crew_id', currentUser?.id),
-      supabase.from('crews').select('*').order('full_name'),
-      supabase.from('crew_certs').select('*'),
+      supabase.from('crew_certs').select(crewCertColumns).eq('crew_id', currentUser?.id),
+      supabase.from('crews').select(crewColumns).order('full_name'),
+      supabase.from('crew_certs').select(crewCertColumns),
       supabase.from('cert_rules').select('*'),
-      supabase.from('ship_cert_history').select('*').order('created_at', { ascending: false }).limit(50),
-      supabase.from('crew_cert_history').select('*').order('created_at', { ascending: false }).limit(100),
+      supabase.from('ship_cert_history').select(certLogColumns).order('created_at', { ascending: false }).limit(50),
+      supabase.from('crew_cert_history').select(crewCertLogColumns).order('created_at', { ascending: false }).limit(100),
     ]);
     if (m.data) setMatrix(m.data);
     if (c.data) setMyCerts(c.data);

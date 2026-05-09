@@ -35,6 +35,7 @@ export type NavbarNotificationData = {
   pending: number
   lowStock: number
   expiredCerts: number
+  ppeSizeActions: CrewActionItem[]
   pendingActions?: AdminActionItem[]
   shipCertActions: CrewActionItem[]
   adminActions: AdminActionItem[]
@@ -44,16 +45,23 @@ export type NavbarNotificationData = {
   approvedCount: number
   personalApprovedCount: number
   personalCertAlertCount: number
+  ppeSizeAlertCount: number
   shipCertAlertCount: number
 }
 
 type SeenCrewRequestStatuses = Record<string, string>
 type SeenCertTriggers = Record<string, boolean>
+type PpeSizeWindow = {
+  id?: string
+  title?: string | null
+  deadline_at?: string | null
+}
 
 const emptyNotifications: NavbarNotificationData = {
   pending: 0,
   lowStock: 0,
   expiredCerts: 0,
+  ppeSizeActions: [],
   shipCertActions: [],
   adminActions: [],
   personalUpdates: [],
@@ -62,7 +70,22 @@ const emptyNotifications: NavbarNotificationData = {
   approvedCount: 0,
   personalApprovedCount: 0,
   personalCertAlertCount: 0,
+  ppeSizeAlertCount: 0,
   shipCertAlertCount: 0,
+}
+
+function buildPpeSizeActions(windowRow: PpeSizeWindow | null, user: CurrentUser | null): CrewActionItem[] {
+  if (!windowRow?.id || !user?.id) return []
+  if (String((user as any).ppe_size_confirmed_window_id || '') === String(windowRow.id)) return []
+
+  const deadline = windowRow.deadline_at ? `Deadline ${new Date(windowRow.deadline_at).toLocaleString('en-GB')}` : 'Boiler suit and safety boots survey'
+  return [{
+    id: `ppe-size-${windowRow.id}`,
+    status: 'ppe-size',
+    title: windowRow.title || 'Confirm PPE sizes',
+    description: deadline,
+    href: '/dashboard?ppe=size#ppe-size-update',
+  }]
 }
 
 function buildShipCertActions(rows: ShipCertificate[]): CrewActionItem[] {
@@ -127,8 +150,19 @@ export function useNavbarNotifications({
         const { data } = await supabase
           .from('ship_certificates')
           .select('id, master_id, code, cert_name, expiry_date, next_survey_date, has_survey')
-          .limit(500)
+          .limit(200)
         return (data || []) as ShipCertificate[]
+      }
+      const fetchActivePpeSizeWindow = async () => {
+        const { data, error } = await supabase
+          .from('ppe_size_windows')
+          .select('id, title, deadline_at')
+          .eq('status', 'open')
+          .order('opened_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (error) return null
+        return (data || null) as PpeSizeWindow | null
       }
 
       if (isAdmin) {
@@ -147,7 +181,7 @@ export function useNavbarNotifications({
           user,
         )
 
-        const [pendingRes, pendingRowsRes, certsRes, personalCountRes, personalUpdatesRes, shipCertRows] = await Promise.all([
+        const [pendingRes, pendingRowsRes, certsRes, personalCountRes, personalUpdatesRes, shipCertRows, activePpeSizeWindow] = await Promise.all([
           supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
           supabase
             .from('ppe_requests')
@@ -159,6 +193,7 @@ export function useNavbarNotifications({
           personalCountQuery,
           personalUpdatesQuery,
           fetchShipCertRows(),
+          fetchActivePpeSizeWindow(),
         ])
 
         const pendingCount = pendingRes.count || 0
@@ -201,11 +236,14 @@ export function useNavbarNotifications({
         const personalCertAlertCount = personalCertActions.length
         const shipCertActions = buildShipCertActions(shipCertRows)
         const shipCertAlertCount = shipCertActions.length
+        const ppeSizeActions = buildPpeSizeActions(activePpeSizeWindow, user)
+        const ppeSizeAlertCount = ppeSizeActions.length
 
         setNotifData({
           pending: pendingCount,
           lowStock: 0,
           expiredCerts: 0,
+          ppeSizeActions,
           pendingActions,
           shipCertActions,
           adminActions: [],
@@ -215,9 +253,10 @@ export function useNavbarNotifications({
           approvedCount: 0,
           personalApprovedCount,
           personalCertAlertCount,
+          ppeSizeAlertCount,
           shipCertAlertCount,
         })
-        currentTotal = pendingCount + personalUpdateCount + personalCertAlertCount + shipCertAlertCount
+        currentTotal = pendingCount + personalUpdateCount + personalCertAlertCount + shipCertAlertCount + ppeSizeAlertCount
       } else {
         const countQuery = await applyPpeRequestUserFilter(
           supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).in('status', ['approved', 'rejected']),
@@ -234,11 +273,12 @@ export function useNavbarNotifications({
           user,
         )
 
-        const [myCertsRes, { count }, { data: updates }, shipCertRows] = await Promise.all([
+        const [myCertsRes, { count }, { data: updates }, shipCertRows, activePpeSizeWindow] = await Promise.all([
           supabase.from('crew_certs').select('id, cert_name, expiry_date').eq('crew_id', user.id),
           countQuery,
           updatesQuery,
           fetchShipCertRows(),
+          fetchActivePpeSizeWindow(),
         ])
         const rows = updates || []
         const statusStorageKey = getCrewNotificationStorageKey(user)
@@ -266,6 +306,8 @@ export function useNavbarNotifications({
         const personalCertAlertCount = personalCertActions.length
         const shipCertActions = buildShipCertActions(shipCertRows)
         const shipCertAlertCount = shipCertActions.length
+        const ppeSizeActions = buildPpeSizeActions(activePpeSizeWindow, user)
+        const ppeSizeAlertCount = ppeSizeActions.length
 
         if (Object.keys(previousStatuses).length > 0) {
           const newlyApproved = rows.filter(
@@ -321,17 +363,19 @@ export function useNavbarNotifications({
           pending: count || 0,
           lowStock: 0,
           expiredCerts: 0,
+          ppeSizeActions,
           personalCertActions,
           shipCertActions,
           updates: actionItems,
           approvedCount,
           personalCertAlertCount,
+          ppeSizeAlertCount,
           adminActions: [],
           personalUpdates: [],
           personalApprovedCount: 0,
           shipCertAlertCount,
         })
-        currentTotal = (count || 0) + personalCertAlertCount + shipCertAlertCount
+        currentTotal = (count || 0) + personalCertAlertCount + shipCertAlertCount + ppeSizeAlertCount
       }
 
       const lastSeenTotal = parseInt(localStorage.getItem('kmt_notif_seen') || '0')
@@ -347,7 +391,9 @@ export function useNavbarNotifications({
         fetchNotifications()
       }
     }
-    const interval = window.setInterval(fetchNotifications, 15000)
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') fetchNotifications()
+    }, 60000)
     window.addEventListener('new-notification', handleNewNotif)
     window.addEventListener('focus', handleFocus)
     document.addEventListener('visibilitychange', handleVisibility)
@@ -367,7 +413,7 @@ export function useNavbarNotifications({
 
       if (isOpening) {
         const total =
-          notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) + (notifData.shipCertAlertCount || 0)
+          notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) + (notifData.shipCertAlertCount || 0) + (notifData.ppeSizeAlertCount || 0)
         localStorage.setItem('kmt_notif_seen', total.toString())
         if ((notifData.personalCertActions || []).length > 0) {
           const storageKey = getCertTriggerStorageKey(user)

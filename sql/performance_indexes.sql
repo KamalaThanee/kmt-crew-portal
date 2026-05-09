@@ -30,3 +30,9 @@ on public.ppe_stock_transactions (created_at desc);
 
 create index if not exists idx_ppe_stock_transactions_inventory_id_created_at
 on public.ppe_stock_transactions (inventory_id, created_at desc);
+
+create index if not exists idx_ship_certificates_expiry_date
+on public.ship_certificates (expiry_date);
+
+create index if not exists idx_ship_certificates_next_survey_date
+on public.ship_certificates (next_survey_date);
