@@ -28,6 +28,8 @@ create table if not exists public.sms_document_versions (
   mime_type text,
   change_summary text,
   header_source text,
+  update_round text,
+  update_date date,
   uploaded_by uuid,
   uploaded_by_name text,
   created_at timestamptz not null default now()
@@ -47,8 +49,22 @@ create table if not exists public.sms_revision_logs (
   actor_id uuid,
   actor_name text,
   details jsonb,
+  update_round text,
+  update_date date,
   created_at timestamptz not null default now()
 );
+
+alter table public.sms_document_versions
+add column if not exists update_round text;
+
+alter table public.sms_document_versions
+add column if not exists update_date date;
+
+alter table public.sms_revision_logs
+add column if not exists update_round text;
+
+alter table public.sms_revision_logs
+add column if not exists update_date date;
 
 create index if not exists idx_sms_documents_category
 on public.sms_documents (category, doc_no);
@@ -61,6 +77,9 @@ on public.sms_document_versions (status, doc_no);
 
 create index if not exists idx_sms_logs_created_at
 on public.sms_revision_logs (created_at desc);
+
+create index if not exists idx_sms_logs_update_round
+on public.sms_revision_logs (update_round, created_at desc);
 
 alter table public.sms_documents enable row level security;
 alter table public.sms_document_versions enable row level security;

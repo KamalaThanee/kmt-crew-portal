@@ -57,8 +57,12 @@ export default function SmsLibraryPage() {
   const [changeRecordFile, setChangeRecordFile] = useState<File | null>(null)
   const [changeItems, setChangeItems] = useState<SmsChangeRecordItem[]>([])
   const [drafts, setDrafts] = useState<SmsFileDraft[]>([])
+  const [updateRound, setUpdateRound] = useState('')
+  const [updateDate, setUpdateDate] = useState(new Date().toISOString().slice(0, 10))
 
   const isAdmin = isAdminRole(user?.position)
+  const isFirstUpload = documents.length === 0
+  const uploadActionLabel = isFirstUpload ? 'New Upload' : 'Upload Revision'
 
   useEffect(() => {
     const current = readCurrentUser()
@@ -80,7 +84,7 @@ export default function SmsLibraryPage() {
         .order('doc_no'),
       supabase
         .from('sms_revision_logs')
-        .select('id, action, doc_no, title, category, old_revision, new_revision, file_name, actor_name, details, created_at')
+        .select('id, action, doc_no, title, category, old_revision, new_revision, file_name, actor_name, details, update_round, update_date, created_at')
         .order('created_at', { ascending: false })
         .limit(100),
     ])
@@ -114,6 +118,8 @@ export default function SmsLibraryPage() {
     setDrafts([])
     setChangeItems([])
     setChangeRecordFile(null)
+    setUpdateRound('')
+    setUpdateDate(new Date().toISOString().slice(0, 10))
     setProcessingFiles(false)
     setSaving(false)
   }
@@ -128,6 +134,8 @@ export default function SmsLibraryPage() {
       const parsedChangeItems = changeFile ? await parseChangeRecord(changeFile) : []
       const changeMap = new Map(parsedChangeItems.map((item) => [item.docNo.toLowerCase(), item]))
       const docMap = new Map(documents.map((doc) => [doc.doc_no.toLowerCase(), doc]))
+      const roundFromFile = changeFile?.webkitRelativePath?.match(/Revision[_\s-]*(\d+)/i)?.[0] || changeFile?.name.match(/Revision[_\s-]*(\d+)/i)?.[0] || ''
+      if (roundFromFile) setUpdateRound(roundFromFile.replace(/[_-]+/g, ' '))
 
       const nextDrafts: SmsFileDraft[] = []
       for (const file of uploadedDocs) {
@@ -239,6 +247,8 @@ export default function SmsLibraryPage() {
             mime_type: draft.file.type || null,
             change_summary: draft.changeSummary || null,
             header_source: draft.source,
+            update_round: updateRound || null,
+            update_date: updateDate || null,
             uploaded_by: user.id,
             uploaded_by_name: user.full_name,
           })
@@ -271,10 +281,14 @@ export default function SmsLibraryPage() {
           file_name: draft.fileName,
           actor_id: user.id,
           actor_name: user.full_name,
+          update_round: updateRound || null,
+          update_date: updateDate || null,
           details: {
             matchStatus: draft.matchStatus,
             source: draft.source,
             effectiveDate: draft.effectiveDate || null,
+            updateRound: updateRound || null,
+            updateDate: updateDate || null,
             changeSummary: draft.changeSummary || null,
             changeRecordFile: changeRecordFile?.name || null,
           },
@@ -328,7 +342,7 @@ export default function SmsLibraryPage() {
             </div>
             {isAdmin && (
               <button onClick={() => setUploadOpen(true)} className="rounded-[24px] bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-orange-600/20">
-                <UploadCloud size={16} className="mr-2 inline" /> Bulk Upload Revision
+                <UploadCloud size={16} className="mr-2 inline" /> {uploadActionLabel}
               </button>
             )}
           </div>
@@ -357,7 +371,7 @@ export default function SmsLibraryPage() {
                     <p className="text-[10px] font-black uppercase tracking-[0.25em] text-orange-400">{log.action}</p>
                     <h3 className="mt-2 text-xl font-black italic uppercase">{log.doc_no} · {log.title}</h3>
                     <p className="mt-1 text-xs font-bold text-zinc-500">
-                      {log.old_revision || '-'} → {log.new_revision || '-'} · By {log.actor_name || 'Unknown'} · {formatDateTime(log.created_at)}
+                      {log.old_revision || '-'} -&gt; {log.new_revision || '-'} · {log.update_round || 'No update round'} · By {log.actor_name || 'Unknown'} · {formatDateTime(log.created_at)}
                     </p>
                   </div>
                   <span className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-[10px] font-black uppercase text-zinc-300">{log.category}</span>
@@ -395,8 +409,12 @@ export default function SmsLibraryPage() {
             <div className="flex items-start justify-between border-b border-white/10 p-6">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-400">SMS Revision Upload</p>
-                <h2 className="mt-2 text-3xl font-black italic uppercase">Bulk upload with Change record check</h2>
-                <p className="mt-1 text-xs normal-case text-zinc-500">Upload the new revision files together with 00_Change record. The app will detect and compare required documents.</p>
+                <h2 className="mt-2 text-3xl font-black italic uppercase">{uploadActionLabel}</h2>
+                <p className="mt-1 text-xs normal-case text-zinc-500">
+                  {isFirstUpload
+                    ? 'Upload the current SMS document set to create the first controlled library baseline.'
+                    : 'Upload the new revision files together with 00_Change record. The app will detect and compare required documents.'}
+                </p>
               </div>
               <button onClick={resetUpload} className="rounded-2xl bg-white/5 p-3 text-zinc-400 hover:text-white"><X size={20} /></button>
             </div>
@@ -405,9 +423,30 @@ export default function SmsLibraryPage() {
               <label className="block cursor-pointer rounded-[30px] border border-dashed border-orange-500/35 bg-orange-500/10 p-8 text-center">
                 <UploadCloud className="mx-auto mb-3 text-orange-400" size={30} />
                 <p className="text-sm font-black uppercase tracking-widest">Choose SMS files + 00_Change record</p>
-                <p className="mt-1 text-xs normal-case text-zinc-500">Supports bulk upload. Header reading works best with docx/xlsx text-based files.</p>
+                <p className="mt-1 text-xs normal-case text-zinc-500">Supports bulk upload. Header reading works with docx/xlsx and text-based PDF files.</p>
                 <input multiple type="file" className="hidden" onChange={(event) => handleFiles(event.target.files)} />
               </label>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-[24px] border border-white/10 bg-black/35 p-4">
+                  <label className="mb-2 block text-[9px] font-black uppercase tracking-[0.25em] text-zinc-500">Update round</label>
+                  <input
+                    value={updateRound}
+                    onChange={(event) => setUpdateRound(event.target.value)}
+                    placeholder={isFirstUpload ? 'Initial baseline / Revision 30' : 'Revision 30'}
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-black text-white outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div className="rounded-[24px] border border-white/10 bg-black/35 p-4">
+                  <label className="mb-2 block text-[9px] font-black uppercase tracking-[0.25em] text-zinc-500">Update date</label>
+                  <input
+                    type="date"
+                    value={updateDate}
+                    onChange={(event) => setUpdateDate(event.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-black text-white outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
 
               {processingFiles && (
                 <div className="rounded-[28px] border border-white/10 bg-black/40 p-6 text-center text-sm font-black uppercase tracking-widest text-orange-400">

@@ -42,6 +42,8 @@ export type SmsRevisionLog = {
   file_name?: string | null
   actor_name?: string | null
   details?: Record<string, unknown> | null
+  update_round?: string | null
+  update_date?: string | null
   created_at?: string | null
 }
 
@@ -244,6 +246,24 @@ function pickValueAfterLabel(text: string, labels: string[]) {
   return ''
 }
 
+async function readPdfFirstPageText(file: File) {
+  const pdfjs: any = await import('pdfjs-dist')
+  if (pdfjs.GlobalWorkerOptions) {
+    pdfjs.GlobalWorkerOptions.workerSrc = ''
+  }
+  const documentTask = pdfjs.getDocument({
+    data: new Uint8Array(await file.arrayBuffer()),
+    disableWorker: true,
+    useSystemFonts: true,
+  })
+  const pdf = await documentTask.promise
+  const page = await pdf.getPage(1)
+  const textContent = await page.getTextContent()
+  return textContent.items
+    .map((item) => ('str' in item ? item.str : ''))
+    .join(' ')
+}
+
 export async function readSmsDocumentHeader(file: File) {
   const ext = file.name.split('.').pop()?.toLowerCase()
   const filename = parseSmsFilename(file.name)
@@ -274,6 +294,17 @@ export async function readSmsDocumentHeader(file: File) {
         revision: normalizeRevision(pickValueAfterLabel(headerText, ['Revision Number', 'Revision No', 'Revision'])) || filename.revision,
         effectiveDate: parseSmsDate(pickValueAfterLabel(headerText, ['Effective Date'])) || '',
         source: 'Excel header',
+      }
+    }
+
+    if (ext === 'pdf') {
+      const headerText = cleanText(await readPdfFirstPageText(file))
+      return {
+        docNo: normalizeDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No'])) || filename.docNo,
+        title: pickValueAfterLabel(headerText, ['Title']) || filename.title,
+        revision: normalizeRevision(pickValueAfterLabel(headerText, ['Revision Number', 'Revision No', 'Revision'])) || filename.revision,
+        effectiveDate: parseSmsDate(pickValueAfterLabel(headerText, ['Effective Date'])) || '',
+        source: headerText ? 'PDF first page' : 'Filename',
       }
     }
   } catch (error) {
