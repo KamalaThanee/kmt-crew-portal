@@ -260,7 +260,12 @@ async function readPdfFirstPageText(file: File) {
   const page = await pdf.getPage(1)
   const textContent = await page.getTextContent()
   return textContent.items
-    .map((item) => ('str' in item ? item.str : ''))
+    .map((item: unknown) => {
+      if (item && typeof item === 'object' && 'str' in item) {
+        return String((item as { str?: unknown }).str || '')
+      }
+      return ''
+    })
     .join(' ')
 }
 
