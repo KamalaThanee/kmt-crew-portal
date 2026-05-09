@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { isAdminRole } from '@/lib/roles'
 import { isCrewActive, smartSort, type CrewStatusFilter } from '@/lib/settings'
@@ -8,18 +8,13 @@ import { CrewCard } from '@/components/settings/CrewCard'
 import { CrewStatusFilterTabs } from '@/components/settings/CrewStatusFilterTabs'
 import { toast } from 'sonner'
 import { 
-  Settings, Users, Package, SlidersHorizontal, Search, UserPlus,
-  Loader2, Upload, Edit, RefreshCw, X, Save, Box, Trash2
+  Settings, Search, UserPlus,
+  RefreshCw, X, Save, Trash2
 } from 'lucide-react'
 
 function SettingsContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('crews');
-  const [uploading, setUploading] = useState({ suit: false, boot: false });
-  const [sizeCharts, setSizeCharts] = useState({ suit: '', boot: '' });
-  
   const [inventory, setInventory] = useState<any[]>([]);
   const [crews, setCrews] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,12 +24,10 @@ function SettingsContent() {
   const [isEditCrewOpen, setIsEditCrewOpen] = useState(false);
 
   const fetchData = async () => {
-    const [stRes, invRes, crewRes] = await Promise.all([
-      supabase.from('ppe_settings').select('*').eq('id', 1).single(),
+    const [invRes, crewRes] = await Promise.all([
       supabase.from('ppe_inventory').select('*').order('item_name'),
       supabase.from('crews').select('*').order('full_name')
     ]);
-    if (stRes.data) setSizeCharts({ suit: stRes.data.suit_chart_url || '', boot: stRes.data.boot_url || '' });
     if (invRes.data) setInventory(invRes.data);
     if (crewRes.data) setCrews(crewRes.data);
     setLoading(false);
@@ -50,11 +43,6 @@ function SettingsContent() {
     };
     checkAuth();
   }, [router]);
-
-  useEffect(() => {
-    const tab = searchParams.get('tab');
-    if (tab && ['crews', 'system'].includes(tab)) setActiveTab(tab);
-  }, [searchParams]);
 
   // 🎯 สกัดตัวเลือกสำหรับ Dropdowns จากสต๊อกจริง
   const suitColors = useMemo(() => [...new Set(inventory.filter(i => i.item_name.toLowerCase().includes('suit')).map(i => i.color))].filter(Boolean).sort(), [inventory])
@@ -148,20 +136,6 @@ function SettingsContent() {
     fetchData()
   }
 
-  const handleUpload = async (type: 'suit' | 'boot', file: File) => {
-    setUploading(prev => ({ ...prev, [type]: true }));
-    try {
-      const imageCompression = (await import('browser-image-compression')).default
-      const compressedFile = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1280 });
-      const fileName = `${type}_chart_${Date.now()}.jpg`;
-      await supabase.storage.from('size-charts').upload(fileName, compressedFile);
-      const { data: { publicUrl } } = supabase.storage.from('size-charts').getPublicUrl(fileName);
-      await supabase.from('ppe_settings').update({ [type === 'suit' ? 'suit_chart_url' : 'boot_url']: publicUrl }).eq('id', 1);
-      setSizeCharts(prev => ({ ...prev, [type]: publicUrl }));
-      toast.success('Size Chart Updated');
-    } finally { setUploading(prev => ({ ...prev, [type]: false })); }
-  }
-
   if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-orange-500 font-black animate-pulse uppercase">Admin Hub Loading...</div>;
 
   return (
@@ -172,17 +146,7 @@ function SettingsContent() {
           <button onClick={() => router.push('/admin/dashboard')} className="p-4 bg-zinc-900 rounded-full border border-white/5 hover:bg-orange-600 transition-all shadow-xl"><X size={24}/></button>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-10">
-          <div className="w-full lg:w-72 space-y-3 shrink-0">
-            {['crews', 'system'].map(t => (
-              <button key={t} onClick={() => { setActiveTab(t); setSearchTerm(''); }} className={`w-full flex items-center gap-4 p-5 rounded-[24px] transition-all border ${activeTab === t ? 'bg-orange-600 border-orange-400 text-white shadow-[0_0_30px_rgba(249,115,22,0.3)]' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-orange-400'}`}>
-                {t === 'crews' ? <Users size={20}/> : <SlidersHorizontal size={20}/>} <span className="text-xs">{t === 'crews' ? 'Crew Master' : 'System Master'}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1 bg-zinc-900/5 border border-white/5 rounded-[48px] p-8 shadow-inner min-h-[70vh]">
-            {activeTab === 'crews' && (
+        <div className="bg-zinc-900/5 border border-white/5 rounded-[48px] p-8 shadow-inner min-h-[70vh]">
               <div className="animate-in fade-in space-y-8">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                   <div>
@@ -206,20 +170,6 @@ function SettingsContent() {
                   ))}
                 </div>
               </div>
-            )}
-
-            {activeTab === 'system' && (
-              <div className="animate-in fade-in grid grid-cols-1 md:grid-cols-2 gap-10">
-                {['suit', 'boot'].map(type => (
-                  <div key={type} className="p-10 bg-black/40 rounded-[48px] border border-white/5 text-center space-y-6">
-                    <p className="text-zinc-500 tracking-widest text-xs font-black uppercase">{type === 'suit' ? 'Boiler Suit Chart' : 'Safety Boot Chart'}</p>
-                    <div className="w-full h-72 bg-zinc-950 rounded-[40px] flex items-center justify-center overflow-hidden border border-white/5 shadow-inner">{sizeCharts[type as 'suit' | 'boot'] ? <img src={sizeCharts[type as 'suit' | 'boot']} className="max-w-full max-h-full object-contain" /> : <p className="text-zinc-800 italic uppercase font-black text-xl">No Image</p>}</div>
-                    <label className="flex items-center justify-center w-full py-5 bg-orange-600 rounded-3xl cursor-pointer hover:bg-orange-500 transition-all text-white font-black uppercase text-xs shadow-xl"><Upload size={20} className="mr-3"/> Update Chart Image<input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleUpload(type as 'suit' | 'boot', e.target.files[0])} /></label>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
