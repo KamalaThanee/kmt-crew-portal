@@ -121,13 +121,21 @@ function normalizeHeaderDocNo(value: string, category: SmsCategory) {
 export function normalizeRevision(value: string) {
   const raw = String(value || '').trim()
   if (!raw) return ''
+  const compact = raw.replace(/\s+/g, '')
+  const direct = compact.match(/^(?:rev(?:ision)?\.?)?([0-9]{1,3}[a-z]?)$/i)
+  if (direct) return `Rev.${direct[1].padStart(2, '0')}`
   const match = raw.match(/(?:rev(?:ision)?\.?\s*)?([0-9]{1,3}[a-z]?)/i)
   if (!match) return raw
   return `Rev.${match[1].padStart(2, '0')}`
 }
 
 export function parseSmsDate(value: string) {
-  const raw = String(value || '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim()
+  const raw = String(value || '')
+    .replace(/,/g, ' ')
+    .replace(/\b(\d)\s+(\d)\s+([A-Za-z]+)\s+(20\d)\s+(\d)\b/g, '$1$2 $3 $4$5')
+    .replace(/\b([A-Za-z]+)\s+(20\d)\s+(\d)\b/g, '$1 $2$3')
+    .replace(/\s+/g, ' ')
+    .trim()
   if (!raw) return ''
 
   const iso = raw.match(/\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b/)
@@ -282,7 +290,7 @@ function pickValueAfterLabel(text: string, labels: string[]) {
     .split('|')
     .map((part) => cleanText(part))
     .filter(Boolean)
-  const labelLike = /^(title|revision\s*(number|no)?|effective\s*date|document\s*(number|no|#)?|reviewed\s*by|approved\s*by|page)\b/i
+  const labelLike = /^(title|revision\s*(number|no)?|effective\s*date|document\s*(number|no|#)?|reviewed\s*by|approved\s*by|page|vessel|date\s*\/\s*place|position\s*\/\s*rank)\b/i
 
   for (const label of labels) {
     const labelPattern = new RegExp(`^${label}\\s*[:\\-]?\\s*(.*)$`, 'i')
@@ -293,12 +301,14 @@ function pickValueAfterLabel(text: string, labels: string[]) {
       const inlineValue = cleanText(match[1] || '')
       if (inlineValue && !labelLike.test(inlineValue)) return inlineValue
 
-      for (let next = index + 1; next < Math.min(parts.length, index + 5); next += 1) {
+      const values: string[] = []
+      for (let next = index + 1; next < Math.min(parts.length, index + 9); next += 1) {
         const candidate = cleanText(parts[next])
         if (!candidate) continue
         if (labelLike.test(candidate)) break
-        return candidate
+        values.push(candidate)
       }
+      if (values.length > 0) return values.join(' ')
     }
 
     const loosePattern = new RegExp(`${label}\\s*[:\\-]?\\s*([^|\\n]{1,120})`, 'i')
@@ -309,13 +319,19 @@ function pickValueAfterLabel(text: string, labels: string[]) {
 }
 
 async function readPdfPagesText(file: File, pagesToRead: number[]) {
-  const pdfjs: any = await import('pdfjs-dist')
+  let pdfjs: any
+  try {
+    pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  } catch {
+    pdfjs = await import('pdfjs-dist')
+  }
   if (pdfjs.GlobalWorkerOptions) {
     pdfjs.GlobalWorkerOptions.workerSrc = ''
   }
   const documentTask = pdfjs.getDocument({
     data: new Uint8Array(await file.arrayBuffer()),
     disableWorker: true,
+    isEvalSupported: false,
     useSystemFonts: true,
   })
   const pdf = await documentTask.promise
