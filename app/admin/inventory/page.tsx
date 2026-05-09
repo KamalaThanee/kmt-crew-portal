@@ -37,6 +37,18 @@ type PpeSizeWindow = {
   closed_at?: string | null
 }
 
+type PpeSizeResponse = {
+  id?: string
+  window_id?: string | null
+  crew_id?: string | null
+  crew_name?: string | null
+  position?: string | null
+  suit_color?: string | null
+  suit_size?: string | null
+  boot_size?: string | null
+  confirmed_at?: string | null
+}
+
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-'
   const date = new Date(value)
@@ -73,6 +85,7 @@ function InventoryContent() {
   const [isSizeSummaryOpen, setIsSizeSummaryOpen] = useState(false)
   const [restockView, setRestockView] = useState<'entry' | 'history' | 'issue-log'>('entry')
   const [crewSizeRows, setCrewSizeRows] = useState<any[]>([])
+  const [ppeSizeResponses, setPpeSizeResponses] = useState<PpeSizeResponse[]>([])
   const [activeSizeWindow, setActiveSizeWindow] = useState<PpeSizeWindow | null>(null)
   const [sizeCharts, setSizeCharts] = useState({ suit: '', boot: '' })
   const [uploadingSizeChart, setUploadingSizeChart] = useState({ suit: false, boot: false })
@@ -131,7 +144,10 @@ function InventoryContent() {
 
   const fetchPpeSizeSummary = async () => {
     const [crewRes, windowRes, settingsRes] = await Promise.all([
-      supabase.from('crews').select('*').order('full_name'),
+      supabase
+        .from('crews')
+        .select('id, full_name, position, registered, is_active, resigned_at, suit_color, suit_size, boot_size, ppe_size_confirmed_at, ppe_size_confirmed_window_id')
+        .order('full_name'),
       supabase
         .from('ppe_size_windows')
         .select('*')
@@ -155,11 +171,26 @@ function InventoryContent() {
 
     if (windowRes.error) {
       setActiveSizeWindow(null)
+      setPpeSizeResponses([])
       if (!String(windowRes.error.message || '').includes('ppe_size_windows')) {
         toast.error(windowRes.error.message)
       }
     } else {
-      setActiveSizeWindow((windowRes.data || null) as PpeSizeWindow | null)
+      const activeWindow = (windowRes.data || null) as PpeSizeWindow | null
+      setActiveSizeWindow(activeWindow)
+
+      if (activeWindow?.id) {
+        const { data: responses, error: responsesError } = await supabase
+          .from('ppe_size_responses')
+          .select('id, window_id, crew_id, crew_name, position, suit_color, suit_size, boot_size, confirmed_at')
+          .eq('window_id', activeWindow.id)
+          .order('confirmed_at', { ascending: false })
+
+        if (responsesError) setPpeSizeResponses([])
+        else setPpeSizeResponses((responses || []) as PpeSizeResponse[])
+      } else {
+        setPpeSizeResponses([])
+      }
     }
 
     if (!settingsRes.error && settingsRes.data) {
@@ -293,13 +324,22 @@ function InventoryContent() {
     const boots = new Map<string, number>()
     const profileSuit = new Map<string, number>()
     const profileBoots = new Map<string, number>()
-    const hasConfirmedCurrentRound = (crew: any) => {
-      if (!activeSizeWindow?.id) return false
-      return String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id)
-    }
-
-    const confirmedRows = crewSizeRows.filter(hasConfirmedCurrentRound)
-    const pendingRows = crewSizeRows.filter((crew) => !hasConfirmedCurrentRound(crew))
+    const fallbackConfirmedRows = activeSizeWindow?.id
+      ? crewSizeRows
+        .filter((crew: any) => String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id))
+        .map((crew: any) => ({
+          crew_id: crew.id,
+          crew_name: crew.full_name,
+          position: crew.position,
+          suit_color: crew.suit_color,
+          suit_size: crew.suit_size,
+          boot_size: crew.boot_size,
+          confirmed_at: crew.ppe_size_confirmed_at,
+        }))
+      : []
+    const confirmedRows = ppeSizeResponses.length > 0 ? ppeSizeResponses : fallbackConfirmedRows
+    const confirmedCrewIds = new Set(confirmedRows.map((row) => String(row.crew_id || '')).filter(Boolean))
+    const pendingRows = crewSizeRows.filter((crew) => !confirmedCrewIds.has(String(crew.id || '')))
     const missingSizeRows = crewSizeRows.filter((crew) => !crew.suit_color || !crew.suit_size || !crew.boot_size)
 
     crewSizeRows.forEach((crew) => {
@@ -309,11 +349,11 @@ function InventoryContent() {
       if (crew.boot_size) profileBoots.set(bootKey, (profileBoots.get(bootKey) || 0) + 1)
     })
 
-    confirmedRows.forEach((crew) => {
-      const suitKey = [crew.suit_color || 'No Color', crew.suit_size || 'No Size'].join(' | ')
-      const bootKey = crew.boot_size || 'No Size'
-      if (crew.suit_color && crew.suit_size) suit.set(suitKey, (suit.get(suitKey) || 0) + 1)
-      if (crew.boot_size) boots.set(bootKey, (boots.get(bootKey) || 0) + 1)
+    confirmedRows.forEach((response) => {
+      const suitKey = [response.suit_color || 'No Color', response.suit_size || 'No Size'].join(' | ')
+      const bootKey = response.boot_size || 'No Size'
+      if (response.suit_color && response.suit_size) suit.set(suitKey, (suit.get(suitKey) || 0) + 1)
+      if (response.boot_size) boots.set(bootKey, (boots.get(bootKey) || 0) + 1)
     })
 
     return {
@@ -335,7 +375,7 @@ function InventoryContent() {
         .map(([size, qty]) => ({ Size: size, Qty: qty }))
         .sort((a, b) => sizeSort(a.Size, b.Size)),
     }
-  }, [activeSizeWindow?.id, crewSizeRows])
+  }, [activeSizeWindow?.id, crewSizeRows, ppeSizeResponses])
 
   const openPpeSizeSummary = async () => {
     setIsSizeSummaryOpen(true)
@@ -391,17 +431,20 @@ function InventoryContent() {
 
   const handleExportPpeSizeSummary = async () => {
     if (crewSizeRows.length === 0) return toast.error('No crew size data to export')
-    const detailRows = crewSizeRows.map((crew) => ({
-      Crew: crew.full_name || '',
-      Position: crew.position || '',
-      'Suit Color': crew.suit_color || '',
-      'Suit Size': crew.suit_size || '',
-      'Boot Size': crew.boot_size || '',
-      'Confirmed At': formatDateTime(crew.ppe_size_confirmed_at),
-      Status: activeSizeWindow?.id
-        ? String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id) ? 'Confirmed' : 'Waiting'
-        : 'Waiting',
-    }))
+    const detailRows = crewSizeRows.map((crew) => {
+      const response = ppeSizeResponses.find((row) => String(row.crew_id || '') === String(crew.id || ''))
+      const fallbackConfirmed = activeSizeWindow?.id && String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id)
+
+      return {
+        Crew: crew.full_name || '',
+        Position: crew.position || '',
+        'Suit Color': response?.suit_color || crew.suit_color || '',
+        'Suit Size': response?.suit_size || crew.suit_size || '',
+        'Boot Size': response?.boot_size || crew.boot_size || '',
+        'Confirmed At': formatDateTime(response?.confirmed_at || (fallbackConfirmed ? crew.ppe_size_confirmed_at : null)),
+        Status: activeSizeWindow?.id && (response || fallbackConfirmed) ? 'Confirmed' : 'Waiting',
+      }
+    })
     const rows = [
       { Section: 'Boiler Suit Required Summary', Color: '', Size: '', 'Required Qty': '' },
       ...ppeSizeSummary.suitRows.map((row) => ({ Section: 'Boiler Suit', ...row })),
@@ -720,15 +763,20 @@ function InventoryContent() {
               <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
                 <p className="mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">Crew Detail</p>
                 <div className="space-y-2">
-                  {crewSizeRows.map((crew) => (
-                    <div key={crew.id} className="grid gap-2 rounded-xl bg-white/5 px-4 py-3 text-xs normal-case md:grid-cols-[1fr_120px_120px_120px_180px]">
-                      <b className="text-white">{crew.full_name}</b>
-                      <span>{crew.suit_color || '-'}</span>
-                      <span>{crew.suit_size || '-'}</span>
-                      <span>{crew.boot_size || '-'}</span>
-                      <span className="text-zinc-500">{formatDateTime(crew.ppe_size_confirmed_at)}</span>
-                    </div>
-                  ))}
+                  {crewSizeRows.map((crew) => {
+                    const response = ppeSizeResponses.find((row) => String(row.crew_id || '') === String(crew.id || ''))
+                    const fallbackConfirmed = activeSizeWindow?.id && String(crew.ppe_size_confirmed_window_id || '') === String(activeSizeWindow.id)
+
+                    return (
+                      <div key={crew.id} className="grid gap-2 rounded-xl bg-white/5 px-4 py-3 text-xs normal-case md:grid-cols-[1fr_120px_120px_120px_180px]">
+                        <b className="text-white">{crew.full_name}</b>
+                        <span>{response?.suit_color || crew.suit_color || '-'}</span>
+                        <span>{response?.suit_size || crew.suit_size || '-'}</span>
+                        <span>{response?.boot_size || crew.boot_size || '-'}</span>
+                        <span className="text-zinc-500">{formatDateTime(response?.confirmed_at || (fallbackConfirmed ? crew.ppe_size_confirmed_at : null))}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             </div>

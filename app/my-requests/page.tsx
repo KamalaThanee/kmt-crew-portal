@@ -38,7 +38,9 @@ export default function MyRequests() {
       if (document.visibilityState === 'visible') fetchRequests()
     }
 
-    const interval = window.setInterval(fetchRequests, 15000)
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') fetchRequests()
+    }, 30000)
     window.addEventListener('new-notification', handleRefresh)
     window.addEventListener('focus', handleRefresh)
     document.addEventListener('visibilitychange', handleVisibility)

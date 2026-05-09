@@ -150,7 +150,7 @@ export function useNavbarNotifications({
         const { data } = await supabase
           .from('ship_certificates')
           .select('id, master_id, code, cert_name, expiry_date, next_survey_date, has_survey')
-          .limit(500)
+          .limit(200)
         return (data || []) as ShipCertificate[]
       }
       const fetchActivePpeSizeWindow = async () => {
@@ -391,7 +391,9 @@ export function useNavbarNotifications({
         fetchNotifications()
       }
     }
-    const interval = window.setInterval(fetchNotifications, 15000)
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') fetchNotifications()
+    }, 60000)
     window.addEventListener('new-notification', handleNewNotif)
     window.addEventListener('focus', handleFocus)
     document.addEventListener('visibilitychange', handleVisibility)

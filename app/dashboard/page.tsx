@@ -11,6 +11,9 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 
 const uniqueSorted = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+const crewCertColumns = 'id, crew_id, cert_name, issue_date, expiry_date, file_url, created_at, updated_at'
+const ppeRequestColumns = 'id, items, status, created_at, crew_id, crew_name'
+const shipCertColumns = 'id, expiry_date, next_survey_date, has_expiry, has_survey'
 
 export default function CrewDashboard() {
   const router = useRouter()
@@ -52,24 +55,24 @@ export default function CrewDashboard() {
       rulesRes,
     ] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
-      supabase.from('crew_certs').select('*').eq('crew_id', u.id),
+      supabase.from('crew_certs').select(crewCertColumns).eq('crew_id', u.id),
       supabase.from('cert_rules').select('*'),
     ])
     const reqQuery = await applyPpeRequestUserFilter(
       supabase.from('ppe_requests')
-        .select('*')
+        .select(ppeRequestColumns)
         .neq('status', 'rejected')
         .order('created_at', { ascending: false }),
       u,
     )
     const { data: myReqs } = await reqQuery
     const { data: shipCerts } = canViewShipCertificates(u.position)
-      ? await supabase.from('ship_certificates').select('*')
+      ? await supabase.from('ship_certificates').select(shipCertColumns)
       : { data: [] as any[] }
     const [sizeWindowRes, inventoryRes] = await Promise.all([
       supabase
         .from('ppe_size_windows')
-        .select('*')
+        .select('id, title, deadline_at, status, opened_at')
         .eq('status', 'open')
         .order('opened_at', { ascending: false })
         .limit(1)
@@ -145,6 +148,18 @@ export default function CrewDashboard() {
       toast.error(`${error.message}. Run sql/ppe_size_update_window.sql first.`)
       return
     }
+
+    await supabase.from('ppe_size_responses').upsert({
+      window_id: activePpeSizeWindow.id,
+      crew_id: user.id,
+      crew_name: user.full_name || '',
+      position: user.position || '',
+      suit_color: ppeSizeForm.suit_color,
+      suit_size: ppeSizeForm.suit_size,
+      boot_size: ppeSizeForm.boot_size,
+      confirmed_at: confirmedAt,
+      updated_at: confirmedAt,
+    }, { onConflict: 'window_id,crew_id' })
 
     const nextUser = { ...user, ...payload }
     setUser(nextUser)
