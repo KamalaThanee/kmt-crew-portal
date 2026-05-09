@@ -74,6 +74,8 @@ function InventoryContent() {
   const [restockView, setRestockView] = useState<'entry' | 'history' | 'issue-log'>('entry')
   const [crewSizeRows, setCrewSizeRows] = useState<any[]>([])
   const [activeSizeWindow, setActiveSizeWindow] = useState<PpeSizeWindow | null>(null)
+  const [sizeCharts, setSizeCharts] = useState({ suit: '', boot: '' })
+  const [uploadingSizeChart, setUploadingSizeChart] = useState({ suit: false, boot: false })
   const [sizeWindowTitle, setSizeWindowTitle] = useState(`PPE Size Update ${new Date().toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`)
   const [sizeWindowDeadline, setSizeWindowDeadline] = useState('')
   const [isProcessingSizeWindow, setIsProcessingSizeWindow] = useState(false)
@@ -128,7 +130,7 @@ function InventoryContent() {
   }
 
   const fetchPpeSizeSummary = async () => {
-    const [crewRes, windowRes] = await Promise.all([
+    const [crewRes, windowRes, settingsRes] = await Promise.all([
       supabase.from('crews').select('*').order('full_name'),
       supabase
         .from('ppe_size_windows')
@@ -137,6 +139,7 @@ function InventoryContent() {
         .order('opened_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase.from('ppe_settings').select('suit_chart_url, boot_url').eq('id', 1).maybeSingle(),
     ])
 
     if (crewRes.error) {
@@ -157,6 +160,13 @@ function InventoryContent() {
       }
     } else {
       setActiveSizeWindow((windowRes.data || null) as PpeSizeWindow | null)
+    }
+
+    if (!settingsRes.error && settingsRes.data) {
+      setSizeCharts({
+        suit: settingsRes.data.suit_chart_url || '',
+        boot: settingsRes.data.boot_url || '',
+      })
     }
   }
 
@@ -394,6 +404,29 @@ function InventoryContent() {
     toast.success('Exported PPE size summary')
   }
 
+  const handleUploadSizeChart = async (type: 'suit' | 'boot', file: File) => {
+    setUploadingSizeChart((prev) => ({ ...prev, [type]: true }))
+    try {
+      const imageCompression = (await import('browser-image-compression')).default
+      const compressedFile = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1280 })
+      const fileName = `${type}_chart_${Date.now()}.jpg`
+      const { error: uploadError } = await supabase.storage.from('size-charts').upload(fileName, compressedFile)
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage.from('size-charts').getPublicUrl(fileName)
+      const column = type === 'suit' ? 'suit_chart_url' : 'boot_url'
+      const { error: updateError } = await supabase.from('ppe_settings').update({ [column]: publicUrl }).eq('id', 1)
+      if (updateError) throw updateError
+
+      setSizeCharts((prev) => ({ ...prev, [type]: publicUrl }))
+      toast.success(`${type === 'suit' ? 'Boiler suit' : 'Safety boots'} size chart updated`)
+    } catch (error: any) {
+      toast.error(error?.message || 'Unable to upload size chart')
+    } finally {
+      setUploadingSizeChart((prev) => ({ ...prev, [type]: false }))
+    }
+  }
+
   const handleExportRestockBatch = async (batch: any) => {
     const rows = buildRestockBatchExportRows(batch)
 
@@ -577,6 +610,42 @@ function InventoryContent() {
                     <button onClick={handleOpenSizeWindow} disabled={isProcessingSizeWindow} className="rounded-2xl bg-amber-600 px-5 py-3 text-xs font-black uppercase text-white disabled:opacity-50">Open Window</button>
                   </div>
                 )}
+              </div>
+
+              <div className="rounded-[30px] border border-orange-500/20 bg-orange-500/[0.04] p-5">
+                <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-300">Size Chart</p>
+                    <p className="mt-1 text-[10px] normal-case text-zinc-500">Upload the chart crew will see when confirming PPE sizes.</p>
+                  </div>
+                  <p className="text-[9px] normal-case text-zinc-600">Stored in PPE settings and reused in registration.</p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {(['suit', 'boot'] as const).map((type) => (
+                    <div key={type} className="rounded-[26px] border border-white/10 bg-black/40 p-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-white">{type === 'suit' ? 'Boiler Suit Chart' : 'Safety Boots Chart'}</p>
+                        <label className="cursor-pointer rounded-2xl bg-orange-600 px-4 py-2 text-[9px] font-black uppercase text-white hover:bg-orange-500">
+                          {uploadingSizeChart[type] ? 'Uploading...' : 'Update'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={uploadingSizeChart[type]}
+                            onChange={(event) => event.target.files?.[0] && handleUploadSizeChart(type, event.target.files[0])}
+                          />
+                        </label>
+                      </div>
+                      <div className="flex h-56 items-center justify-center overflow-hidden rounded-2xl border border-white/5 bg-zinc-950">
+                        {sizeCharts[type] ? (
+                          <img src={sizeCharts[type]} alt={`${type} size chart`} className="max-h-full max-w-full object-contain" />
+                        ) : (
+                          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-700">No chart uploaded</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="flex justify-end">

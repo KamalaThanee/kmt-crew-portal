@@ -258,6 +258,7 @@ function PpeSizeUpdateModal({
 }) {
   const [activeWindow, setActiveWindow] = useState<any>(null);
   const [inventory, setInventory] = useState<any[]>([]);
+  const [sizeCharts, setSizeCharts] = useState({ suit: '', boot: '' });
   const [form, setForm] = useState({
     suit_color: user.suit_color || '',
     suit_size: user.suit_size || '',
@@ -268,7 +269,7 @@ function PpeSizeUpdateModal({
 
   useEffect(() => {
     const load = async () => {
-      const [windowRes, inventoryRes] = await Promise.all([
+      const [windowRes, inventoryRes, settingsRes] = await Promise.all([
         supabase
           .from('ppe_size_windows')
           .select('*')
@@ -277,9 +278,16 @@ function PpeSizeUpdateModal({
           .limit(1)
           .maybeSingle(),
         supabase.from('ppe_inventory').select('item_name, color, size'),
+        supabase.from('ppe_settings').select('suit_chart_url, boot_url').eq('id', 1).maybeSingle(),
       ]);
       if (!windowRes.error) setActiveWindow(windowRes.data || null);
       if (!inventoryRes.error) setInventory(inventoryRes.data || []);
+      if (!settingsRes.error && settingsRes.data) {
+        setSizeCharts({
+          suit: settingsRes.data.suit_chart_url || '',
+          boot: settingsRes.data.boot_url || '',
+        });
+      }
       setLoading(false);
     };
     load();
@@ -380,17 +388,29 @@ function PpeSizeUpdateModal({
                   <div className="rounded-2xl bg-orange-500/10 p-3 text-orange-300"><Ruler size={20} /></div>
                   <div>
                     <p className="text-xs font-black uppercase text-white">Size chart reference</p>
-                    <p className="mt-1 text-[10px] normal-case text-zinc-500">Use your current PPE label or company size chart. Admin can update this area with a detailed chart later.</p>
+                    <p className="mt-1 text-[10px] normal-case text-zinc-500">Check the company chart, then confirm your current sizes.</p>
                   </div>
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <div className="rounded-2xl bg-white/5 p-4">
                     <p className="text-[10px] font-black uppercase tracking-widest text-amber-200">Boiler suit</p>
-                    <p className="mt-2 text-[11px] normal-case text-zinc-400">Select color and size from available inventory options.</p>
+                    {sizeCharts.suit ? (
+                      <div className="mt-3 flex h-44 items-center justify-center overflow-hidden rounded-xl bg-black/50">
+                        <img src={sizeCharts.suit} alt="Boiler suit size chart" className="max-h-full max-w-full object-contain" />
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-[11px] normal-case text-zinc-400">Select color and size from available inventory options.</p>
+                    )}
                   </div>
                   <div className="rounded-2xl bg-white/5 p-4">
                     <p className="text-[10px] font-black uppercase tracking-widest text-amber-200">Safety boots</p>
-                    <p className="mt-2 text-[11px] normal-case text-zinc-400">Select the boot size format shown in inventory, e.g. Size 8 / 42.</p>
+                    {sizeCharts.boot ? (
+                      <div className="mt-3 flex h-44 items-center justify-center overflow-hidden rounded-xl bg-black/50">
+                        <img src={sizeCharts.boot} alt="Safety boots size chart" className="max-h-full max-w-full object-contain" />
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-[11px] normal-case text-zinc-400">Select the boot size format shown in inventory, e.g. Size 8 / 42.</p>
+                    )}
                   </div>
                 </div>
               </div>
