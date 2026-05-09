@@ -126,7 +126,7 @@ export default function SmsLibraryPage() {
     setSaving(false)
   }
 
-  const handleFiles = async (files: FileList | null) => {
+  const handleFiles = async (files: FileList | null, append = false) => {
     if (!files?.length) return
     setProcessingFiles(true)
     try {
@@ -134,7 +134,8 @@ export default function SmsLibraryPage() {
       const changeFile = fileArray.find(isChangeRecordFile) || null
       const uploadedDocs = fileArray.filter((file) => !isChangeRecordFile(file))
       const parsedChangeItems = changeFile ? await parseChangeRecord(changeFile) : []
-      const changeMap = new Map(parsedChangeItems.map((item) => [item.docNo.toLowerCase(), item]))
+      const combinedChangeItems = append && parsedChangeItems.length === 0 ? changeItems : parsedChangeItems
+      const changeMap = new Map(combinedChangeItems.map((item) => [item.docNo.toLowerCase(), item]))
       const docMap = new Map(documents.map((doc) => [doc.doc_no.toLowerCase(), doc]))
       const roundFromFile = changeFile?.webkitRelativePath?.match(/Revision[_\s-]*(\d+)/i)?.[0] || changeFile?.name.match(/Revision[_\s-]*(\d+)/i)?.[0] || ''
       if (roundFromFile) setUpdateRound(roundFromFile.replace(/[_-]+/g, ' '))
@@ -171,11 +172,13 @@ export default function SmsLibraryPage() {
         })
       }
 
-      setChangeRecordFile(changeFile)
-      setChangeItems(parsedChangeItems)
-      setDrafts(nextDrafts)
+      if (changeFile) setChangeRecordFile(changeFile)
+      if (parsedChangeItems.length > 0) setChangeItems(parsedChangeItems)
+      else if (!append) setChangeItems([])
+      setDrafts((prev) => append ? [...prev, ...nextDrafts] : nextDrafts)
       if (changeFile) toast.success(`Change record found: ${parsedChangeItems.length} required documents`)
-      else toast.warning('No Change record file found in this upload set')
+      else if (!append) toast.warning('No Change record file found in this upload set')
+      else toast.success(`Added ${nextDrafts.length} files to current upload set`)
     } catch (error: any) {
       toast.error(error?.message || 'Unable to process SMS files')
     } finally {
@@ -427,18 +430,18 @@ export default function SmsLibraryPage() {
                   <UploadCloud className="mx-auto mb-3 text-orange-400" size={30} />
                   <p className="text-sm font-black uppercase tracking-widest">Choose Files</p>
                   <p className="mt-1 text-xs normal-case text-zinc-500">Select multiple SMS files and 00_Change record.</p>
-                  <input multiple type="file" className="hidden" onChange={(event) => handleFiles(event.target.files)} />
+                  <input multiple type="file" className="hidden" onChange={(event) => handleFiles(event.target.files, false)} />
                 </label>
                 <label className="block cursor-pointer rounded-[30px] border border-dashed border-blue-500/35 bg-blue-500/10 p-8 text-center">
                   <UploadCloud className="mx-auto mb-3 text-blue-300" size={30} />
                   <p className="text-sm font-black uppercase tracking-widest">Choose Folder</p>
-                  <p className="mt-1 text-xs normal-case text-zinc-500">Best for initial upload. Folder names help split Procedure / Checklist.</p>
+                  <p className="mt-1 text-xs normal-case text-zinc-500">Choose this again to add another folder into the same preview.</p>
                   <input
                     multiple
                     type="file"
                     className="hidden"
                     {...({ webkitdirectory: '', directory: '' } as SmsUploadInputProps)}
-                    onChange={(event) => handleFiles(event.target.files)}
+                    onChange={(event) => handleFiles(event.target.files, true)}
                   />
                 </label>
               </div>

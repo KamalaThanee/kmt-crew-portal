@@ -109,6 +109,15 @@ export function normalizeDocNo(value: string) {
     .trim()
 }
 
+function normalizeHeaderDocNo(value: string, category: SmsCategory) {
+  const docNo = normalizeDocNo(value)
+  if (!docNo) return ''
+  if (category === 'Procedure' && /^\d+(?:\.\d+)*$/.test(docNo)) {
+    return `Procedure ${docNo}`
+  }
+  return docNo
+}
+
 export function normalizeRevision(value: string) {
   const raw = String(value || '').trim()
   if (!raw) return ''
@@ -250,10 +259,32 @@ export async function parseChangeRecord(file: File) {
 }
 
 function pickValueAfterLabel(text: string, labels: string[]) {
+  const parts = String(text || '')
+    .split('|')
+    .map((part) => cleanText(part))
+    .filter(Boolean)
+  const labelLike = /^(title|revision\s*(number|no)?|effective\s*date|document\s*(number|no|#)?|reviewed\s*by|approved\s*by|page)\b/i
+
   for (const label of labels) {
-    const pattern = new RegExp(`${label}\\s*[:\\-]?\\s*([^|\\n]{1,120})`, 'i')
-    const match = text.match(pattern)
-    if (match?.[1]) return cleanText(match[1])
+    const labelPattern = new RegExp(`^${label}\\s*[:\\-]?\\s*(.*)$`, 'i')
+    for (let index = 0; index < parts.length; index += 1) {
+      const match = parts[index].match(labelPattern)
+      if (!match) continue
+
+      const inlineValue = cleanText(match[1] || '')
+      if (inlineValue && !labelLike.test(inlineValue)) return inlineValue
+
+      for (let next = index + 1; next < Math.min(parts.length, index + 5); next += 1) {
+        const candidate = cleanText(parts[next])
+        if (!candidate) continue
+        if (labelLike.test(candidate)) break
+        return candidate
+      }
+    }
+
+    const loosePattern = new RegExp(`${label}\\s*[:\\-]?\\s*([^|\\n]{1,120})`, 'i')
+    const looseMatch = text.match(loosePattern)
+    if (looseMatch?.[1]) return cleanText(looseMatch[1])
   }
   return ''
 }
@@ -282,7 +313,7 @@ async function readPdfPagesText(file: File, pagesToRead: number[]) {
         }
         return ''
       })
-      .join(' ')
+      .join(' | ')
     pageTexts.push(text)
   }
 
@@ -299,7 +330,7 @@ export async function readSmsDocumentHeader(file: File) {
       const rows = parseDocxRows(xml)
       const headerText = rows.slice(0, 8).flat().join(' | ')
       return {
-        docNo: normalizeDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No'])) || filename.docNo,
+        docNo: normalizeHeaderDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No']), filename.category) || filename.docNo,
         title: pickValueAfterLabel(headerText, ['Title']) || filename.title,
         revision: normalizeRevision(pickValueAfterLabel(headerText, ['Revision Number', 'Revision No', 'Revision'])) || filename.revision,
         effectiveDate: parseSmsDate(pickValueAfterLabel(headerText, ['Effective Date'])) || '',
@@ -314,7 +345,7 @@ export async function readSmsDocumentHeader(file: File) {
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false }).slice(0, 12) as unknown[][]
       const headerText = rows.flat().map((value) => cleanText(String(value || ''))).filter(Boolean).join(' | ')
       return {
-        docNo: normalizeDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No'])) || filename.docNo,
+        docNo: normalizeHeaderDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No']), filename.category) || filename.docNo,
         title: pickValueAfterLabel(headerText, ['Title']) || filename.title,
         revision: normalizeRevision(pickValueAfterLabel(headerText, ['Revision Number', 'Revision No', 'Revision'])) || filename.revision,
         effectiveDate: parseSmsDate(pickValueAfterLabel(headerText, ['Effective Date'])) || '',
@@ -326,7 +357,7 @@ export async function readSmsDocumentHeader(file: File) {
       const isProcedure = filename.category === 'Procedure'
       const headerText = cleanText(await readPdfPagesText(file, isProcedure ? [2, 1] : [1, 2]))
       return {
-        docNo: normalizeDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No'])) || filename.docNo,
+        docNo: normalizeHeaderDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No']), filename.category) || filename.docNo,
         title: pickValueAfterLabel(headerText, ['Title']) || filename.title,
         revision: normalizeRevision(pickValueAfterLabel(headerText, ['Revision Number', 'Revision No', 'Revision'])) || filename.revision,
         effectiveDate: parseSmsDate(pickValueAfterLabel(headerText, ['Effective Date'])) || '',
