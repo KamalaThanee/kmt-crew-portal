@@ -47,6 +47,11 @@ export type SmsRevisionLog = {
   created_at?: string | null
 }
 
+export type SmsUploadInputProps = {
+  webkitdirectory?: string
+  directory?: string
+}
+
 export type SmsChangeRecordItem = {
   docNo: string
   title: string
@@ -172,8 +177,15 @@ export function parseSmsFilename(fileName: string) {
 }
 
 export function isChangeRecordFile(file: File) {
-  const name = file.name.toLowerCase()
+  const name = `${file.webkitRelativePath || ''}/${file.name}`.toLowerCase()
   return name.includes('change record') || name.includes('change_record') || name.includes('00_change')
+}
+
+export function getSmsCategoryFromPath(file: File): SmsCategory | null {
+  const path = String(file.webkitRelativePath || file.name || '').toLowerCase()
+  if (/(^|[/\\])(procedure|procedures)([/\\]|$)/i.test(path) || path.includes('procedure')) return 'Procedure'
+  if (/(^|[/\\])(checklist|checklists|form|forms)([/\\]|$)/i.test(path) || path.includes('checklist')) return 'Checklist'
+  return null
 }
 
 function cleanText(value: string) {

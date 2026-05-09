@@ -9,6 +9,7 @@ import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import { isAdminRole } from '@/lib/roles'
 import {
   buildSmsFilePath,
+  getSmsCategoryFromPath,
   isChangeRecordFile,
   parseChangeRecord,
   readSmsDocumentHeader,
@@ -17,6 +18,7 @@ import {
   type SmsDocument,
   type SmsFileDraft,
   type SmsRevisionLog,
+  type SmsUploadInputProps,
 } from '@/lib/smsDocuments'
 
 const SMS_BUCKET = 'sms-documents'
@@ -143,7 +145,7 @@ export default function SmsLibraryPage() {
         const docNo = header.docNo || ''
         const changeItem = changeMap.get(docNo.toLowerCase())
         const matchedDocument = docMap.get(docNo.toLowerCase())
-        const category = changeItem?.category || (docNo.toLowerCase().startsWith('procedure') ? 'Procedure' : 'Checklist')
+        const category = getSmsCategoryFromPath(file) || changeItem?.category || (docNo.toLowerCase().startsWith('procedure') ? 'Procedure' : 'Checklist')
         const matchStatus: SmsFileDraft['matchStatus'] = !docNo
           ? 'need-review'
           : matchedDocument
@@ -420,12 +422,26 @@ export default function SmsLibraryPage() {
             </div>
 
             <div className="max-h-[78vh] space-y-5 overflow-y-auto p-6">
-              <label className="block cursor-pointer rounded-[30px] border border-dashed border-orange-500/35 bg-orange-500/10 p-8 text-center">
-                <UploadCloud className="mx-auto mb-3 text-orange-400" size={30} />
-                <p className="text-sm font-black uppercase tracking-widest">Choose SMS files + 00_Change record</p>
-                <p className="mt-1 text-xs normal-case text-zinc-500">Supports bulk upload. Header reading works with docx/xlsx and text-based PDF files.</p>
-                <input multiple type="file" className="hidden" onChange={(event) => handleFiles(event.target.files)} />
-              </label>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block cursor-pointer rounded-[30px] border border-dashed border-orange-500/35 bg-orange-500/10 p-8 text-center">
+                  <UploadCloud className="mx-auto mb-3 text-orange-400" size={30} />
+                  <p className="text-sm font-black uppercase tracking-widest">Choose Files</p>
+                  <p className="mt-1 text-xs normal-case text-zinc-500">Select multiple SMS files and 00_Change record.</p>
+                  <input multiple type="file" className="hidden" onChange={(event) => handleFiles(event.target.files)} />
+                </label>
+                <label className="block cursor-pointer rounded-[30px] border border-dashed border-blue-500/35 bg-blue-500/10 p-8 text-center">
+                  <UploadCloud className="mx-auto mb-3 text-blue-300" size={30} />
+                  <p className="text-sm font-black uppercase tracking-widest">Choose Folder</p>
+                  <p className="mt-1 text-xs normal-case text-zinc-500">Best for initial upload. Folder names help split Procedure / Checklist.</p>
+                  <input
+                    multiple
+                    type="file"
+                    className="hidden"
+                    {...({ webkitdirectory: '', directory: '' } as SmsUploadInputProps)}
+                    onChange={(event) => handleFiles(event.target.files)}
+                  />
+                </label>
+              </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-[24px] border border-white/10 bg-black/35 p-4">
