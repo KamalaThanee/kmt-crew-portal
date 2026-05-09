@@ -340,7 +340,7 @@ async function readPdfPagesText(file: File, pagesToRead: number[]) {
     pdfjs = await import('pdfjs-dist')
   }
   if (pdfjs.GlobalWorkerOptions) {
-    pdfjs.GlobalWorkerOptions.workerSrc = ''
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
   }
   const documentTask = pdfjs.getDocument({
     data: new Uint8Array(await file.arrayBuffer()),
@@ -450,7 +450,7 @@ export async function renderSmsPdfPageImage(file: File, category: SmsCategory) {
     pdfjs = await import('pdfjs-dist')
   }
   if (pdfjs.GlobalWorkerOptions) {
-    pdfjs.GlobalWorkerOptions.workerSrc = ''
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
   }
 
   const targetPage = category === 'Procedure' ? 2 : 1
