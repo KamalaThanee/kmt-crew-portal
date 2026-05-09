@@ -246,7 +246,7 @@ function pickValueAfterLabel(text: string, labels: string[]) {
   return ''
 }
 
-async function readPdfFirstPageText(file: File) {
+async function readPdfPagesText(file: File, pagesToRead: number[]) {
   const pdfjs: any = await import('pdfjs-dist')
   if (pdfjs.GlobalWorkerOptions) {
     pdfjs.GlobalWorkerOptions.workerSrc = ''
@@ -257,16 +257,24 @@ async function readPdfFirstPageText(file: File) {
     useSystemFonts: true,
   })
   const pdf = await documentTask.promise
-  const page = await pdf.getPage(1)
-  const textContent = await page.getTextContent()
-  return textContent.items
-    .map((item: unknown) => {
-      if (item && typeof item === 'object' && 'str' in item) {
-        return String((item as { str?: unknown }).str || '')
-      }
-      return ''
-    })
-    .join(' ')
+  const pageTexts: string[] = []
+
+  for (const pageNo of pagesToRead) {
+    if (pageNo < 1 || pageNo > pdf.numPages) continue
+    const page = await pdf.getPage(pageNo)
+    const textContent = await page.getTextContent()
+    const text = textContent.items
+      .map((item: unknown) => {
+        if (item && typeof item === 'object' && 'str' in item) {
+          return String((item as { str?: unknown }).str || '')
+        }
+        return ''
+      })
+      .join(' ')
+    pageTexts.push(text)
+  }
+
+  return pageTexts.join(' | ')
 }
 
 export async function readSmsDocumentHeader(file: File) {
@@ -303,13 +311,14 @@ export async function readSmsDocumentHeader(file: File) {
     }
 
     if (ext === 'pdf') {
-      const headerText = cleanText(await readPdfFirstPageText(file))
+      const isProcedure = filename.category === 'Procedure'
+      const headerText = cleanText(await readPdfPagesText(file, isProcedure ? [2, 1] : [1, 2]))
       return {
         docNo: normalizeDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No'])) || filename.docNo,
         title: pickValueAfterLabel(headerText, ['Title']) || filename.title,
         revision: normalizeRevision(pickValueAfterLabel(headerText, ['Revision Number', 'Revision No', 'Revision'])) || filename.revision,
         effectiveDate: parseSmsDate(pickValueAfterLabel(headerText, ['Effective Date'])) || '',
-        source: headerText ? 'PDF first page' : 'Filename',
+        source: headerText ? `PDF page ${isProcedure ? '2/1' : '1/2'}` : 'Filename',
       }
     }
   } catch (error) {
