@@ -103,10 +103,14 @@ const MONTHS: Record<string, string> = {
 }
 
 export function normalizeDocNo(value: string) {
-  return String(value || '')
+  const clean = String(value || '')
     .replace(/\s+/g, ' ')
     .replace(/\s*[-:]\s*$/g, '')
     .trim()
+  if (/^[0-9.\s]+$/.test(clean)) {
+    return clean.replace(/\s+/g, '').replace(/\.+/g, '.')
+  }
+  return clean
 }
 
 function normalizeHeaderDocNo(value: string, category: SmsCategory) {
@@ -207,6 +211,15 @@ export function getSmsCategoryFromPath(file: File): SmsCategory | null {
 
 function cleanText(value: string) {
   return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function stripAfterHeaderLabel(value: string) {
+  return cleanText(String(value || '').split(/\b(?:title|revision\s*(?:number|no)?|effective\s*date|document\s*(?:number|no|#)?|reviewed\s*by|approved\s*by|page)\b/i)[0] || '')
+}
+
+function getHeaderField(text: string, labels: string[]) {
+  const value = pickValueAfterLabel(text, labels)
+  return stripAfterHeaderLabel(value)
 }
 
 async function readDocxXml(file: File) {
@@ -364,11 +377,15 @@ export async function readSmsDocumentHeader(file: File) {
       const xmls = await readDocxHeaderXmls(file)
       const rows = xmls.flatMap((xml) => parseDocxRows(xml))
       const headerText = rows.slice(0, 24).flat().join(' | ')
+      const docNo = getHeaderField(headerText, ['Document Number', 'Document No', 'Doc No'])
+      const title = getHeaderField(headerText, ['Title'])
+      const revision = getHeaderField(headerText, ['Revision Number', 'Revision No', 'Revision'])
+      const effectiveDate = getHeaderField(headerText, ['Effective Date'])
       return {
-        docNo: normalizeHeaderDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No']), filename.category) || filename.docNo,
-        title: pickValueAfterLabel(headerText, ['Title']) || filename.title,
-        revision: normalizeRevision(pickValueAfterLabel(headerText, ['Revision Number', 'Revision No', 'Revision'])) || filename.revision,
-        effectiveDate: parseSmsDate(pickValueAfterLabel(headerText, ['Effective Date'])) || '',
+        docNo: normalizeHeaderDocNo(docNo, filename.category) || filename.docNo,
+        title: title || filename.title,
+        revision: normalizeRevision(revision) || filename.revision,
+        effectiveDate: parseSmsDate(effectiveDate) || '',
         source: 'DOCX header/footer',
       }
     }
@@ -379,24 +396,32 @@ export async function readSmsDocumentHeader(file: File) {
       const sheet = workbook.Sheets[workbook.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false }).slice(0, 12) as unknown[][]
       const headerText = rows.flat().map((value) => cleanText(String(value || ''))).filter(Boolean).join(' | ')
+      const docNo = getHeaderField(headerText, ['Document Number', 'Document No', 'Doc No'])
+      const title = getHeaderField(headerText, ['Title'])
+      const revision = getHeaderField(headerText, ['Revision Number', 'Revision No', 'Revision'])
+      const effectiveDate = getHeaderField(headerText, ['Effective Date'])
       return {
-        docNo: normalizeHeaderDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No']), filename.category) || filename.docNo,
-        title: pickValueAfterLabel(headerText, ['Title']) || filename.title,
-        revision: normalizeRevision(pickValueAfterLabel(headerText, ['Revision Number', 'Revision No', 'Revision'])) || filename.revision,
-        effectiveDate: parseSmsDate(pickValueAfterLabel(headerText, ['Effective Date'])) || '',
+        docNo: normalizeHeaderDocNo(docNo, filename.category) || filename.docNo,
+        title: title || filename.title,
+        revision: normalizeRevision(revision) || filename.revision,
+        effectiveDate: parseSmsDate(effectiveDate) || '',
         source: 'Excel header',
       }
     }
 
     if (ext === 'pdf') {
       const isProcedure = filename.category === 'Procedure'
-      const headerText = cleanText(await readPdfPagesText(file, isProcedure ? [2, 1] : [1, 2]))
+      const headerText = cleanText(await readPdfPagesText(file, isProcedure ? [2, 3, 1] : [1, 2]))
+      const docNo = getHeaderField(headerText, ['Document Number', 'Document No', 'Doc No'])
+      const title = getHeaderField(headerText, ['Title'])
+      const revision = getHeaderField(headerText, ['Revision Number', 'Revision No', 'Revision'])
+      const effectiveDate = getHeaderField(headerText, ['Effective Date'])
       return {
-        docNo: normalizeHeaderDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No']), filename.category) || filename.docNo,
-        title: pickValueAfterLabel(headerText, ['Title']) || filename.title,
-        revision: normalizeRevision(pickValueAfterLabel(headerText, ['Revision Number', 'Revision No', 'Revision'])) || filename.revision,
-        effectiveDate: parseSmsDate(pickValueAfterLabel(headerText, ['Effective Date'])) || '',
-        source: headerText ? `PDF page ${isProcedure ? '2/1' : '1/2'}` : 'Filename',
+        docNo: normalizeHeaderDocNo(docNo, filename.category) || filename.docNo,
+        title: title || filename.title,
+        revision: normalizeRevision(revision) || filename.revision,
+        effectiveDate: parseSmsDate(effectiveDate) || '',
+        source: headerText ? `PDF page ${isProcedure ? '2/3/1' : '1/2'}` : 'Filename',
       }
     }
   } catch (error) {
