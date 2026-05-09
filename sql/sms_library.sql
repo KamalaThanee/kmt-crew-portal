@@ -55,10 +55,40 @@ create table if not exists public.sms_revision_logs (
 );
 
 alter table public.sms_document_versions
+add column if not exists document_id uuid references public.sms_documents(id) on delete set null;
+
+alter table public.sms_document_versions
+add column if not exists file_name text;
+
+alter table public.sms_document_versions
+add column if not exists file_path text;
+
+alter table public.sms_document_versions
+add column if not exists file_url text;
+
+alter table public.sms_document_versions
+add column if not exists file_size bigint;
+
+alter table public.sms_document_versions
+add column if not exists mime_type text;
+
+alter table public.sms_document_versions
+add column if not exists change_summary text;
+
+alter table public.sms_document_versions
+add column if not exists header_source text;
+
+alter table public.sms_document_versions
 add column if not exists update_round text;
 
 alter table public.sms_document_versions
 add column if not exists update_date date;
+
+alter table public.sms_document_versions
+add column if not exists uploaded_by uuid;
+
+alter table public.sms_document_versions
+add column if not exists uploaded_by_name text;
 
 alter table public.sms_revision_logs
 add column if not exists update_round text;
