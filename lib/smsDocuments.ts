@@ -442,39 +442,6 @@ export async function readSmsDocumentHeader(file: File) {
   }
 }
 
-export async function renderSmsPdfPageImage(file: File, category: SmsCategory) {
-  let pdfjs: any
-  try {
-    pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
-  } catch {
-    pdfjs = await import('pdfjs-dist')
-  }
-  if (pdfjs.GlobalWorkerOptions) {
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
-  }
-
-  const targetPage = category === 'Procedure' ? 2 : 1
-  const documentTask = pdfjs.getDocument({
-    data: new Uint8Array(await file.arrayBuffer()),
-    disableWorker: true,
-    isEvalSupported: false,
-    useSystemFonts: true,
-  })
-  const pdf = await documentTask.promise
-  const page = await pdf.getPage(Math.min(targetPage, pdf.numPages))
-  const viewport = page.getViewport({ scale: 1.5 })
-  const canvas = document.createElement('canvas')
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('Unable to prepare PDF page image')
-  canvas.width = Math.floor(viewport.width)
-  canvas.height = Math.floor(viewport.height)
-  await page.render({ canvasContext: context, viewport }).promise
-  return {
-    dataUrl: canvas.toDataURL('image/png', 0.92),
-    pageNumber: Math.min(targetPage, pdf.numPages),
-  }
-}
-
 export function buildSmsFilePath(file: File, draft: Pick<SmsFileDraft, 'category' | 'docNo' | 'title' | 'revision'>) {
   const ext = file.name.split('.').pop()?.toLowerCase() || 'bin'
   const safe = (value: string, fallback: string) =>

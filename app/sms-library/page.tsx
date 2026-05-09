@@ -13,7 +13,6 @@ import {
   isChangeRecordFile,
   parseChangeRecord,
   readSmsDocumentHeader,
-  renderSmsPdfPageImage,
   type SmsCategory,
   type SmsChangeRecordItem,
   type SmsDocument,
@@ -53,6 +52,13 @@ const statusStyles: Record<SmsFileDraft['matchStatus'], string> = {
   'need-review': 'border-red-500/30 bg-red-500/10 text-red-300',
   extra: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
 }
+
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onloadend = () => resolve(String(reader.result || ''))
+  })
 
 export default function SmsLibraryPage() {
   const router = useRouter()
@@ -232,10 +238,8 @@ export default function SmsLibraryPage() {
 
         if (isPdf) {
           setAiReadMessage(`AI reading ${draft.fileName} page ${pageNumber} (${index + 1}/${targets.length})`)
-          const pageImage = await renderSmsPdfPageImage(draft.file, draft.category)
-          fileBase64 = pageImage.dataUrl
-          mimeType = 'image/png'
-          pageNumber = pageImage.pageNumber
+          fileBase64 = await readFileAsDataUrl(draft.file)
+          mimeType = 'application/pdf'
         } else {
           setAiReadMessage(`AI structuring ${draft.fileName} header text (${index + 1}/${targets.length})`)
         }
