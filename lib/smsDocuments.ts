@@ -207,6 +207,25 @@ async function readDocxXml(file: File) {
   return zip.file('word/document.xml')?.async('text') || ''
 }
 
+async function readDocxHeaderXmls(file: File) {
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(await file.arrayBuffer())
+  const xmls: string[] = []
+
+  const headerFiles = Object.keys(zip.files)
+    .filter((name) => /^word\/(?:header|footer)\d+\.xml$/i.test(name))
+    .sort()
+
+  for (const name of headerFiles) {
+    const xml = await zip.file(name)?.async('text')
+    if (xml) xmls.push(xml)
+  }
+
+  const bodyXml = await zip.file('word/document.xml')?.async('text')
+  if (bodyXml) xmls.push(bodyXml)
+  return xmls
+}
+
 function parseDocxRows(xml: string) {
   if (!xml) return [] as string[][]
   const parser = new DOMParser()
@@ -326,15 +345,15 @@ export async function readSmsDocumentHeader(file: File) {
 
   try {
     if (ext === 'docx') {
-      const xml = await readDocxXml(file)
-      const rows = parseDocxRows(xml)
-      const headerText = rows.slice(0, 8).flat().join(' | ')
+      const xmls = await readDocxHeaderXmls(file)
+      const rows = xmls.flatMap((xml) => parseDocxRows(xml))
+      const headerText = rows.slice(0, 24).flat().join(' | ')
       return {
         docNo: normalizeHeaderDocNo(pickValueAfterLabel(headerText, ['Document Number', 'Document No', 'Doc No']), filename.category) || filename.docNo,
         title: pickValueAfterLabel(headerText, ['Title']) || filename.title,
         revision: normalizeRevision(pickValueAfterLabel(headerText, ['Revision Number', 'Revision No', 'Revision'])) || filename.revision,
         effectiveDate: parseSmsDate(pickValueAfterLabel(headerText, ['Effective Date'])) || '',
-        source: 'DOCX header',
+        source: 'DOCX header/footer',
       }
     }
 
