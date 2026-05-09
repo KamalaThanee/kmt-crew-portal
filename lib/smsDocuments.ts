@@ -71,6 +71,7 @@ export type SmsFileDraft = {
   effectiveDate: string
   changeSummary: string
   source: string
+  extractedText?: string
   matchStatus: 'matched' | 'new' | 'need-review' | 'extra'
   matchedDocumentId?: string
   oldRevision?: string | null
@@ -387,6 +388,7 @@ export async function readSmsDocumentHeader(file: File) {
         revision: normalizeRevision(revision) || filename.revision,
         effectiveDate: parseSmsDate(effectiveDate) || '',
         source: 'DOCX header/footer',
+        extractedText: headerText.slice(0, 12000),
       }
     }
 
@@ -406,6 +408,7 @@ export async function readSmsDocumentHeader(file: File) {
         revision: normalizeRevision(revision) || filename.revision,
         effectiveDate: parseSmsDate(effectiveDate) || '',
         source: 'Excel header',
+        extractedText: headerText.slice(0, 12000),
       }
     }
 
@@ -422,6 +425,7 @@ export async function readSmsDocumentHeader(file: File) {
         revision: normalizeRevision(revision) || filename.revision,
         effectiveDate: parseSmsDate(effectiveDate) || '',
         source: headerText ? `PDF page ${isProcedure ? '2/3/1' : '1/2'}` : 'Filename',
+        extractedText: headerText.slice(0, 12000),
       }
     }
   } catch (error) {
@@ -434,6 +438,40 @@ export async function readSmsDocumentHeader(file: File) {
     revision: filename.revision,
     effectiveDate: '',
     source: 'Filename',
+    extractedText: '',
+  }
+}
+
+export async function renderSmsPdfPageImage(file: File, category: SmsCategory) {
+  let pdfjs: any
+  try {
+    pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  } catch {
+    pdfjs = await import('pdfjs-dist')
+  }
+  if (pdfjs.GlobalWorkerOptions) {
+    pdfjs.GlobalWorkerOptions.workerSrc = ''
+  }
+
+  const targetPage = category === 'Procedure' ? 2 : 1
+  const documentTask = pdfjs.getDocument({
+    data: new Uint8Array(await file.arrayBuffer()),
+    disableWorker: true,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  })
+  const pdf = await documentTask.promise
+  const page = await pdf.getPage(Math.min(targetPage, pdf.numPages))
+  const viewport = page.getViewport({ scale: 1.5 })
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Unable to prepare PDF page image')
+  canvas.width = Math.floor(viewport.width)
+  canvas.height = Math.floor(viewport.height)
+  await page.render({ canvasContext: context, viewport }).promise
+  return {
+    dataUrl: canvas.toDataURL('image/png', 0.92),
+    pageNumber: Math.min(targetPage, pdf.numPages),
   }
 }
 

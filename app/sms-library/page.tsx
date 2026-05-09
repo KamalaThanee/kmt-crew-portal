@@ -13,6 +13,7 @@ import {
   isChangeRecordFile,
   parseChangeRecord,
   readSmsDocumentHeader,
+  renderSmsPdfPageImage,
   type SmsCategory,
   type SmsChangeRecordItem,
   type SmsDocument,
@@ -23,6 +24,14 @@ import {
 
 const SMS_BUCKET = 'sms-documents'
 const tabs: Array<SmsCategory | 'Revision Log'> = ['Procedure', 'Checklist', 'Revision Log']
+
+const smsHeaderAiModels = [
+  { id: 'gemini-2.5-flash', provider: 'google', label: 'Gemini 2.5 Flash' },
+  { id: 'gemini-3-flash-preview', provider: 'google', label: 'Gemini 3 Flash Preview' },
+  { id: 'gemini-3.1-flash-lite-preview', provider: 'google', label: 'Gemini 3.1 Flash Lite Preview' },
+  { id: 'qwen/qwen3-vl-32b-instruct', provider: 'openrouter', label: 'Qwen3 VL 32B' },
+  { id: 'google/gemini-2.5-flash-lite', provider: 'openrouter', label: 'Gemini 2.5 Flash Lite' },
+]
 
 const formatDate = (value?: string | null) => {
   if (!value) return '-'
@@ -55,6 +64,8 @@ export default function SmsLibraryPage() {
   const [loading, setLoading] = useState(true)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [processingFiles, setProcessingFiles] = useState(false)
+  const [aiReading, setAiReading] = useState(false)
+  const [aiReadMessage, setAiReadMessage] = useState('')
   const [saving, setSaving] = useState(false)
   const [changeRecordFile, setChangeRecordFile] = useState<File | null>(null)
   const [changeItems, setChangeItems] = useState<SmsChangeRecordItem[]>([])
@@ -123,6 +134,8 @@ export default function SmsLibraryPage() {
     setUpdateRound('')
     setUpdateDate(new Date().toISOString().slice(0, 10))
     setProcessingFiles(false)
+    setAiReading(false)
+    setAiReadMessage('')
     setSaving(false)
   }
 
@@ -166,6 +179,7 @@ export default function SmsLibraryPage() {
           effectiveDate: header.effectiveDate || '',
           changeSummary: changeItem?.changeSummary || '',
           source: header.source,
+          extractedText: header.extractedText || '',
           matchStatus,
           matchedDocumentId: matchedDocument?.id,
           oldRevision: matchedDocument?.current_revision || null,
@@ -192,6 +206,93 @@ export default function SmsLibraryPage() {
       if (field === 'category') return { ...draft, category: value === 'Procedure' ? 'Procedure' : 'Checklist' }
       return { ...draft, [field]: value }
     }))
+  }
+
+  const shouldAiReadDraft = (draft: SmsFileDraft) => {
+    return draft.category === 'Procedure' || !draft.revision || !draft.effectiveDate || draft.source === 'Filename'
+  }
+
+  const runSmsHeaderAi = async () => {
+    const targets = drafts.filter(shouldAiReadDraft)
+    if (targets.length === 0) return toast.success('All preview rows already have enough header data')
+    setAiReading(true)
+    setAiReadMessage('Preparing AI header read...')
+
+    const nextDrafts = [...drafts]
+    try {
+      for (let index = 0; index < targets.length; index += 1) {
+        const draft = targets[index]
+        const draftIndex = nextDrafts.findIndex((item) => item.id === draft.id)
+        if (draftIndex < 0) continue
+
+        const isPdf = draft.file.type === 'application/pdf' || draft.fileName.toLowerCase().endsWith('.pdf')
+        let fileBase64 = ''
+        let mimeType = ''
+        let pageNumber = draft.category === 'Procedure' ? 2 : 1
+
+        if (isPdf) {
+          setAiReadMessage(`AI reading ${draft.fileName} page ${pageNumber} (${index + 1}/${targets.length})`)
+          const pageImage = await renderSmsPdfPageImage(draft.file, draft.category)
+          fileBase64 = pageImage.dataUrl
+          mimeType = 'image/png'
+          pageNumber = pageImage.pageNumber
+        } else {
+          setAiReadMessage(`AI structuring ${draft.fileName} header text (${index + 1}/${targets.length})`)
+        }
+
+        const modelErrors: string[] = []
+        for (const model of smsHeaderAiModels) {
+          try {
+            const res = await fetch('/api/sms-header-ai', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fileBase64: isPdf ? fileBase64 : '',
+                mimeType: isPdf ? mimeType : '',
+                extractedText: isPdf ? '' : draft.extractedText || '',
+                fileName: draft.fileName,
+                category: draft.category,
+                pageNumber,
+                modelId: model.id,
+                provider: model.provider,
+              }),
+            })
+            const result = await res.json()
+            if (!res.ok || result.error) throw new Error(result.error || 'AI header read failed')
+
+            nextDrafts[draftIndex] = {
+              ...nextDrafts[draftIndex],
+              docNo: result.docNo || nextDrafts[draftIndex].docNo,
+              title: result.title || nextDrafts[draftIndex].title,
+              revision: result.revision || nextDrafts[draftIndex].revision,
+              effectiveDate: result.effectiveDate || nextDrafts[draftIndex].effectiveDate,
+              source: `${isPdf ? `AI Vision page ${pageNumber}` : 'AI text header'} · ${model.label}${result.needsReview ? ' · review' : ''}`,
+              matchStatus: result.needsReview ? 'need-review' : nextDrafts[draftIndex].matchStatus,
+            }
+            setDrafts([...nextDrafts])
+            break
+          } catch (error: any) {
+            modelErrors.push(`${model.label}: ${error?.message || 'failed'}`)
+            if (model === smsHeaderAiModels[smsHeaderAiModels.length - 1]) {
+              nextDrafts[draftIndex] = {
+                ...nextDrafts[draftIndex],
+                source: `${nextDrafts[draftIndex].source} · AI failed`,
+                matchStatus: 'need-review',
+              }
+            }
+          }
+        }
+      }
+
+      setDrafts(nextDrafts)
+      setAiReadMessage('AI header read completed. Please review before save.')
+      toast.success('AI header read completed')
+    } catch (error: any) {
+      setAiReadMessage(error?.message || 'AI header read failed')
+      toast.error(error?.message || 'AI header read failed')
+    } finally {
+      setAiReading(false)
+    }
   }
 
   const requiredMissing = useMemo(() => {
@@ -470,6 +571,27 @@ export default function SmsLibraryPage() {
               {processingFiles && (
                 <div className="rounded-[28px] border border-white/10 bg-black/40 p-6 text-center text-sm font-black uppercase tracking-widest text-orange-400">
                   <Loader2 className="mr-2 inline animate-spin" size={18} /> Reading documents...
+                </div>
+              )}
+
+              {drafts.length > 0 && (
+                <div className="flex flex-col gap-3 rounded-[28px] border border-cyan-500/25 bg-cyan-500/10 p-5 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-300">AI Header Assist</p>
+                    <p className="mt-1 text-xs normal-case text-zinc-400">
+                      Procedure reads PDF page 2. Checklist reads page 1. AI fills only missing/uncertain header fields.
+                    </p>
+                    {aiReadMessage && <p className="mt-2 text-xs font-bold text-cyan-100">{aiReadMessage}</p>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={runSmsHeaderAi}
+                    disabled={aiReading || processingFiles}
+                    className="rounded-[22px] border border-cyan-400/35 bg-cyan-500/15 px-5 py-3 text-xs font-black uppercase tracking-widest text-cyan-100 disabled:opacity-50"
+                  >
+                    {aiReading ? <Loader2 size={15} className="mr-2 inline animate-spin" /> : <UploadCloud size={15} className="mr-2 inline" />}
+                    {aiReading ? 'AI Reading...' : 'AI Read Headers'}
+                  </button>
                 </div>
               )}
 
