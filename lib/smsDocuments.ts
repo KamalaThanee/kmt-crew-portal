@@ -451,5 +451,6 @@ export function buildSmsFilePath(file: File, draft: Pick<SmsFileDraft, 'category
       .trim()
       .replace(/\s+/g, '_')
       .slice(0, 90) || fallback
-  return `${draft.category}/${safe(draft.docNo, 'NO_DOC')}/${safe(draft.docNo, 'NO_DOC')}_${safe(draft.title, 'SMS_Document')}_${safe(draft.revision || 'NO_REV', 'NO_REV')}_${Date.now()}.${ext}`
+  const fileName = `${safe(draft.docNo, 'NO_DOC')}_${safe(draft.title, 'SMS_Document')}_${safe(draft.revision || 'NO_REV', 'NO_REV')}.${ext}`
+  return `${draft.category}/${safe(draft.docNo, 'NO_DOC')}/${fileName}`
 }

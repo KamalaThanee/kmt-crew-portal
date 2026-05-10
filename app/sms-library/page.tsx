@@ -365,6 +365,7 @@ export default function SmsLibraryPage() {
         }
 
         const filePath = buildSmsFilePath(draft.file, draft)
+        const storedFileName = filePath.split('/').pop() || draft.fileName
         const { error: uploadError } = await supabase.storage.from(SMS_BUCKET).upload(filePath, draft.file, { upsert: true })
         if (uploadError) throw uploadError
         const { data: publicData } = supabase.storage.from(SMS_BUCKET).getPublicUrl(filePath)
@@ -379,7 +380,7 @@ export default function SmsLibraryPage() {
             revision: draft.revision,
             effective_date: draft.effectiveDate || null,
             status: 'active',
-            file_name: draft.fileName,
+            file_name: storedFileName,
             file_path: filePath,
             file_url: publicData.publicUrl,
             file_size: draft.file.size,
@@ -417,7 +418,7 @@ export default function SmsLibraryPage() {
           category: draft.category,
           old_revision: oldRevision,
           new_revision: draft.revision,
-          file_name: draft.fileName,
+          file_name: storedFileName,
           actor_id: user.id,
           actor_name: user.full_name,
           update_round: updateRound || null,
@@ -448,11 +449,20 @@ export default function SmsLibraryPage() {
     if (!doc.active_version_id) return toast.error('No active file attached')
     const { data, error } = await supabase
       .from('sms_document_versions')
-      .select('file_url')
+      .select('file_url, file_name, mime_type')
       .eq('id', doc.active_version_id)
       .maybeSingle()
-    if (error || !data?.file_url) return toast.error(error?.message || 'No file URL found')
-    window.open(data.file_url, '_blank', 'noopener,noreferrer')
+    const fileData = data as { file_url?: string | null; file_name?: string | null; mime_type?: string | null } | null
+    if (error || !fileData?.file_url) return toast.error(error?.message || 'No file URL found')
+    const fileUrl = String(fileData.file_url)
+    const fileName = String(fileData.file_name || fileUrl).split('?')[0]
+    const ext = fileName.split('.').pop()?.toLowerCase() || ''
+    const officeExts = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])
+    const previewUrl = officeExts.has(ext)
+      ? `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`
+      : fileUrl
+
+    window.open(previewUrl, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -533,7 +543,7 @@ export default function SmsLibraryPage() {
                     </p>
                   </div>
                   <button onClick={() => openDocument(doc)} className="rounded-[22px] border border-blue-500/40 bg-blue-500/10 px-5 py-3 text-xs font-black uppercase text-blue-200 hover:bg-blue-500/20">
-                    <Download size={15} className="mr-2 inline" /> Open / Download
+                    <Download size={15} className="mr-2 inline" /> Preview / Open
                   </button>
                 </div>
               </div>
