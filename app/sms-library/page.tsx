@@ -25,11 +25,11 @@ const SMS_BUCKET = 'sms-documents'
 const tabs: Array<SmsCategory | 'Revision Log'> = ['Procedure', 'Checklist', 'Revision Log']
 
 const smsHeaderAiModels = [
+  { id: 'gemini-3.1-flash-lite-preview', provider: 'google', label: 'Gemini 3.1 Flash Lite Preview' },
   { id: 'gemini-2.5-flash', provider: 'google', label: 'Gemini 2.5 Flash' },
   { id: 'gemini-3-flash-preview', provider: 'google', label: 'Gemini 3 Flash Preview' },
-  { id: 'gemini-3.1-flash-lite-preview', provider: 'google', label: 'Gemini 3.1 Flash Lite Preview' },
-  { id: 'qwen/qwen3-vl-32b-instruct', provider: 'openrouter', label: 'Qwen3 VL 32B' },
   { id: 'google/gemini-2.5-flash-lite', provider: 'openrouter', label: 'Gemini 2.5 Flash Lite' },
+  { id: 'qwen/qwen3-vl-32b-instruct', provider: 'openrouter', label: 'Qwen3 VL 32B' },
 ]
 
 const formatDate = (value?: string | null) => {
@@ -59,6 +59,28 @@ const readFileAsDataUrl = (file: File) =>
     reader.readAsDataURL(file)
     reader.onloadend = () => resolve(String(reader.result || ''))
   })
+
+const normalizeKey = (value: string) => String(value || '').toLowerCase().replace(/[^a-z0-9.]+/g, '')
+
+const getDocNoFromFileName = (fileName: string, category: SmsCategory) => {
+  const base = fileName.replace(/\.[^.]+$/, '')
+  const procedure = base.match(/\bprocedure\s+([0-9]+(?:\.[0-9]+)*)/i)
+  if (category === 'Procedure' && procedure) return `procedure${procedure[1]}`
+  const checklist = base.match(/\b(?:form\s+)?([0-9]{1,2}\.[0-9A-Za-z]+)\b/i)
+  if (checklist) return checklist[1].toLowerCase()
+  return ''
+}
+
+const isSuspiciousRevision = (revision: string) => {
+  const value = String(revision || '').trim().toLowerCase()
+  return !value || value === 'rev.00' || value === 'rev.0'
+}
+
+const isValidSmsDate = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false
+  const date = new Date(`${value}T00:00:00`)
+  return !Number.isNaN(date.getTime()) && date.getFullYear() >= 2000 && date.getFullYear() <= 2100
+}
 
 export default function SmsLibraryPage() {
   const router = useRouter()
@@ -215,12 +237,19 @@ export default function SmsLibraryPage() {
   }
 
   const shouldAiReadDraft = (draft: SmsFileDraft) => {
-    return draft.category === 'Procedure' || !draft.revision || !draft.effectiveDate || draft.source === 'Filename'
+    const expectedDocNo = getDocNoFromFileName(draft.fileName, draft.category)
+    const docNoLooksRight = !expectedDocNo || normalizeKey(draft.docNo) === expectedDocNo
+    const hasUsableTitle = draft.title.trim().length >= 4 && !/^untitled|document$/i.test(draft.title.trim())
+    const hasReliableRevision = !isSuspiciousRevision(draft.revision)
+    const hasReliableDate = isValidSmsDate(draft.effectiveDate)
+    const parserLooksReliable = docNoLooksRight && hasUsableTitle && hasReliableRevision && hasReliableDate && draft.source !== 'Filename'
+
+    return !parserLooksReliable
   }
 
   const runSmsHeaderAi = async () => {
     const targets = drafts.filter(shouldAiReadDraft)
-    if (targets.length === 0) return toast.success('All preview rows already have enough header data')
+    if (targets.length === 0) return toast.success('All preview rows passed parser validation. No AI needed.')
     setAiReading(true)
     setAiReadMessage('Preparing AI header read...')
 
