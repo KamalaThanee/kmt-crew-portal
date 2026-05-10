@@ -82,6 +82,8 @@ const isValidSmsDate = (value: string) => {
   return !Number.isNaN(date.getTime()) && date.getFullYear() >= 2000 && date.getFullYear() <= 2100
 }
 
+const isLegacyWordDoc = (file: File) => /\.doc$/i.test(file.name) && !/\.docx$/i.test(file.name)
+
 export default function SmsLibraryPage() {
   const router = useRouter()
   const [user, setUser] = useState<CurrentUser | null>(null)
@@ -172,6 +174,10 @@ export default function SmsLibraryPage() {
     setProcessingFiles(true)
     try {
       const fileArray = Array.from(files)
+      const legacyWordCount = fileArray.filter((file) => !isChangeRecordFile(file) && isLegacyWordDoc(file)).length
+      if (legacyWordCount > 0) {
+        toast.warning(`${legacyWordCount} legacy Word .doc files detected. Convert to .docx first for accurate header reading.`)
+      }
       const changeFile = fileArray.find(isChangeRecordFile) || null
       const uploadedDocs = fileArray.filter((file) => !isChangeRecordFile(file))
       const parsedChangeItems = changeFile ? await parseChangeRecord(changeFile) : []
