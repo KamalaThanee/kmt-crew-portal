@@ -346,6 +346,33 @@ export default function SmsLibraryPage() {
     if (!isAdmin || !user) return toast.error('Admin permission required')
     const validDrafts = drafts.filter((draft) => draft.docNo && draft.title && draft.revision)
     if (validDrafts.length === 0) return toast.error('No valid SMS documents to upload')
+    const knownRevisions = new Map<string, string>()
+    validDrafts.forEach((draft) => {
+      if (draft.oldRevision) knownRevisions.set(draft.docNo, draft.oldRevision)
+    })
+    const docNosToCheck = Array.from(new Set(validDrafts.map((draft) => draft.docNo)))
+    const { data: existingRows, error: existingRowsError } = await supabase
+      .from('sms_documents')
+      .select('doc_no, current_revision')
+      .in('doc_no', docNosToCheck)
+
+    if (existingRowsError) return toast.error(existingRowsError.message)
+    ;((existingRows || []) as Array<{ doc_no?: string | null; current_revision?: string | null }>).forEach((row) => {
+      if (row.doc_no && row.current_revision) knownRevisions.set(row.doc_no, row.current_revision)
+    })
+
+    const replacingItems = validDrafts
+      .map((draft) => ({ draft, oldRevision: knownRevisions.get(draft.docNo) || '' }))
+      .filter((item) => item.oldRevision)
+    if (replacingItems.length > 0) {
+      const sample = replacingItems
+        .slice(0, 5)
+        .map(({ draft, oldRevision }) => `${draft.docNo}: ${oldRevision} -> ${draft.revision}`)
+        .join('\n')
+      const extra = replacingItems.length > 5 ? `\n...and ${replacingItems.length - 5} more` : ''
+      const ok = window.confirm(`This upload will replace ${replacingItems.length} existing SMS document(s):\n\n${sample}${extra}\n\nContinue and supersede the old revision?`)
+      if (!ok) return
+    }
 
     setSaving(true)
     try {
@@ -707,6 +734,11 @@ export default function SmsLibraryPage() {
                         <div>
                           <p className="font-black text-white">{draft.fileName}</p>
                           <p className="mt-1 text-[10px] text-zinc-500">{draft.source}</p>
+                          {draft.oldRevision && (
+                            <p className="mt-1 text-[10px] font-black uppercase tracking-wider text-amber-300">
+                              Replacing {draft.oldRevision}
+                            </p>
+                          )}
                         </div>
                         <input value={draft.docNo} onChange={(event) => updateDraft(draft.id, 'docNo', event.target.value)} className="rounded-xl border border-white/10 bg-black px-3 py-2 font-bold text-white outline-none focus:border-orange-500" />
                         <select value={draft.category} onChange={(event) => updateDraft(draft.id, 'category', event.target.value)} className="rounded-xl border border-white/10 bg-black px-3 py-2 font-bold text-white outline-none focus:border-orange-500">
