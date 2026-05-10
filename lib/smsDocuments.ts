@@ -58,6 +58,7 @@ export type SmsChangeRecordItem = {
   category: SmsCategory
   revision: string
   changeSummary: string
+  roundRevision?: string
 }
 
 export type SmsFileDraft = {
@@ -180,11 +181,31 @@ export function parseSmsFilename(fileName: string) {
     }
   }
 
-  const checklistMatch = withoutRevision.match(/\b(?:Form\s+)?([0-9]{1,2}\.[0-9A-Za-z]+)\s*[-:]?\s*(.*)$/i)
+  const formMatch = withoutRevision.match(/\bForm\s+([0-9]{1,2}\.[0-9A-Za-z]+)\s*[-:]?\s*(.*)$/i)
+  if (formMatch) {
+    return {
+      docNo: normalizeDocNo(formMatch[1]),
+      title: (formMatch[2] || '').trim() || withoutRevision,
+      category: 'Checklist' as SmsCategory,
+      revision,
+    }
+  }
+
+  const checklistMatch = withoutRevision.match(/^([0-9]{1,2}\.[0-9A-Za-z]+)\s*[-:]?\s*(.*)$/i)
   if (checklistMatch) {
     return {
       docNo: normalizeDocNo(checklistMatch[1]),
       title: (checklistMatch[2] || '').trim() || withoutRevision,
+      category: 'Checklist' as SmsCategory,
+      revision,
+    }
+  }
+
+  const supportMatch = withoutRevision.match(/^([A-Z]{2,}[A-Z0-9-]*\d*(?:-[A-Z0-9]+)*)\s+(.+)$/i)
+  if (supportMatch) {
+    return {
+      docNo: normalizeDocNo(supportMatch[1]),
+      title: (supportMatch[2] || '').trim() || withoutRevision,
       category: 'Checklist' as SmsCategory,
       revision,
     }
@@ -260,7 +281,7 @@ function parseDocxRows(xml: string) {
   }).filter((cells) => cells.some(Boolean))
 }
 
-function parseChangeRecordRow(cells: string[]): SmsChangeRecordItem | null {
+function parseChangeRecordRow(cells: string[], roundRevision?: string): SmsChangeRecordItem | null {
   if (cells.length < 3) return null
   if (!/^\d+$/i.test(cells[0] || '')) return null
 
@@ -275,6 +296,7 @@ function parseChangeRecordRow(cells: string[]): SmsChangeRecordItem | null {
     category: parsed.category,
     revision,
     changeSummary: cells[3] || '',
+    roundRevision,
   }
 }
 
@@ -304,11 +326,12 @@ export async function parseChangeRecord(file: File) {
   const rowsToParse = latestSection === undefined
     ? rows
     : rows.slice(latestSection.index + 1, latestSectionEnd)
+  const roundRevision = latestSection ? `Revision ${latestSection.revision}` : undefined
   const seen = new Set<string>()
   const items: SmsChangeRecordItem[] = []
 
   rowsToParse.forEach((cells) => {
-    const item = parseChangeRecordRow(cells)
+    const item = parseChangeRecordRow(cells, roundRevision)
     if (!item) return
     const key = `${item.docNo}|${item.revision}`
     if (seen.has(key)) return

@@ -84,6 +84,9 @@ const isValidSmsDate = (value: string) => {
 
 const isLegacyWordDoc = (file: File) => /\.doc$/i.test(file.name) && !/\.docx$/i.test(file.name)
 
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+const docKey = (value: string) => String(value || '').trim().toLowerCase()
+
 export default function SmsLibraryPage() {
   const router = useRouter()
   const [user, setUser] = useState<CurrentUser | null>(null)
@@ -149,6 +152,7 @@ export default function SmsLibraryPage() {
     return documents
       .filter((doc) => doc.category === activeTab)
       .filter((doc) => !q || `${doc.doc_no} ${doc.title} ${doc.current_revision || ''}`.toLowerCase().includes(q))
+      .sort((a, b) => collator.compare(a.doc_no, b.doc_no))
   }, [activeTab, documents, search])
 
   const visibleLogs = useMemo(() => {
@@ -182,18 +186,20 @@ export default function SmsLibraryPage() {
       const uploadedDocs = fileArray.filter((file) => !isChangeRecordFile(file))
       const parsedChangeItems = changeFile ? await parseChangeRecord(changeFile) : []
       const combinedChangeItems = append && parsedChangeItems.length === 0 ? changeItems : parsedChangeItems
-      const changeMap = new Map(combinedChangeItems.map((item) => [item.docNo.toLowerCase(), item]))
-      const docMap = new Map(documents.map((doc) => [doc.doc_no.toLowerCase(), doc]))
+      const changeMap = new Map(combinedChangeItems.map((item) => [docKey(item.docNo), item]))
+      const docMap = new Map(documents.map((doc) => [docKey(doc.doc_no), doc]))
       const roundFromFile = changeFile?.webkitRelativePath?.match(/Revision[_\s-]*(\d+)/i)?.[0] || changeFile?.name.match(/Revision[_\s-]*(\d+)/i)?.[0] || ''
-      if (roundFromFile) setUpdateRound(roundFromFile.replace(/[_-]+/g, ' '))
+      const roundFromChangeRecord = parsedChangeItems.find((item) => item.roundRevision)?.roundRevision || ''
+      if (roundFromChangeRecord) setUpdateRound(roundFromChangeRecord)
+      else if (roundFromFile) setUpdateRound(roundFromFile.replace(/[_-]+/g, ' '))
 
       const nextDrafts: SmsFileDraft[] = []
       for (const file of uploadedDocs) {
         const isLegacyWord = isLegacyWordDoc(file)
         const header = await readSmsDocumentHeader(file)
         const docNo = header.docNo || ''
-        const changeItem = changeMap.get(docNo.toLowerCase())
-        const matchedDocument = docMap.get(docNo.toLowerCase())
+        const changeItem = changeMap.get(docKey(docNo))
+        const matchedDocument = docMap.get(docKey(docNo))
         const category = getSmsCategoryFromPath(file) || changeItem?.category || (docNo.toLowerCase().startsWith('procedure') ? 'Procedure' : 'Checklist')
         const matchStatus: SmsFileDraft['matchStatus'] = isLegacyWord
           ? 'need-review'
@@ -338,9 +344,18 @@ export default function SmsLibraryPage() {
   }
 
   const requiredMissing = useMemo(() => {
-    const uploaded = new Set(drafts.map((draft) => draft.docNo.toLowerCase()).filter(Boolean))
-    return changeItems.filter((item) => !uploaded.has(item.docNo.toLowerCase()))
+    const uploaded = new Set(drafts.map((draft) => docKey(draft.docNo)).filter(Boolean))
+    return changeItems.filter((item) => !uploaded.has(docKey(item.docNo)))
   }, [changeItems, drafts])
+
+  const changeRecordChecklist = useMemo(() => {
+    const uploaded = new Set(drafts.map((draft) => docKey(draft.docNo)).filter(Boolean))
+    return changeItems.map((item) => ({
+      ...item,
+      found: uploaded.has(docKey(item.docNo)),
+      currentRevision: documents.find((doc) => docKey(doc.doc_no) === docKey(item.docNo))?.current_revision || '',
+    }))
+  }, [changeItems, documents, drafts])
 
   const confirmUpload = async () => {
     if (!isAdmin || !user) return toast.error('Admin permission required')
@@ -718,6 +733,48 @@ export default function SmsLibraryPage() {
                   <div className="grid gap-2 md:grid-cols-2">
                     {requiredMissing.slice(0, 10).map((item) => (
                       <div key={`${item.docNo}-${item.revision}`} className="rounded-xl bg-black/30 px-3 py-2 text-xs font-bold text-red-100">{item.docNo} · {item.title} · {item.revision}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {changeRecordChecklist.length > 0 && (
+                <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
+                  <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-400">Revision checklist</p>
+                      <h3 className="mt-2 text-2xl font-black italic uppercase">{changeRecordChecklist[0]?.roundRevision || updateRound || 'Current revision'}</h3>
+                    </div>
+                    <p className="text-xs font-bold text-zinc-500">
+                      {changeRecordChecklist.filter((item) => item.found).length} / {changeRecordChecklist.length} uploaded
+                    </p>
+                  </div>
+                  <div className="max-h-[300px] space-y-2 overflow-y-auto pr-1">
+                    {changeRecordChecklist.map((item) => (
+                      <div
+                        key={`${item.docNo}-${item.revision}-${item.title}`}
+                        className={`grid gap-3 rounded-2xl border px-4 py-3 text-xs md:grid-cols-[34px_130px_1fr_120px] ${
+                          item.found ? 'border-emerald-500/25 bg-emerald-500/10' : 'border-red-500/25 bg-red-500/10'
+                        }`}
+                      >
+                        <span className={`flex h-8 w-8 items-center justify-center rounded-xl ${item.found ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>
+                          {item.found ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                        </span>
+                        <div>
+                          <p className="font-black text-white">{item.docNo}</p>
+                          <p className="mt-1 text-[10px] font-black uppercase text-zinc-500">Current {item.currentRevision || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="font-black uppercase text-white">{item.title}</p>
+                          <p className="mt-1 text-[10px] text-zinc-400">{item.changeSummary || 'No change summary'}</p>
+                        </div>
+                        <div className="text-right md:text-left">
+                          <p className="font-black text-orange-200">{item.revision}</p>
+                          <p className={`mt-1 text-[10px] font-black uppercase ${item.found ? 'text-emerald-300' : 'text-red-300'}`}>
+                            {item.found ? 'Found' : 'Missing'}
+                          </p>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
