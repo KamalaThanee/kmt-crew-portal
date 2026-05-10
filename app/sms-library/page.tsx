@@ -189,7 +189,15 @@ export default function SmsLibraryPage() {
         return
       }
 
-      existing.logs.push(log)
+      const sameDocIndex = existing.logs.findIndex((item) => docKey(item.doc_no || '') === docKey(log.doc_no || '') && revisionKey(item.new_revision) === revisionKey(log.new_revision))
+      if (sameDocIndex >= 0) {
+        const currentAt = existing.logs[sameDocIndex]?.created_at || ''
+        if (uploadedAt && (!currentAt || new Date(uploadedAt) > new Date(currentAt))) {
+          existing.logs[sameDocIndex] = log
+        }
+      } else {
+        existing.logs.push(log)
+      }
       if (uploadedAt && (!existing.uploadedAt || new Date(uploadedAt) > new Date(existing.uploadedAt))) {
         existing.uploadedAt = uploadedAt
         existing.updateDate = log.update_date || existing.updateDate
@@ -452,6 +460,7 @@ export default function SmsLibraryPage() {
 
     setSaving(true)
     try {
+      const uploadedKeys = new Set(validDrafts.map((draft) => docKey(draft.docNo)))
       for (const draft of validDrafts) {
         const existing = documents.find((doc) => doc.doc_no.toLowerCase() === draft.docNo.toLowerCase())
         let documentId = existing?.id || ''
@@ -562,6 +571,46 @@ export default function SmsLibraryPage() {
             changeRecordFile: changeRecordFile?.name || null,
           },
         })
+      }
+
+      const existingRoundKeys = new Set(
+        logs
+          .filter((log) => String(log.update_round || '').trim() === String(updateRound || '').trim())
+          .map((log) => `${docKey(log.doc_no || '')}|${revisionKey(log.new_revision)}`),
+      )
+      const alreadyCurrentLogs = changeItems.reduce<Array<Record<string, unknown>>>((items, item) => {
+        if (uploadedKeys.has(docKey(item.docNo))) return items
+        const doc = documents.find((row) => docKey(row.doc_no) === docKey(item.docNo))
+        if (!doc || revisionKey(doc.current_revision) !== revisionKey(item.revision)) return items
+        const key = `${docKey(item.docNo)}|${revisionKey(item.revision)}`
+        if (existingRoundKeys.has(key)) return items
+        items.push({
+          document_id: doc.id || null,
+          action: 'already_current',
+          doc_no: item.docNo,
+          title: item.title || doc.title,
+          category: item.category,
+          old_revision: doc.current_revision || null,
+          new_revision: item.revision,
+          file_name: null,
+          actor_id: user.id,
+          actor_name: user.full_name,
+          update_round: updateRound || item.roundRevision || null,
+          update_date: updateDate || null,
+          details: {
+            matchStatus: 'already_current',
+            updateRound: updateRound || item.roundRevision || null,
+            updateDate: updateDate || null,
+            changeSummary: item.changeSummary || null,
+            changeRecordFile: changeRecordFile?.name || null,
+          },
+        })
+        return items
+      }, [])
+
+      if (alreadyCurrentLogs.length > 0) {
+        const { error: alreadyCurrentError } = await supabase.from('sms_revision_logs').insert(alreadyCurrentLogs)
+        if (alreadyCurrentError) throw alreadyCurrentError
       }
 
       toast.success(`SMS Library updated: ${validDrafts.length} files`)
@@ -721,6 +770,7 @@ export default function SmsLibraryPage() {
             <div className="max-h-[72vh] space-y-3 overflow-y-auto p-6">
               {selectedRevisionGroup.logs.map((log) => {
                 const detail = log.details as { changeSummary?: string | null; source?: string | null } | null
+                const changedText = String(detail?.changeSummary || '').trim()
                 return (
                   <div key={log.id} className="rounded-[26px] border border-white/10 bg-black/35 p-5">
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -728,17 +778,19 @@ export default function SmsLibraryPage() {
                         <p className="text-[10px] font-black uppercase tracking-[0.25em] text-orange-400">{log.doc_no}</p>
                         <h3 className="mt-2 text-xl font-black italic uppercase text-white">{log.title}</h3>
                         <p className="mt-2 text-xs font-bold text-zinc-500">
-                          {log.old_revision || '-'} -&gt; {log.new_revision || '-'} · {log.category}
+                          Rev {log.new_revision || '-'} | {log.category} | {formatDateTime(log.created_at)} | By {log.actor_name || 'Unknown'}
                         </p>
+                        {log.old_revision && log.old_revision !== log.new_revision && (
+                          <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-zinc-600">Previous {log.old_revision}</p>
+                        )}
                       </div>
                       <span className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-[10px] font-black uppercase text-zinc-300">{log.action}</span>
                     </div>
-                    <div className="mt-4 rounded-2xl border border-orange-500/15 bg-orange-500/5 p-4">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-orange-300">What changed</p>
-                      <p className="mt-2 text-sm font-bold leading-relaxed text-zinc-300">
-                        {detail?.changeSummary || 'No change summary recorded'}
+                    {changedText && (
+                      <p className="mt-4 rounded-2xl border border-orange-500/15 bg-orange-500/5 p-4 text-sm font-bold leading-relaxed text-zinc-300">
+                        {changedText}
                       </p>
-                    </div>
+                    )}
                   </div>
                 )
               })}
