@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 type NotifyPayload = {
-  type?: "new_request" | "approved" | "rejected" | "received";
+  type?: "new_request" | "approved" | "rejected" | "received" | "sms_revision";
   requestId?: string;
   crewId?: string;
   crewName?: string;
   itemName?: string;
   actorName?: string;
   reason?: string;
+  revision?: string;
+  changedCount?: number;
 };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -137,6 +139,29 @@ export async function POST(request: Request) {
 
       const data = await sendOneSignal(externalIds, title, body, url);
       return NextResponse.json({ ok: true, target: "admins", targetCount: externalIds.length, data });
+    }
+
+    if (payload.type === "sms_revision") {
+      const { data: crews, error } = await supabaseAdmin
+        .from("crews")
+        .select("id");
+
+      if (error) throw error;
+
+      const externalIds = (crews || [])
+        .map((crew: any) => String(crew.id))
+        .filter(Boolean);
+      const title = "SMS Library updated";
+      const revision = payload.revision || "New revision";
+      const count = payload.changedCount ? `${payload.changedCount} document(s)` : "documents";
+      const body = `${revision} uploaded: ${count} updated.`;
+      const data = await sendOneSignal(
+        externalIds,
+        title,
+        body,
+        `${baseUrl}/sms-library`,
+      );
+      return NextResponse.json({ ok: true, target: "all_crew", targetCount: externalIds.length, data });
     }
 
     if (payload.type === "approved" || payload.type === "rejected") {

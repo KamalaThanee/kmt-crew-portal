@@ -6,7 +6,7 @@ import { AlertTriangle, CheckCircle2, Download, Eye, FileText, Loader2, Search, 
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
-import { isAdminRole } from '@/lib/roles'
+import { canManageSmsLibrary } from '@/lib/roles'
 import {
   buildSmsFilePath,
   getSmsCategoryFromPath,
@@ -89,6 +89,11 @@ const isLegacyWordDoc = (file: File) => /\.doc$/i.test(file.name) && !/\.docx$/i
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 const docKey = (value: string) => String(value || '').trim().toLowerCase()
 const revisionKey = (value?: string | null) => String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+const safeFileName = (value: string) =>
+  String(value || 'sms-document')
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, '_')
+    .slice(0, 140)
 
 export default function SmsLibraryPage() {
   const router = useRouter()
@@ -112,7 +117,7 @@ export default function SmsLibraryPage() {
   const [revisionFilter, setRevisionFilter] = useState('all')
   const [downloadingZip, setDownloadingZip] = useState(false)
 
-  const isAdmin = isAdminRole(user?.position)
+  const canManageSms = canManageSmsLibrary(user?.position)
   const isFirstUpload = documents.length === 0
   const uploadActionLabel = isFirstUpload ? 'New Upload' : 'Upload Revision'
 
@@ -174,12 +179,15 @@ export default function SmsLibraryPage() {
       uploadedAt: string
       updateDate: string
       actor: string
+      changeRecordUrl?: string
+      changeRecordFile?: string
       logs: SmsRevisionLog[]
     }>()
 
     logs.forEach((log) => {
       const round = String(log.update_round || '').trim()
       if (!round) return
+      const details = log.details as { changeRecordUrl?: string | null; changeRecordFile?: string | null } | null
       const existing = groups.get(round)
       const uploadedAt = log.created_at || ''
       if (!existing) {
@@ -188,11 +196,15 @@ export default function SmsLibraryPage() {
           uploadedAt,
           updateDate: log.update_date || '',
           actor: log.actor_name || 'Unknown',
+          changeRecordUrl: details?.changeRecordUrl || undefined,
+          changeRecordFile: details?.changeRecordFile || undefined,
           logs: [log],
         })
         return
       }
 
+      if (!existing.changeRecordUrl && details?.changeRecordUrl) existing.changeRecordUrl = details.changeRecordUrl
+      if (!existing.changeRecordFile && details?.changeRecordFile) existing.changeRecordFile = details.changeRecordFile
       const sameDocIndex = existing.logs.findIndex((item) => docKey(item.doc_no || '') === docKey(log.doc_no || '') && revisionKey(item.new_revision) === revisionKey(log.new_revision))
       if (sameDocIndex >= 0) {
         const currentAt = existing.logs[sameDocIndex]?.created_at || ''
@@ -216,6 +228,8 @@ export default function SmsLibraryPage() {
   const latestRevisionGroup = revisionGroups[0] || null
   const selectedRevisionGroup = revisionGroups.find((group) => group.round === selectedRevisionRound) || null
   const currentCategoryDocuments = activeTab === 'Revision Log' ? [] : documents.filter((doc) => doc.category === activeTab)
+  const revisionFilterGroup = revisionGroups.find((group) => group.round === revisionFilter)
+  const activeRevisionGroup = revisionFilterGroup || latestRevisionGroup
 
   const resetUpload = () => {
     setUploadOpen(false)
@@ -432,7 +446,7 @@ export default function SmsLibraryPage() {
   }, [changeItems, documents, drafts])
 
   const confirmUpload = async () => {
-    if (!isAdmin || !user) return toast.error('Admin permission required')
+    if (!canManageSms || !user) return toast.error('SMS manager permission required')
     const validDrafts = drafts.filter((draft) => draft.docNo && draft.title && draft.revision)
     if (validDrafts.length === 0) return toast.error('No valid SMS documents to upload')
     const knownRevisions = new Map<string, string>()
@@ -465,6 +479,18 @@ export default function SmsLibraryPage() {
 
     setSaving(true)
     try {
+      let changeRecordUrl = ''
+      let changeRecordStoredName = ''
+      if (changeRecordFile) {
+        const changeExt = changeRecordFile.name.split('.').pop()?.toLowerCase() || 'bin'
+        const changeRound = safeFileName(updateRound || 'current-revision')
+        changeRecordStoredName = `${changeRound}_00_Change_Record.${changeExt}`
+        const changePath = `ChangeRecord/${changeRound}/${changeRecordStoredName}`
+        const { error: changeUploadError } = await supabase.storage.from(SMS_BUCKET).upload(changePath, changeRecordFile, { upsert: true })
+        if (changeUploadError) throw changeUploadError
+        const { data: changePublicData } = supabase.storage.from(SMS_BUCKET).getPublicUrl(changePath)
+        changeRecordUrl = changePublicData.publicUrl
+      }
       const uploadedKeys = new Set(validDrafts.map((draft) => docKey(draft.docNo)))
       for (const draft of validDrafts) {
         const existing = documents.find((doc) => doc.doc_no.toLowerCase() === draft.docNo.toLowerCase())
@@ -573,7 +599,8 @@ export default function SmsLibraryPage() {
             updateRound: updateRound || null,
             updateDate: updateDate || null,
             changeSummary: draft.changeSummary || null,
-            changeRecordFile: changeRecordFile?.name || null,
+            changeRecordFile: changeRecordStoredName || changeRecordFile?.name || null,
+            changeRecordUrl: changeRecordUrl || null,
           },
         })
       }
@@ -607,7 +634,8 @@ export default function SmsLibraryPage() {
             updateRound: updateRound || item.roundRevision || null,
             updateDate: updateDate || null,
             changeSummary: item.changeSummary || null,
-            changeRecordFile: changeRecordFile?.name || null,
+            changeRecordFile: changeRecordStoredName || changeRecordFile?.name || null,
+            changeRecordUrl: changeRecordUrl || null,
           },
         })
         return items
@@ -617,6 +645,17 @@ export default function SmsLibraryPage() {
         const { error: alreadyCurrentError } = await supabase.from('sms_revision_logs').insert(alreadyCurrentLogs)
         if (alreadyCurrentError) throw alreadyCurrentError
       }
+
+      fetch('/api/onesignal/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'sms_revision',
+          revision: updateRound || changeItems[0]?.roundRevision || 'SMS revision',
+          changedCount: changeItems.length || validDrafts.length,
+          actorName: user.full_name,
+        }),
+      }).catch(() => undefined)
 
       toast.success(`SMS Library updated: ${validDrafts.length} files`)
       resetUpload()
@@ -656,12 +695,6 @@ export default function SmsLibraryPage() {
     anchor.remove()
     URL.revokeObjectURL(url)
   }
-
-  const safeFileName = (value: string) =>
-    String(value || 'sms-document')
-      .replace(/[\\/:*?"<>|]+/g, '-')
-      .replace(/\s+/g, '_')
-      .slice(0, 140)
 
   const openDocument = async (doc: SmsDocument) => {
     const fileData = await getActiveVersion(doc)
@@ -725,6 +758,19 @@ export default function SmsLibraryPage() {
     }
   }
 
+  const downloadChangeLog = async () => {
+    const group = activeTab === 'Revision Log' ? activeRevisionGroup : latestRevisionGroup
+    if (!group?.changeRecordUrl) return toast.error('No changelog file attached to this revision')
+    try {
+      const response = await fetch(group.changeRecordUrl)
+      if (!response.ok) throw new Error('Unable to download changelog')
+      const fileName = safeFileName(group.changeRecordFile || `${group.round}_00_Change_Record.docx`)
+      triggerBlobDownload(await response.blob(), fileName)
+    } catch (error: any) {
+      toast.error(error?.message || 'Changelog download failed')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#02030b] px-4 pb-28 pt-28 text-white md:px-10">
       <div className="mx-auto max-w-7xl">
@@ -757,10 +803,19 @@ export default function SmsLibraryPage() {
                   className="rounded-[24px] border border-blue-500/40 bg-blue-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-blue-100 disabled:opacity-40"
                 >
                   {downloadingZip ? <Loader2 size={16} className="mr-2 inline animate-spin" /> : <Download size={16} className="mr-2 inline" />}
-                  Download ZIP
+                  Download All
                 </button>
               )}
-              {isAdmin && (
+              {activeTab === 'Revision Log' && (
+                <button
+                  onClick={downloadChangeLog}
+                  disabled={!activeRevisionGroup?.changeRecordUrl}
+                  className="rounded-[24px] border border-blue-500/40 bg-blue-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-blue-100 disabled:opacity-40"
+                >
+                  <Download size={16} className="mr-2 inline" /> Download Changelog
+                </button>
+              )}
+              {canManageSms && (
                 <button onClick={() => setUploadOpen(true)} className="rounded-[24px] bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-orange-600/20">
                   <UploadCloud size={16} className="mr-2 inline" /> {uploadActionLabel}
                 </button>
