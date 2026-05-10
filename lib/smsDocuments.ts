@@ -278,16 +278,30 @@ function parseChangeRecordRow(cells: string[]): SmsChangeRecordItem | null {
   }
 }
 
+function isChangeRecordSectionHeader(cells: string[]) {
+  return /register\s+documents?\s+rev(?:ision)?\.?\s*\d+/i.test(cells.join(' '))
+}
+
 export async function parseChangeRecord(file: File) {
   const ext = file.name.split('.').pop()?.toLowerCase()
   if (ext !== 'docx') return [] as SmsChangeRecordItem[]
 
   const xml = await readDocxXml(file)
   const rows = parseDocxRows(xml)
+  const sectionStarts = rows
+    .map((cells, index) => isChangeRecordSectionHeader(cells) ? index : -1)
+    .filter((index) => index >= 0)
+  const latestSectionStart = sectionStarts.length > 0 ? sectionStarts[sectionStarts.length - 1] : undefined
+  const latestSectionEnd = latestSectionStart === undefined
+    ? rows.length
+    : sectionStarts.find((index) => index > latestSectionStart) ?? rows.length
+  const rowsToParse = latestSectionStart === undefined
+    ? rows
+    : rows.slice(latestSectionStart + 1, latestSectionEnd)
   const seen = new Set<string>()
   const items: SmsChangeRecordItem[] = []
 
-  rows.forEach((cells) => {
+  rowsToParse.forEach((cells) => {
     const item = parseChangeRecordRow(cells)
     if (!item) return
     const key = `${item.docNo}|${item.revision}`
