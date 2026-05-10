@@ -86,6 +86,7 @@ const isLegacyWordDoc = (file: File) => /\.doc$/i.test(file.name) && !/\.docx$/i
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 const docKey = (value: string) => String(value || '').trim().toLowerCase()
+const revisionKey = (value?: string | null) => String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase()
 
 export default function SmsLibraryPage() {
   const router = useRouter()
@@ -345,16 +346,30 @@ export default function SmsLibraryPage() {
 
   const requiredMissing = useMemo(() => {
     const uploaded = new Set(drafts.map((draft) => docKey(draft.docNo)).filter(Boolean))
-    return changeItems.filter((item) => !uploaded.has(docKey(item.docNo)))
-  }, [changeItems, drafts])
+    const current = new Map(documents.map((doc) => [docKey(doc.doc_no), revisionKey(doc.current_revision)]))
+    return changeItems.filter((item) => {
+      const key = docKey(item.docNo)
+      if (uploaded.has(key)) return false
+      return current.get(key) !== revisionKey(item.revision)
+    })
+  }, [changeItems, documents, drafts])
 
   const changeRecordChecklist = useMemo(() => {
     const uploaded = new Set(drafts.map((draft) => docKey(draft.docNo)).filter(Boolean))
-    return changeItems.map((item) => ({
-      ...item,
-      found: uploaded.has(docKey(item.docNo)),
-      currentRevision: documents.find((doc) => docKey(doc.doc_no) === docKey(item.docNo))?.current_revision || '',
-    }))
+    const current = new Map(documents.map((doc) => [docKey(doc.doc_no), doc.current_revision || '']))
+    return changeItems.map((item) => {
+      const currentRevision = current.get(docKey(item.docNo)) || ''
+      const found = uploaded.has(docKey(item.docNo))
+      const alreadyCurrent = !found && revisionKey(currentRevision) === revisionKey(item.revision)
+
+      return {
+        ...item,
+        found,
+        alreadyCurrent,
+        complete: found || alreadyCurrent,
+        currentRevision,
+      }
+    })
   }, [changeItems, documents, drafts])
 
   const confirmUpload = async () => {
@@ -746,7 +761,7 @@ export default function SmsLibraryPage() {
                       <h3 className="mt-2 text-2xl font-black italic uppercase">{changeRecordChecklist[0]?.roundRevision || updateRound || 'Current revision'}</h3>
                     </div>
                     <p className="text-xs font-bold text-zinc-500">
-                      {changeRecordChecklist.filter((item) => item.found).length} / {changeRecordChecklist.length} uploaded
+                      {changeRecordChecklist.filter((item) => item.complete).length} / {changeRecordChecklist.length} complete
                     </p>
                   </div>
                   <div className="max-h-[300px] space-y-2 overflow-y-auto pr-1">
@@ -754,11 +769,11 @@ export default function SmsLibraryPage() {
                       <div
                         key={`${item.docNo}-${item.revision}-${item.title}`}
                         className={`grid gap-3 rounded-2xl border px-4 py-3 text-xs md:grid-cols-[34px_130px_1fr_120px] ${
-                          item.found ? 'border-emerald-500/25 bg-emerald-500/10' : 'border-red-500/25 bg-red-500/10'
+                          item.complete ? 'border-emerald-500/25 bg-emerald-500/10' : 'border-red-500/25 bg-red-500/10'
                         }`}
                       >
-                        <span className={`flex h-8 w-8 items-center justify-center rounded-xl ${item.found ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>
-                          {item.found ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                        <span className={`flex h-8 w-8 items-center justify-center rounded-xl ${item.complete ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>
+                          {item.complete ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
                         </span>
                         <div>
                           <p className="font-black text-white">{item.docNo}</p>
@@ -770,8 +785,8 @@ export default function SmsLibraryPage() {
                         </div>
                         <div className="text-right md:text-left">
                           <p className="font-black text-orange-200">{item.revision}</p>
-                          <p className={`mt-1 text-[10px] font-black uppercase ${item.found ? 'text-emerald-300' : 'text-red-300'}`}>
-                            {item.found ? 'Found' : 'Missing'}
+                          <p className={`mt-1 text-[10px] font-black uppercase ${item.complete ? 'text-emerald-300' : 'text-red-300'}`}>
+                            {item.found ? 'Uploaded' : item.alreadyCurrent ? 'Already current' : 'Missing'}
                           </p>
                         </div>
                       </div>
