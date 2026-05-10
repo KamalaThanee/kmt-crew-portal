@@ -278,8 +278,9 @@ function parseChangeRecordRow(cells: string[]): SmsChangeRecordItem | null {
   }
 }
 
-function isChangeRecordSectionHeader(cells: string[]) {
-  return /register\s+documents?\s+rev(?:ision)?\.?\s*\d+/i.test(cells.join(' '))
+function getChangeRecordSectionRevision(cells: string[]) {
+  const match = cells.join(' ').match(/register\s+documents?\s+rev(?:ision)?\.?\s*(\d+)/i)
+  return match ? Number(match[1]) : null
 }
 
 export async function parseChangeRecord(file: File) {
@@ -289,15 +290,20 @@ export async function parseChangeRecord(file: File) {
   const xml = await readDocxXml(file)
   const rows = parseDocxRows(xml)
   const sectionStarts = rows
-    .map((cells, index) => isChangeRecordSectionHeader(cells) ? index : -1)
-    .filter((index) => index >= 0)
-  const latestSectionStart = sectionStarts.length > 0 ? sectionStarts[sectionStarts.length - 1] : undefined
-  const latestSectionEnd = latestSectionStart === undefined
+    .map((cells, index) => ({ index, revision: getChangeRecordSectionRevision(cells) }))
+    .filter((section): section is { index: number; revision: number } => section.revision !== null)
+  const latestSection = sectionStarts.reduce<{ index: number; revision: number } | undefined>((latest, section) => {
+    if (!latest) return section
+    if (section.revision > latest.revision) return section
+    if (section.revision === latest.revision && section.index > latest.index) return section
+    return latest
+  }, undefined)
+  const latestSectionEnd = latestSection === undefined
     ? rows.length
-    : sectionStarts.find((index) => index > latestSectionStart) ?? rows.length
-  const rowsToParse = latestSectionStart === undefined
+    : sectionStarts.find((section) => section.index > latestSection.index)?.index ?? rows.length
+  const rowsToParse = latestSection === undefined
     ? rows
-    : rows.slice(latestSectionStart + 1, latestSectionEnd)
+    : rows.slice(latestSection.index + 1, latestSectionEnd)
   const seen = new Set<string>()
   const items: SmsChangeRecordItem[] = []
 
