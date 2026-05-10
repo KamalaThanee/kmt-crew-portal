@@ -355,6 +355,21 @@ export default function SmsLibraryPage() {
         let oldRevision = existing?.current_revision || null
 
         if (!documentId) {
+          const { data: dbExisting, error: dbExistingError } = await supabase
+            .from('sms_documents')
+            .select('id, current_revision')
+            .eq('doc_no', draft.docNo)
+            .maybeSingle()
+          if (dbExistingError) throw dbExistingError
+
+          const dbExistingDoc = dbExisting as { id?: string; current_revision?: string | null } | null
+          if (dbExistingDoc?.id) {
+            documentId = dbExistingDoc.id
+            oldRevision = dbExistingDoc.current_revision || null
+          }
+        }
+
+        if (!documentId) {
           const { data: newDoc, error: docError } = await supabase
             .from('sms_documents')
             .insert({
@@ -363,15 +378,17 @@ export default function SmsLibraryPage() {
               category: draft.category,
               current_revision: draft.revision,
               effective_date: draft.effectiveDate || null,
+              status: 'active',
+              updated_at: new Date().toISOString(),
             })
             .select('id')
             .single()
           if (docError) throw docError
-          documentId = newDoc.id
+          const createdDoc = newDoc as { id: string }
+          documentId = createdDoc.id
           oldRevision = null
-        } else {
-          await supabase.from('sms_document_versions').update({ status: 'superseded' }).eq('document_id', documentId).eq('status', 'active')
         }
+        await supabase.from('sms_document_versions').update({ status: 'superseded' }).eq('document_id', documentId).eq('status', 'active')
 
         const filePath = buildSmsFilePath(draft.file, draft)
         const storedFileName = filePath.split('/').pop() || draft.fileName
