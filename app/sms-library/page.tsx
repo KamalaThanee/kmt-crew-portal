@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CheckCircle2, Download, FileText, Loader2, Search, UploadCloud, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, Eye, FileText, Loader2, Search, UploadCloud, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
@@ -109,6 +109,8 @@ export default function SmsLibraryPage() {
   const [updateRound, setUpdateRound] = useState('')
   const [updateDate, setUpdateDate] = useState(new Date().toISOString().slice(0, 10))
   const [selectedRevisionRound, setSelectedRevisionRound] = useState<string | null>(null)
+  const [revisionFilter, setRevisionFilter] = useState('all')
+  const [downloadingZip, setDownloadingZip] = useState(false)
 
   const isAdmin = isAdminRole(user?.position)
   const isFirstUpload = documents.length === 0
@@ -161,8 +163,10 @@ export default function SmsLibraryPage() {
 
   const visibleLogs = useMemo(() => {
     const q = search.toLowerCase().trim()
-    return logs.filter((log) => !q || `${log.doc_no || ''} ${log.title || ''} ${log.action || ''} ${log.actor_name || ''}`.toLowerCase().includes(q))
-  }, [logs, search])
+    return logs
+      .filter((log) => revisionFilter === 'all' || String(log.update_round || '').trim() === revisionFilter)
+      .filter((log) => !q || `${log.doc_no || ''} ${log.title || ''} ${log.action || ''} ${log.actor_name || ''}`.toLowerCase().includes(q))
+  }, [logs, revisionFilter, search])
 
   const revisionGroups = useMemo(() => {
     const groups = new Map<string, {
@@ -211,6 +215,7 @@ export default function SmsLibraryPage() {
 
   const latestRevisionGroup = revisionGroups[0] || null
   const selectedRevisionGroup = revisionGroups.find((group) => group.round === selectedRevisionRound) || null
+  const currentCategoryDocuments = activeTab === 'Revision Log' ? [] : documents.filter((doc) => doc.category === activeTab)
 
   const resetUpload = () => {
     setUploadOpen(false)
@@ -623,15 +628,44 @@ export default function SmsLibraryPage() {
     }
   }
 
-  const openDocument = async (doc: SmsDocument) => {
-    if (!doc.active_version_id) return toast.error('No active file attached')
+  const getActiveVersion = async (doc: SmsDocument): Promise<{ file_url?: string | null; file_name?: string | null; mime_type?: string | null } | null> => {
+    if (!doc.active_version_id) {
+      toast.error('No active file attached')
+      return null
+    }
     const { data, error } = await supabase
       .from('sms_document_versions')
       .select('file_url, file_name, mime_type')
       .eq('id', doc.active_version_id)
       .maybeSingle()
     const fileData = data as { file_url?: string | null; file_name?: string | null; mime_type?: string | null } | null
-    if (error || !fileData?.file_url) return toast.error(error?.message || 'No file URL found')
+    if (error || !fileData?.file_url) {
+      toast.error(error?.message || 'No file URL found')
+      return null
+    }
+    return fileData
+  }
+
+  const triggerBlobDownload = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = fileName
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const safeFileName = (value: string) =>
+    String(value || 'sms-document')
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, '_')
+      .slice(0, 140)
+
+  const openDocument = async (doc: SmsDocument) => {
+    const fileData = await getActiveVersion(doc)
+    if (!fileData) return
     const fileUrl = String(fileData.file_url)
     const fileName = String(fileData.file_name || fileUrl).split('?')[0]
     const ext = fileName.split('.').pop()?.toLowerCase() || ''
@@ -641,6 +675,54 @@ export default function SmsLibraryPage() {
       : fileUrl
 
     window.open(previewUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  const downloadDocument = async (doc: SmsDocument) => {
+    const fileData = await getActiveVersion(doc)
+    if (!fileData) return
+    try {
+      const fileUrl = String(fileData.file_url)
+      const fileName = safeFileName(String(fileData.file_name || `${doc.doc_no}_${doc.title}`))
+      const response = await fetch(fileUrl)
+      if (!response.ok) throw new Error('Unable to download file')
+      triggerBlobDownload(await response.blob(), fileName)
+    } catch (error: any) {
+      toast.error(error?.message || 'Download failed')
+    }
+  }
+
+  const downloadCategoryZip = async () => {
+    if (activeTab === 'Revision Log') return
+    const docsToZip = currentCategoryDocuments.filter((doc) => doc.active_version_id)
+    if (docsToZip.length === 0) return toast.error(`No ${activeTab} files to download`)
+    setDownloadingZip(true)
+    try {
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+      const versionIds = docsToZip.map((doc) => doc.active_version_id).filter(Boolean) as string[]
+      const { data, error } = await supabase
+        .from('sms_document_versions')
+        .select('id, doc_no, title, revision, file_name, file_url')
+        .in('id', versionIds)
+      if (error) throw error
+
+      const versions = (data || []) as Array<{ id?: string | null; doc_no?: string | null; title?: string | null; revision?: string | null; file_name?: string | null; file_url?: string | null }>
+      for (const version of versions) {
+        if (!version.file_url) continue
+        const response = await fetch(version.file_url)
+        if (!response.ok) continue
+        const ext = String(version.file_name || '').split('.').pop() || 'bin'
+        const fileName = safeFileName(`${version.doc_no || 'NO_DOC'}_${version.title || 'SMS_Document'}_${version.revision || 'NO_REV'}.${ext}`)
+        zip.file(fileName, await response.blob())
+      }
+
+      const blob = await zip.generateAsync({ type: 'blob' })
+      triggerBlobDownload(blob, `KMT_SMS_${safeFileName(activeTab)}_${new Date().toISOString().slice(0, 10)}.zip`)
+    } catch (error: any) {
+      toast.error(error?.message || 'ZIP download failed')
+    } finally {
+      setDownloadingZip(false)
+    }
   }
 
   return (
@@ -667,11 +749,23 @@ export default function SmsLibraryPage() {
                 </button>
               ))}
             </div>
-            {isAdmin && (
-              <button onClick={() => setUploadOpen(true)} className="rounded-[24px] bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-orange-600/20">
-                <UploadCloud size={16} className="mr-2 inline" /> {uploadActionLabel}
-              </button>
-            )}
+            <div className="flex flex-col gap-3 md:flex-row">
+              {activeTab !== 'Revision Log' && (
+                <button
+                  onClick={downloadCategoryZip}
+                  disabled={downloadingZip || currentCategoryDocuments.length === 0}
+                  className="rounded-[24px] border border-blue-500/40 bg-blue-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-blue-100 disabled:opacity-40"
+                >
+                  {downloadingZip ? <Loader2 size={16} className="mr-2 inline animate-spin" /> : <Download size={16} className="mr-2 inline" />}
+                  Download ZIP
+                </button>
+              )}
+              {isAdmin && (
+                <button onClick={() => setUploadOpen(true)} className="rounded-[24px] bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-orange-600/20">
+                  <UploadCloud size={16} className="mr-2 inline" /> {uploadActionLabel}
+                </button>
+              )}
+            </div>
           </div>
         </section>
 
@@ -699,14 +793,28 @@ export default function SmsLibraryPage() {
           </button>
         )}
 
-        <div className="mb-8 flex items-center gap-3 rounded-[30px] border border-white/10 bg-zinc-950 p-4">
-          <Search size={18} className="text-orange-400" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search document no, title, revision..."
-            className="w-full bg-transparent text-sm font-bold text-white outline-none placeholder:text-zinc-600"
-          />
+        <div className="mb-8 grid gap-3 rounded-[30px] border border-white/10 bg-zinc-950 p-4 md:grid-cols-[1fr_auto]">
+          <div className="flex items-center gap-3">
+            <Search size={18} className="text-orange-400" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search document no, title, revision..."
+              className="w-full bg-transparent text-sm font-bold text-white outline-none placeholder:text-zinc-600"
+            />
+          </div>
+          {activeTab === 'Revision Log' && (
+            <select
+              value={revisionFilter}
+              onChange={(event) => setRevisionFilter(event.target.value)}
+              className="rounded-[22px] border border-orange-500/30 bg-black px-4 py-3 text-xs font-black uppercase text-white outline-none"
+            >
+              <option value="all">All Revisions</option>
+              {revisionGroups.map((group) => (
+                <option key={group.round} value={group.round}>{group.round}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         {loading ? (
@@ -744,9 +852,14 @@ export default function SmsLibraryPage() {
                       Revision {doc.current_revision || '-'} · Effective {formatDate(doc.effective_date)}
                     </p>
                   </div>
-                  <button onClick={() => openDocument(doc)} className="rounded-[22px] border border-blue-500/40 bg-blue-500/10 px-5 py-3 text-xs font-black uppercase text-blue-200 hover:bg-blue-500/20">
-                    <Download size={15} className="mr-2 inline" /> Preview / Open
-                  </button>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button onClick={() => openDocument(doc)} className="rounded-[22px] border border-cyan-500/40 bg-cyan-500/10 px-5 py-3 text-xs font-black uppercase text-cyan-100 hover:bg-cyan-500/20">
+                      <Eye size={15} className="mr-2 inline" /> View
+                    </button>
+                    <button onClick={() => downloadDocument(doc)} className="rounded-[22px] border border-blue-500/40 bg-blue-500/10 px-5 py-3 text-xs font-black uppercase text-blue-200 hover:bg-blue-500/20">
+                      <Download size={15} className="mr-2 inline" /> Download
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
