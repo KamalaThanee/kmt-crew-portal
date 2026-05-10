@@ -108,6 +108,7 @@ export default function SmsLibraryPage() {
   const [drafts, setDrafts] = useState<SmsFileDraft[]>([])
   const [updateRound, setUpdateRound] = useState('')
   const [updateDate, setUpdateDate] = useState(new Date().toISOString().slice(0, 10))
+  const [selectedRevisionRound, setSelectedRevisionRound] = useState<string | null>(null)
 
   const isAdmin = isAdminRole(user?.position)
   const isFirstUpload = documents.length === 0
@@ -162,6 +163,46 @@ export default function SmsLibraryPage() {
     const q = search.toLowerCase().trim()
     return logs.filter((log) => !q || `${log.doc_no || ''} ${log.title || ''} ${log.action || ''} ${log.actor_name || ''}`.toLowerCase().includes(q))
   }, [logs, search])
+
+  const revisionGroups = useMemo(() => {
+    const groups = new Map<string, {
+      round: string
+      uploadedAt: string
+      updateDate: string
+      actor: string
+      logs: SmsRevisionLog[]
+    }>()
+
+    logs.forEach((log) => {
+      const round = String(log.update_round || '').trim()
+      if (!round) return
+      const existing = groups.get(round)
+      const uploadedAt = log.created_at || ''
+      if (!existing) {
+        groups.set(round, {
+          round,
+          uploadedAt,
+          updateDate: log.update_date || '',
+          actor: log.actor_name || 'Unknown',
+          logs: [log],
+        })
+        return
+      }
+
+      existing.logs.push(log)
+      if (uploadedAt && (!existing.uploadedAt || new Date(uploadedAt) > new Date(existing.uploadedAt))) {
+        existing.uploadedAt = uploadedAt
+        existing.updateDate = log.update_date || existing.updateDate
+        existing.actor = log.actor_name || existing.actor
+      }
+    })
+
+    return Array.from(groups.values())
+      .sort((a, b) => new Date(b.uploadedAt || b.updateDate || 0).getTime() - new Date(a.uploadedAt || a.updateDate || 0).getTime())
+  }, [logs])
+
+  const latestRevisionGroup = revisionGroups[0] || null
+  const selectedRevisionGroup = revisionGroups.find((group) => group.round === selectedRevisionRound) || null
 
   const resetUpload = () => {
     setUploadOpen(false)
@@ -585,6 +626,30 @@ export default function SmsLibraryPage() {
           </div>
         </section>
 
+        {latestRevisionGroup && (
+          <button
+            type="button"
+            onClick={() => setSelectedRevisionRound(latestRevisionGroup.round)}
+            className="mb-8 grid w-full gap-4 rounded-[34px] border border-orange-500/25 bg-orange-500/10 p-6 text-left transition hover:border-orange-400/60 hover:bg-orange-500/15 md:grid-cols-[1fr_auto_auto]"
+          >
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-300">Current SMS Revision</p>
+              <h2 className="mt-2 text-3xl font-black italic uppercase text-white">{latestRevisionGroup.round}</h2>
+              <p className="mt-2 text-xs font-bold text-zinc-400">
+                Last uploaded {formatDateTime(latestRevisionGroup.uploadedAt)} by {latestRevisionGroup.actor}
+              </p>
+            </div>
+            <div className="rounded-[24px] border border-white/10 bg-black/35 px-6 py-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Changed docs</p>
+              <p className="mt-2 text-3xl font-black text-orange-300">{latestRevisionGroup.logs.length}</p>
+            </div>
+            <div className="rounded-[24px] border border-white/10 bg-black/35 px-6 py-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Update date</p>
+              <p className="mt-2 text-lg font-black text-white">{formatDate(latestRevisionGroup.updateDate)}</p>
+            </div>
+          </button>
+        )}
+
         <div className="mb-8 flex items-center gap-3 rounded-[30px] border border-white/10 bg-zinc-950 p-4">
           <Search size={18} className="text-orange-400" />
           <input
@@ -639,6 +704,48 @@ export default function SmsLibraryPage() {
           </div>
         )}
       </div>
+
+      {selectedRevisionGroup && (
+        <div className="fixed inset-0 z-[2400] flex items-center justify-center bg-black/80 p-4 backdrop-blur-xl">
+          <div className="w-full max-w-5xl overflow-hidden rounded-[40px] border border-orange-500/25 bg-zinc-950 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-white/10 p-6">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-400">Revision Detail</p>
+                <h2 className="mt-2 text-3xl font-black italic uppercase">{selectedRevisionGroup.round}</h2>
+                <p className="mt-1 text-xs font-bold text-zinc-500">
+                  Uploaded {formatDateTime(selectedRevisionGroup.uploadedAt)} by {selectedRevisionGroup.actor}
+                </p>
+              </div>
+              <button onClick={() => setSelectedRevisionRound(null)} className="rounded-2xl bg-white/5 p-3 text-zinc-400 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="max-h-[72vh] space-y-3 overflow-y-auto p-6">
+              {selectedRevisionGroup.logs.map((log) => {
+                const detail = log.details as { changeSummary?: string | null; source?: string | null } | null
+                return (
+                  <div key={log.id} className="rounded-[26px] border border-white/10 bg-black/35 p-5">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-orange-400">{log.doc_no}</p>
+                        <h3 className="mt-2 text-xl font-black italic uppercase text-white">{log.title}</h3>
+                        <p className="mt-2 text-xs font-bold text-zinc-500">
+                          {log.old_revision || '-'} -&gt; {log.new_revision || '-'} · {log.category}
+                        </p>
+                      </div>
+                      <span className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-[10px] font-black uppercase text-zinc-300">{log.action}</span>
+                    </div>
+                    <div className="mt-4 rounded-2xl border border-orange-500/15 bg-orange-500/5 p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-orange-300">What changed</p>
+                      <p className="mt-2 text-sm font-bold leading-relaxed text-zinc-300">
+                        {detail?.changeSummary || 'No change summary recorded'}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {uploadOpen && (
         <div className="fixed inset-0 z-[2500] flex items-center justify-center bg-black/85 p-4 backdrop-blur-xl">
