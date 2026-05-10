@@ -27,7 +27,7 @@ Read only the document header/table and extract the controlled-document fields.
 
 DOCUMENT TYPE: ${category || 'Unknown'}.
 FILE NAME: ${fileName || '-'}.
-TARGET PAGE: ${pageNumber || (category === 'Procedure' ? 2 : 1)}.
+TARGET PAGE: ${pageNumber || (category === 'Procedure' || category === 'Support Document' ? 2 : 1)}.
 MODE: ${mode}.
 
 Rules:
@@ -35,12 +35,12 @@ Rules:
 2. Extract these exact fields: title, revision, effectiveDate, docNo.
 3. Revision must be normalized as Rev.XX, e.g. "01" => "Rev.01". If cells are split like "0 1", combine to "01".
 4. Effective date must be YYYY-MM-DD. If cells are split like "1 0 August 2021", combine to "10 August 2021".
-5. Document number must preserve procedure/checklist identity. If category is Procedure and document number is "2", return "Procedure 2". If category is Checklist and document number is "11.105" or split as "11. 10 5", return "11.105".
+5. Document number must preserve category identity. If category is Procedure and document number is "2", return "Procedure 2". If category is Checklist and document number is "11.105" or split as "11. 10 5", return "11.105". If category is Support Document and document number is "OFSPV-HB" or "HB-2026-01", preserve that code exactly.
 6. Use the file name as a fallback only for docNo/title when the header is unreadable. Do not invent revision/effectiveDate.
 7. confidence is 0 to 1. Set needsReview true when any field is missing or uncertain.
 
 Return JSON shape:
-{"docNo":"Procedure 2 or 11.105 or empty","title":"text or empty","revision":"Rev.01 or empty","effectiveDate":"YYYY-MM-DD or empty","confidence":0.8,"needsReview":false,"note":"short reason"}
+{"docNo":"Procedure 2, 11.105, OFSPV-HB, HB-2026-01, or empty","title":"text or empty","revision":"Rev.01 or empty","effectiveDate":"YYYY-MM-DD or empty","confidence":0.8,"needsReview":false,"note":"short reason"}
 
 ${extractedText?.trim() ? `EXTRACTED TEXT:\n${extractedText.slice(0, 16000)}` : ''}`
 

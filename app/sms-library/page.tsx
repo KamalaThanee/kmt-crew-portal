@@ -22,7 +22,7 @@ import {
 } from '@/lib/smsDocuments'
 
 const SMS_BUCKET = 'sms-documents'
-const tabs: Array<SmsCategory | 'Revision Log'> = ['Procedure', 'Checklist', 'Revision Log']
+const tabs: Array<SmsCategory | 'Revision Log'> = ['Procedure', 'Checklist', 'Support Document', 'Revision Log']
 
 const smsHeaderAiModels = [
   { id: 'gemini-3.1-flash-lite-preview', provider: 'google', label: 'Gemini 3.1 Flash Lite Preview' },
@@ -68,6 +68,8 @@ const getDocNoFromFileName = (fileName: string, category: SmsCategory) => {
   if (category === 'Procedure' && procedure) return `procedure${procedure[1]}`
   const checklist = base.match(/\b(?:form\s+)?([0-9]{1,2}\.[0-9A-Za-z]+)\b/i)
   if (checklist) return checklist[1].toLowerCase()
+  const support = base.match(/^([A-Z]{2,}[A-Z0-9-]*\d*(?:-[A-Z0-9]+)*)\b/i)
+  if (category === 'Support Document' && support) return support[1].toLowerCase()
   return ''
 }
 
@@ -201,7 +203,7 @@ export default function SmsLibraryPage() {
         const docNo = header.docNo || ''
         const changeItem = changeMap.get(docKey(docNo))
         const matchedDocument = docMap.get(docKey(docNo))
-        const category = getSmsCategoryFromPath(file) || changeItem?.category || (docNo.toLowerCase().startsWith('procedure') ? 'Procedure' : 'Checklist')
+        const category = getSmsCategoryFromPath(file) || changeItem?.category || (docNo.toLowerCase().startsWith('procedure') ? 'Procedure' : /^[A-Z]{2,}[A-Z0-9-]*(?:-[A-Z0-9]+)*$/i.test(docNo) ? 'Support Document' : 'Checklist')
         const matchStatus: SmsFileDraft['matchStatus'] = isLegacyWord
           ? 'need-review'
           : !docNo
@@ -247,7 +249,10 @@ export default function SmsLibraryPage() {
   const updateDraft = (id: string, field: 'docNo' | 'title' | 'revision' | 'effectiveDate' | 'category', value: string) => {
     setDrafts((prev) => prev.map((draft) => {
       if (draft.id !== id) return draft
-      if (field === 'category') return { ...draft, category: value === 'Procedure' ? 'Procedure' : 'Checklist' }
+      if (field === 'category') {
+        const category: SmsCategory = value === 'Procedure' || value === 'Support Document' ? value : 'Checklist'
+        return { ...draft, category }
+      }
       return { ...draft, [field]: value }
     }))
   }
@@ -279,7 +284,7 @@ export default function SmsLibraryPage() {
         const isPdf = draft.file.type === 'application/pdf' || draft.fileName.toLowerCase().endsWith('.pdf')
         let fileBase64 = ''
         let mimeType = ''
-        let pageNumber = draft.category === 'Procedure' ? 2 : 1
+        let pageNumber = draft.category === 'Procedure' || draft.category === 'Support Document' ? 2 : 1
 
         if (isPdf) {
           setAiReadMessage(`AI reading ${draft.fileName} page ${pageNumber} (${index + 1}/${targets.length})`)
@@ -561,7 +566,7 @@ export default function SmsLibraryPage() {
           </div>
 
           <div className="flex flex-col gap-3 md:items-end">
-            <div className="grid rounded-[28px] border border-orange-500/25 bg-black/70 p-2 md:grid-cols-3">
+            <div className="grid rounded-[28px] border border-orange-500/25 bg-black/70 p-2 md:grid-cols-4">
               {tabs.map((tab) => (
                 <button
                   key={tab}
@@ -705,7 +710,7 @@ export default function SmsLibraryPage() {
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-300">AI Header Assist</p>
                     <p className="mt-1 text-xs normal-case text-zinc-400">
-                      Procedure reads PDF page 2. Checklist reads page 1. AI fills only missing/uncertain header fields.
+                      Procedure and Support Document read PDF page 2. Checklist reads page 1. AI fills only missing/uncertain header fields.
                     </p>
                     {aiReadMessage && <p className="mt-2 text-xs font-bold text-cyan-100">{aiReadMessage}</p>}
                   </div>
@@ -816,6 +821,7 @@ export default function SmsLibraryPage() {
                         <select value={draft.category} onChange={(event) => updateDraft(draft.id, 'category', event.target.value)} className="rounded-xl border border-white/10 bg-black px-3 py-2 font-bold text-white outline-none focus:border-orange-500">
                           <option value="Procedure">Procedure</option>
                           <option value="Checklist">Checklist</option>
+                          <option value="Support Document">Support Document</option>
                         </select>
                         <input value={draft.title} onChange={(event) => updateDraft(draft.id, 'title', event.target.value)} className="rounded-xl border border-white/10 bg-black px-3 py-2 font-bold text-white outline-none focus:border-orange-500" />
                         <input value={draft.revision} onChange={(event) => updateDraft(draft.id, 'revision', event.target.value)} className="rounded-xl border border-white/10 bg-black px-3 py-2 font-bold text-white outline-none focus:border-orange-500" />

@@ -2,7 +2,7 @@ create table if not exists public.sms_documents (
   id uuid primary key default gen_random_uuid(),
   doc_no text not null,
   title text not null,
-  category text not null check (category in ('Procedure', 'Checklist')),
+  category text not null check (category in ('Procedure', 'Checklist', 'Support Document')),
   current_revision text,
   effective_date date,
   active_version_id uuid,
@@ -17,7 +17,7 @@ create table if not exists public.sms_document_versions (
   document_id uuid references public.sms_documents(id) on delete set null,
   doc_no text not null,
   title text not null,
-  category text not null check (category in ('Procedure', 'Checklist')),
+  category text not null check (category in ('Procedure', 'Checklist', 'Support Document')),
   revision text,
   effective_date date,
   status text not null default 'active' check (status in ('active', 'superseded')),
@@ -95,6 +95,20 @@ add column if not exists update_round text;
 
 alter table public.sms_revision_logs
 add column if not exists update_date date;
+
+do $$
+begin
+  alter table public.sms_documents drop constraint if exists sms_documents_category_check;
+  alter table public.sms_document_versions drop constraint if exists sms_document_versions_category_check;
+
+  alter table public.sms_documents
+    add constraint sms_documents_category_check
+    check (category in ('Procedure', 'Checklist', 'Support Document'));
+
+  alter table public.sms_document_versions
+    add constraint sms_document_versions_category_check
+    check (category in ('Procedure', 'Checklist', 'Support Document'));
+end $$;
 
 create index if not exists idx_sms_documents_category
 on public.sms_documents (category, doc_no);

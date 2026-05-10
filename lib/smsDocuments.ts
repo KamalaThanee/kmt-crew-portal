@@ -1,4 +1,4 @@
-export type SmsCategory = 'Procedure' | 'Checklist'
+export type SmsCategory = 'Procedure' | 'Checklist' | 'Support Document'
 
 export type SmsDocument = {
   id?: string
@@ -208,7 +208,7 @@ export function parseSmsFilename(fileName: string) {
     return {
       docNo: normalizeDocNo(supportMatch[1]),
       title: (supportMatch[2] || '').trim() || withoutRevision,
-      category: 'Checklist' as SmsCategory,
+      category: 'Support Document' as SmsCategory,
       revision,
     }
   }
@@ -228,6 +228,7 @@ export function isChangeRecordFile(file: File) {
 
 export function getSmsCategoryFromPath(file: File): SmsCategory | null {
   const path = String(file.webkitRelativePath || file.name || '').toLowerCase()
+  if (/(^|[/\\])(support|supports|support document|support documents)([/\\]|$)/i.test(path) || path.includes('support document')) return 'Support Document'
   if (/(^|[/\\])(procedure|procedures)([/\\]|$)/i.test(path) || path.includes('procedure')) return 'Procedure'
   if (/(^|[/\\])(checklist|checklists|form|forms)([/\\]|$)/i.test(path) || path.includes('checklist')) return 'Checklist'
   return null
@@ -458,8 +459,8 @@ export async function readSmsDocumentHeader(file: File) {
     }
 
     if (ext === 'pdf') {
-      const isProcedure = filename.category === 'Procedure'
-      const headerText = cleanText(await readPdfPagesText(file, isProcedure ? [2, 3, 1] : [1, 2]))
+      const readsPageTwo = filename.category === 'Procedure' || filename.category === 'Support Document'
+      const headerText = cleanText(await readPdfPagesText(file, readsPageTwo ? [2, 3, 1] : [1, 2]))
       const docNo = getHeaderField(headerText, ['Document Number', 'Document No', 'Doc No'])
       const title = getHeaderField(headerText, ['Title'])
       const revision = getHeaderField(headerText, ['Revision Number', 'Revision No', 'Revision'])
@@ -469,7 +470,7 @@ export async function readSmsDocumentHeader(file: File) {
         title: title || filename.title,
         revision: normalizeRevision(revision) || filename.revision,
         effectiveDate: parseSmsDate(effectiveDate) || '',
-        source: headerText ? `PDF page ${isProcedure ? '2/3/1' : '1/2'}` : 'Filename',
+        source: headerText ? `PDF page ${readsPageTwo ? '2/3/1' : '1/2'}` : 'Filename',
         extractedText: headerText.slice(0, 12000),
       }
     }
