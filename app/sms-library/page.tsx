@@ -189,12 +189,15 @@ export default function SmsLibraryPage() {
 
       const nextDrafts: SmsFileDraft[] = []
       for (const file of uploadedDocs) {
+        const isLegacyWord = isLegacyWordDoc(file)
         const header = await readSmsDocumentHeader(file)
         const docNo = header.docNo || ''
         const changeItem = changeMap.get(docNo.toLowerCase())
         const matchedDocument = docMap.get(docNo.toLowerCase())
         const category = getSmsCategoryFromPath(file) || changeItem?.category || (docNo.toLowerCase().startsWith('procedure') ? 'Procedure' : 'Checklist')
-        const matchStatus: SmsFileDraft['matchStatus'] = !docNo
+        const matchStatus: SmsFileDraft['matchStatus'] = isLegacyWord
+          ? 'need-review'
+          : !docNo
           ? 'need-review'
           : matchedDocument
             ? 'matched'
@@ -212,7 +215,7 @@ export default function SmsLibraryPage() {
           revision: header.revision || changeItem?.revision || '',
           effectiveDate: header.effectiveDate || '',
           changeSummary: changeItem?.changeSummary || '',
-          source: header.source,
+          source: isLegacyWord ? 'Legacy Word .doc · Filename only · review before save' : header.source,
           extractedText: header.extractedText || '',
           matchStatus,
           matchedDocumentId: matchedDocument?.id,
