@@ -164,7 +164,7 @@ export function parseSmsDate(value: string) {
 
 export function parseSmsFilename(fileName: string) {
   const base = fileName
-    .replace(/\.[^.]+$/g, '')
+    .replace(/\.(docx?|xlsx?|pdf|pptx?)$/ig, '')
     .replace(/[_]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -201,7 +201,9 @@ export function parseSmsFilename(fileName: string) {
     }
   }
 
-  const supportMatch = withoutRevision.match(/^([A-Z]{2,}[A-Z0-9-]*\d*(?:-[A-Z0-9]+)*)\s+(.+)$/i)
+  const supportMatch = /^(procedure|form)$/i.test(withoutRevision.split(/\s+/)[0] || '')
+    ? null
+    : withoutRevision.match(/^([A-Z]{2,}[A-Z0-9-]*\d*(?:-[A-Z0-9]+)*)\s+(.+)$/i)
   if (supportMatch) {
     return {
       docNo: normalizeDocNo(supportMatch[1]),
