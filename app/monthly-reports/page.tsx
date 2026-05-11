@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase'
 
 const MONTHLY_BUCKET = 'monthly-reports'
 const ZIP_POSITIONS = ['Chief Engineer', 'Chief Officer', 'Safety Officer'] as const
+const UPLOAD_POSITIONS = ['All Positions', ...ZIP_POSITIONS] as const
 const SCHEDULES = ['All Schedules', 'Weekly', 'Inventory', 'Monthly Report']
 
 type MonthlyReportMaster = {
@@ -73,6 +74,12 @@ const roleMatchesPic = (position: unknown, pic: string) => {
   const normalizedPosition = normalizeRole(position)
   return splitPicRoles(pic).some((role) => normalizeRole(role) === normalizedPosition)
 }
+
+const isUploadPositionRow = (row: MonthlyReportMaster) =>
+  ZIP_POSITIONS.some((position) => splitPicRoles(row.pic).includes(position))
+
+const rowMatchesPositionFilter = (row: MonthlyReportMaster, position: string) =>
+  position === 'All Positions' || splitPicRoles(row.pic).includes(position)
 
 const buildStoredFileName = (row: MonthlyReportRow, month: string, originalName: string) => {
   const ext = originalName.includes('.') ? originalName.split('.').pop() || 'file' : 'file'
@@ -163,8 +170,9 @@ export default function MonthlyReportsPage() {
   const visibleRows = useMemo(() => {
     const q = search.toLowerCase().trim()
     return accessibleRows
+      .filter(isUploadPositionRow)
       .filter((row) => scheduleFilter === 'All Schedules' || row.schedule === scheduleFilter)
-      .filter((row) => picFilter === 'All Positions' || splitPicRoles(row.pic).includes(picFilter))
+      .filter((row) => rowMatchesPositionFilter(row, picFilter))
       .filter((row) => {
         if (statusFilter === 'All Status') return true
         const uploaded = Boolean(row.submission?.file_url)
@@ -174,18 +182,30 @@ export default function MonthlyReportsPage() {
   }, [accessibleRows, picFilter, scheduleFilter, search, statusFilter])
 
   const positionOptions = useMemo(() => {
-    const values = new Set<string>()
-    masters.forEach((row) => splitPicRoles(row.pic).forEach((role) => values.add(role)))
-    return ['All Positions', ...Array.from(values).sort()]
-  }, [masters])
+    return [...UPLOAD_POSITIONS]
+  }, [])
+
+  const uploadRows = useMemo(() => accessibleRows.filter(isUploadPositionRow), [accessibleRows])
 
   const stats = useMemo(() => {
-    const required = accessibleRows.length
-    const uploaded = accessibleRows.filter((row) => row.submission?.file_url).length
+    const selectedRows = uploadRows.filter((row) => rowMatchesPositionFilter(row, picFilter))
+    const required = selectedRows.length
+    const uploaded = selectedRows.filter((row) => row.submission?.file_url).length
     const pending = Math.max(required - uploaded, 0)
     const percent = required ? Math.round((uploaded / required) * 100) : 0
     return { required, uploaded, pending, percent }
-  }, [accessibleRows])
+  }, [picFilter, uploadRows])
+
+  const positionStats = useMemo(() => {
+    return UPLOAD_POSITIONS.map((position) => {
+      const scopedRows = uploadRows.filter((row) => rowMatchesPositionFilter(row, position))
+      const uploaded = scopedRows.filter((row) => row.submission?.file_url).length
+      const required = scopedRows.length
+      const pending = Math.max(required - uploaded, 0)
+      const percent = required ? Math.round((uploaded / required) * 100) : 0
+      return { position, required, uploaded, pending, percent }
+    })
+  }, [uploadRows])
 
   const canUploadRow = (row: MonthlyReportRow) => canManage || roleMatchesPic(user?.position, row.pic)
 
@@ -301,10 +321,41 @@ export default function MonthlyReportsPage() {
         </section>
 
         <section className="mb-8 grid gap-4 md:grid-cols-4">
+          {positionStats.map((item) => {
+            const active = picFilter === item.position
+            const title = item.position === 'All Positions' ? 'All Uploaders' : item.position
+            return (
+              <button
+                key={item.position}
+                onClick={() => setPicFilter(item.position)}
+                className={`rounded-[30px] border p-6 text-left transition-all ${active ? 'border-orange-200 bg-[#1b1010] shadow-xl shadow-orange-500/10' : 'border-orange-500/20 bg-black/55 hover:border-orange-500/50'}`}
+              >
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-200">{title}</p>
+                <div className="mt-6 flex items-end justify-between gap-4">
+                  <div>
+                    <p className="text-5xl font-black">{item.required}</p>
+                    <p className="mt-3 text-sm font-bold text-zinc-400">Required items</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-black text-emerald-300">{item.uploaded}</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Uploaded</p>
+                    <p className="mt-2 text-2xl font-black text-red-300">{item.pending}</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Pending</p>
+                  </div>
+                </div>
+                <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full rounded-full bg-orange-500" style={{ width: `${item.percent}%` }} />
+                </div>
+              </button>
+            )
+          })}
+        </section>
+
+        <section className="mb-8 grid gap-4 md:grid-cols-4">
           <div className="rounded-[30px] border border-orange-500/30 bg-[#1b1010] p-6">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-200">Required</p>
-            <p className="mt-6 text-5xl font-black">{stats.required}</p>
-            <p className="mt-3 text-sm font-bold text-zinc-400">Items assigned for this month</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-200">Selected</p>
+            <p className="mt-6 text-2xl font-black uppercase">{picFilter === 'All Positions' ? 'All Uploaders' : picFilter}</p>
+            <p className="mt-3 text-sm font-bold text-zinc-400">{formatMonth(selectedMonth)}</p>
           </div>
           <div className="rounded-[30px] border border-emerald-500/25 bg-emerald-500/5 p-6">
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-200">Uploaded</p>
@@ -319,7 +370,7 @@ export default function MonthlyReportsPage() {
           <div className="rounded-[30px] border border-blue-500/25 bg-blue-500/5 p-6">
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-200">Completion</p>
             <p className="mt-6 text-5xl font-black text-blue-300">{stats.percent}%</p>
-            <p className="mt-3 text-sm font-bold text-zinc-400">{formatMonth(selectedMonth)}</p>
+            <p className="mt-3 text-sm font-bold text-zinc-400">{stats.required} required items</p>
           </div>
         </section>
 
@@ -368,7 +419,7 @@ export default function MonthlyReportsPage() {
           </div>
         </section>
 
-        <p className="mb-4 text-xs font-black uppercase tracking-[0.25em] text-zinc-500">{visibleRows.length} shown / {accessibleRows.length} assigned records</p>
+        <p className="mb-4 text-xs font-black uppercase tracking-[0.25em] text-zinc-500">{visibleRows.length} shown / {uploadRows.length} upload records</p>
 
         <section className="overflow-hidden rounded-[30px] border border-white/15 bg-[#080913]">
           {loading ? (
