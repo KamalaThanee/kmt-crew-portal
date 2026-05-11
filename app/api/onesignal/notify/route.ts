@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 type NotifyPayload = {
-  type?: "new_request" | "approved" | "rejected" | "received" | "sms_revision";
+  type?: "new_request" | "approved" | "rejected" | "received" | "sms_revision" | "monthly_position_complete";
   requestId?: string;
   crewId?: string;
   crewName?: string;
@@ -11,6 +11,9 @@ type NotifyPayload = {
   reason?: string;
   revision?: string;
   changedCount?: number;
+  position?: string;
+  month?: string;
+  completedCount?: number;
 };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -162,6 +165,32 @@ export async function POST(request: Request) {
         `${baseUrl}/sms-library`,
       );
       return NextResponse.json({ ok: true, target: "all_crew", targetCount: externalIds.length, data });
+    }
+
+    if (payload.type === "monthly_position_complete") {
+      const { data: crews, error } = await supabaseAdmin
+        .from("crews")
+        .select("id, position");
+
+      if (error) throw error;
+
+      const externalIds = (crews || [])
+        .filter((crew: any) => normalizeRole(crew.position) === "radio operator")
+        .map((crew: any) => String(crew.id))
+        .filter(Boolean);
+
+      const title = "Monthly reports ready";
+      const position = payload.position || "A department";
+      const month = payload.month || "this month";
+      const count = payload.completedCount ? `${payload.completedCount} file(s)` : "all files";
+      const body = `${position} completed ${count} for ${month}. Ready to export ZIP.`;
+      const data = await sendOneSignal(
+        externalIds,
+        title,
+        body,
+        `${baseUrl}/monthly-reports`,
+      );
+      return NextResponse.json({ ok: true, target: "radio_operator", targetCount: externalIds.length, data });
     }
 
     if (payload.type === "approved" || payload.type === "rejected") {

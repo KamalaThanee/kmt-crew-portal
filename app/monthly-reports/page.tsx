@@ -6,6 +6,7 @@ import { CalendarCheck, CheckCircle2, Download, Eye, FileArchive, FileUp, Loader
 import { toast } from 'sonner'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import { canManageMonthlyReports, normalizeRole } from '@/lib/roles'
+import { notifyOneSignal } from '@/lib/onesignalClient'
 import { supabase } from '@/lib/supabase'
 
 const MONTHLY_BUCKET = 'monthly-reports'
@@ -226,12 +227,61 @@ export default function MonthlyReportsPage() {
         .upsert(payload, { onConflict: 'master_id,report_month' })
       if (saveError) throw saveError
 
+      await notifyCompletedPositions(row)
       toast.success('Monthly report uploaded')
       await fetchData()
     } catch (error: any) {
       toast.error(error?.message || 'Upload failed')
     } finally {
       setUploadingId(null)
+    }
+  }
+
+  const notifyCompletedPositions = async (changedRow: MonthlyReportRow) => {
+    const affectedPositions = splitPicRoles(changedRow.pic).filter((position) =>
+      ZIP_POSITIONS.includes(position as (typeof ZIP_POSITIONS)[number]),
+    )
+    if (affectedPositions.length === 0) return
+
+    for (const position of affectedPositions) {
+      const requiredRows = masters.filter((row) => splitPicRoles(row.pic).includes(position))
+      if (requiredRows.length === 0) continue
+
+      const { data, error } = await supabase
+        .from('monthly_report_submissions')
+        .select('master_id, file_url')
+        .eq('report_month', reportMonthValue(selectedMonth))
+        .in('master_id', requiredRows.map((row) => row.id))
+
+      if (error) continue
+
+      const uploadedMasterIds = new Set(
+        ((data || []) as Array<{ master_id?: string | null; file_url?: string | null }>)
+          .filter((item) => item.master_id && item.file_url)
+          .map((item) => String(item.master_id)),
+      )
+      const isComplete = requiredRows.every((row) => uploadedMasterIds.has(row.id))
+      if (!isComplete) continue
+
+      const { error: noticeError } = await supabase.from('monthly_report_completion_notices').insert({
+        report_month: reportMonthValue(selectedMonth),
+        position,
+        completed_count: requiredRows.length,
+        notified_by: user?.id || null,
+        notified_by_name: user?.full_name || 'Unknown',
+      })
+
+      if (noticeError) {
+        if (noticeError.code !== '23505') console.warn('Monthly completion notice skipped', noticeError.message)
+        continue
+      }
+
+      await notifyOneSignal({
+        type: 'monthly_position_complete',
+        position,
+        month: formatMonth(selectedMonth),
+        completedCount: requiredRows.length,
+      })
     }
   }
 
