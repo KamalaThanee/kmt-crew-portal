@@ -39,6 +39,15 @@ type MonthlyReportSubmission = {
   uploaded_at: string | null
 }
 
+type MonthlyReportExport = {
+  id: string
+  report_month: string
+  position: string
+  exported_count: number
+  exported_by_name: string | null
+  exported_at: string | null
+}
+
 type MonthlyReportRow = MonthlyReportMaster & {
   submission?: MonthlyReportSubmission
 }
@@ -103,6 +112,7 @@ export default function MonthlyReportsPage() {
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [masters, setMasters] = useState<MonthlyReportMaster[]>([])
   const [submissions, setSubmissions] = useState<MonthlyReportSubmission[]>([])
+  const [exports, setExports] = useState<MonthlyReportExport[]>([])
   const [selectedMonth, setSelectedMonth] = useState(monthValue())
   const [scheduleFilter, setScheduleFilter] = useState('All Schedules')
   const [picFilter, setPicFilter] = useState('All Positions')
@@ -130,7 +140,7 @@ export default function MonthlyReportsPage() {
 
   const fetchData = async () => {
     setLoading(true)
-    const [masterRes, submissionRes] = await Promise.all([
+    const [masterRes, submissionRes, exportRes] = await Promise.all([
       supabase
         .from('monthly_report_master')
         .select('id, schedule, form_no, details, period, pic, sort_order')
@@ -139,6 +149,10 @@ export default function MonthlyReportsPage() {
       supabase
         .from('monthly_report_submissions')
         .select('id, master_id, report_month, status, file_name, file_path, file_url, file_size, mime_type, remarks, uploaded_by_name, uploaded_at')
+        .eq('report_month', reportMonthValue(selectedMonth)),
+      supabase
+        .from('monthly_report_exports')
+        .select('id, report_month, position, exported_count, exported_by_name, exported_at')
         .eq('report_month', reportMonthValue(selectedMonth)),
     ])
 
@@ -154,6 +168,12 @@ export default function MonthlyReportsPage() {
       setSubmissions([])
     } else {
       setSubmissions((submissionRes.data || []) as MonthlyReportSubmission[])
+    }
+
+    if (exportRes.error) {
+      setExports([])
+    } else {
+      setExports((exportRes.data || []) as MonthlyReportExport[])
     }
     setLoading(false)
   }
@@ -184,16 +204,41 @@ export default function MonthlyReportsPage() {
 
   const uploadRows = useMemo(() => accessibleRows.filter(isUploadPositionRow), [accessibleRows])
 
+  const exportByPosition = useMemo(() => {
+    return new Map(exports.map((item) => [item.position, item]))
+  }, [exports])
+
+  const getPositionState = (position: string) => {
+    const scopedRows = uploadRows.filter((row) => rowMatchesPositionFilter(row, position))
+    const uploadedRows = scopedRows.filter((row) => row.submission?.file_url)
+    const required = scopedRows.length
+    const uploaded = uploadedRows.length
+    const pending = Math.max(required - uploaded, 0)
+    const percent = required ? Math.round((uploaded / required) * 100) : 0
+    const exportLog = position === 'All Positions' ? null : exportByPosition.get(position)
+    const exportTime = exportLog?.exported_at ? new Date(exportLog.exported_at).getTime() : 0
+    const updatedAfterExport = Boolean(
+      exportTime &&
+      uploadedRows.some((row) => {
+        const uploadedAt = row.submission?.uploaded_at ? new Date(row.submission.uploaded_at).getTime() : 0
+        return uploadedAt > exportTime
+      }),
+    )
+    const complete = required > 0 && pending === 0
+    const status = !complete
+      ? 'pending'
+      : updatedAfterExport
+        ? 'updated'
+        : exportLog
+          ? 'exported'
+          : 'ready'
+
+    return { position, required, uploaded, pending, percent, complete, exportLog, updatedAfterExport, status }
+  }
+
   const positionStats = useMemo(() => {
-    return UPLOAD_POSITIONS.map((position) => {
-      const scopedRows = uploadRows.filter((row) => rowMatchesPositionFilter(row, position))
-      const uploaded = scopedRows.filter((row) => row.submission?.file_url).length
-      const required = scopedRows.length
-      const pending = Math.max(required - uploaded, 0)
-      const percent = required ? Math.round((uploaded / required) * 100) : 0
-      return { position, required, uploaded, pending, percent }
-    })
-  }, [uploadRows])
+    return UPLOAD_POSITIONS.map((position) => getPositionState(position))
+  }, [exportByPosition, uploadRows])
 
   const canUploadRow = (row: MonthlyReportRow) => canManage || roleMatchesPic(user?.position, row.pic)
 
@@ -327,6 +372,17 @@ export default function MonthlyReportsPage() {
 
       const blob = await zip.generateAsync({ type: 'blob' })
       triggerBlobDownload(blob, `KMT_MonthlyReports_${safeFileName(position)}_${selectedMonth}.zip`)
+      const { error: exportError } = await supabase.from('monthly_report_exports').upsert({
+        report_month: reportMonthValue(selectedMonth),
+        position,
+        exported_count: rowsToZip.length,
+        exported_by: user?.id || null,
+        exported_by_name: user?.full_name || 'Unknown',
+        exported_at: new Date().toISOString(),
+      }, { onConflict: 'report_month,position' })
+      if (exportError) throw exportError
+      toast.success(`${position} ZIP exported`)
+      await fetchData()
     } catch (error: any) {
       toast.error(error?.message || 'ZIP download failed')
     } finally {
@@ -383,6 +439,14 @@ export default function MonthlyReportsPage() {
                 <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
                   <div className="h-full rounded-full bg-orange-500" style={{ width: `${item.percent}%` }} />
                 </div>
+                {item.position !== 'All Positions' && (
+                  <p className={`mt-4 text-[10px] font-black uppercase tracking-widest ${item.status === 'exported' ? 'text-emerald-300' : item.status === 'updated' ? 'text-amber-200' : item.status === 'ready' ? 'text-orange-300' : 'text-zinc-600'}`}>
+                    {item.status === 'pending' && 'Waiting for uploads'}
+                    {item.status === 'ready' && 'Ready to export'}
+                    {item.status === 'exported' && `Exported by ${item.exportLog?.exported_by_name || 'Radio Operator'}`}
+                    {item.status === 'updated' && 'Updated after export'}
+                  </p>
+                )}
               </button>
             )
           })}
@@ -395,17 +459,36 @@ export default function MonthlyReportsPage() {
               <h2 className="text-sm font-black uppercase tracking-[0.25em]">Radio Operator Collection ZIP</h2>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
-              {ZIP_POSITIONS.map((position) => (
-                <button
-                  key={position}
-                  onClick={() => downloadPositionZip(position)}
-                  disabled={downloadingZip === position}
-                  className="rounded-[24px] border border-blue-500/35 bg-blue-500/10 px-5 py-4 text-xs font-black uppercase tracking-widest text-blue-100 transition hover:bg-blue-500/20 disabled:opacity-50"
-                >
-                  {downloadingZip === position ? <Loader2 size={16} className="mr-2 inline animate-spin" /> : <Download size={16} className="mr-2 inline" />}
-                  Download {position} ZIP
-                </button>
-              ))}
+              {ZIP_POSITIONS.map((position) => {
+                const state = getPositionState(position)
+                const buttonStyle = state.status === 'exported'
+                  ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'
+                  : state.status === 'updated'
+                    ? 'border-amber-500/45 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20'
+                    : state.status === 'ready'
+                      ? 'border-orange-500/50 bg-orange-600 text-white shadow-lg shadow-orange-600/20'
+                      : 'border-blue-500/35 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20'
+                return (
+                  <button
+                    key={position}
+                    onClick={() => downloadPositionZip(position)}
+                    disabled={downloadingZip === position || state.uploaded === 0}
+                    className={`rounded-[24px] border px-5 py-4 text-xs font-black uppercase tracking-widest transition disabled:opacity-50 ${buttonStyle}`}
+                  >
+                    {downloadingZip === position ? <Loader2 size={16} className="mr-2 inline animate-spin" /> : <Download size={16} className="mr-2 inline" />}
+                    {state.status === 'pending' && `Pending ${state.pending} | `}
+                    {state.status === 'ready' && 'Ready | '}
+                    {state.status === 'exported' && 'Exported | '}
+                    {state.status === 'updated' && 'Updated | '}
+                    {position} ZIP
+                    {state.exportLog?.exported_at && (
+                      <span className="mt-2 block text-[10px] normal-case tracking-normal opacity-70">
+                        {formatDateTime(state.exportLog.exported_at)}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </section>
         )}
@@ -479,6 +562,9 @@ export default function MonthlyReportsPage() {
                             <Download size={15} className="mr-2 inline" /> Download
                           </button>
                         </div>
+                      )}
+                      {!uploaded && (
+                        <p className="rounded-2xl border border-zinc-800 bg-black/50 px-4 py-3 text-center text-xs font-black uppercase tracking-widest text-zinc-600">No file yet</p>
                       )}
 
                       {canUploadRow(row) && (

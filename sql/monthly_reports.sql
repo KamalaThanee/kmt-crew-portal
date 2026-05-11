@@ -43,11 +43,24 @@ create table if not exists public.monthly_report_completion_notices (
   unique (report_month, position)
 );
 
+create table if not exists public.monthly_report_exports (
+  id uuid primary key default gen_random_uuid(),
+  report_month date not null,
+  position text not null,
+  exported_count integer not null default 0,
+  exported_by uuid,
+  exported_by_name text,
+  exported_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (report_month, position)
+);
+
 create index if not exists monthly_report_master_pic_idx on public.monthly_report_master(pic);
 create index if not exists monthly_report_master_active_idx on public.monthly_report_master(active);
 create index if not exists monthly_report_submissions_month_idx on public.monthly_report_submissions(report_month);
 create index if not exists monthly_report_submissions_master_idx on public.monthly_report_submissions(master_id);
 create index if not exists monthly_report_completion_notices_month_idx on public.monthly_report_completion_notices(report_month);
+create index if not exists monthly_report_exports_month_idx on public.monthly_report_exports(report_month);
 
 insert into public.monthly_report_master (schedule, form_no, details, period, pic, sort_order)
 values
@@ -93,6 +106,7 @@ on conflict (id) do update set public = true;
 alter table public.monthly_report_master enable row level security;
 alter table public.monthly_report_submissions enable row level security;
 alter table public.monthly_report_completion_notices enable row level security;
+alter table public.monthly_report_exports enable row level security;
 
 drop policy if exists "Allow anon monthly report master read" on public.monthly_report_master;
 create policy "Allow anon monthly report master read"
@@ -123,6 +137,22 @@ using (true);
 drop policy if exists "Allow anon monthly report completion notices insert" on public.monthly_report_completion_notices;
 create policy "Allow anon monthly report completion notices insert"
 on public.monthly_report_completion_notices for insert
+with check (true);
+
+drop policy if exists "Allow anon monthly report exports read" on public.monthly_report_exports;
+create policy "Allow anon monthly report exports read"
+on public.monthly_report_exports for select
+using (true);
+
+drop policy if exists "Allow anon monthly report exports insert" on public.monthly_report_exports;
+create policy "Allow anon monthly report exports insert"
+on public.monthly_report_exports for insert
+with check (true);
+
+drop policy if exists "Allow anon monthly report exports update" on public.monthly_report_exports;
+create policy "Allow anon monthly report exports update"
+on public.monthly_report_exports for update
+using (true)
 with check (true);
 
 drop policy if exists "Allow public monthly reports storage read" on storage.objects;
