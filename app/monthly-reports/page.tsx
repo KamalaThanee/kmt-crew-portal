@@ -181,20 +181,7 @@ export default function MonthlyReportsPage() {
       .filter((row) => !q || `${row.form_no} ${row.details} ${row.pic} ${row.schedule}`.toLowerCase().includes(q))
   }, [accessibleRows, picFilter, scheduleFilter, search, statusFilter])
 
-  const positionOptions = useMemo(() => {
-    return [...UPLOAD_POSITIONS]
-  }, [])
-
   const uploadRows = useMemo(() => accessibleRows.filter(isUploadPositionRow), [accessibleRows])
-
-  const stats = useMemo(() => {
-    const selectedRows = uploadRows.filter((row) => rowMatchesPositionFilter(row, picFilter))
-    const required = selectedRows.length
-    const uploaded = selectedRows.filter((row) => row.submission?.file_url).length
-    const pending = Math.max(required - uploaded, 0)
-    const percent = required ? Math.round((uploaded / required) * 100) : 0
-    return { required, uploaded, pending, percent }
-  }, [picFilter, uploadRows])
 
   const positionStats = useMemo(() => {
     return UPLOAD_POSITIONS.map((position) => {
@@ -351,29 +338,6 @@ export default function MonthlyReportsPage() {
           })}
         </section>
 
-        <section className="mb-8 grid gap-4 md:grid-cols-4">
-          <div className="rounded-[30px] border border-orange-500/30 bg-[#1b1010] p-6">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-200">Selected</p>
-            <p className="mt-6 text-2xl font-black uppercase">{picFilter === 'All Positions' ? 'All Uploaders' : picFilter}</p>
-            <p className="mt-3 text-sm font-bold text-zinc-400">{formatMonth(selectedMonth)}</p>
-          </div>
-          <div className="rounded-[30px] border border-emerald-500/25 bg-emerald-500/5 p-6">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-200">Uploaded</p>
-            <p className="mt-6 text-5xl font-black text-emerald-300">{stats.uploaded}</p>
-            <p className="mt-3 text-sm font-bold text-zinc-400">Files ready to send</p>
-          </div>
-          <div className="rounded-[30px] border border-red-500/25 bg-red-500/5 p-6">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-red-200">Pending</p>
-            <p className="mt-6 text-5xl font-black text-red-300">{stats.pending}</p>
-            <p className="mt-3 text-sm font-bold text-zinc-400">Waiting for upload</p>
-          </div>
-          <div className="rounded-[30px] border border-blue-500/25 bg-blue-500/5 p-6">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-200">Completion</p>
-            <p className="mt-6 text-5xl font-black text-blue-300">{stats.percent}%</p>
-            <p className="mt-3 text-sm font-bold text-zinc-400">{stats.required} required items</p>
-          </div>
-        </section>
-
         {canManage && (
           <section className="mb-8 rounded-[30px] border border-orange-500/20 bg-black/60 p-5">
             <div className="mb-4 flex items-center gap-2 text-orange-300">
@@ -397,7 +361,7 @@ export default function MonthlyReportsPage() {
         )}
 
         <section className="mb-8 rounded-[30px] border border-white/15 bg-black/55 p-4">
-          <div className="grid gap-3 md:grid-cols-[1.3fr_0.8fr_0.8fr_0.8fr]">
+          <div className="grid gap-3 md:grid-cols-[1.4fr_0.8fr_0.8fr]">
             <div className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-black px-4">
               <Search size={18} className="text-orange-400" />
               <input
@@ -409,9 +373,6 @@ export default function MonthlyReportsPage() {
             </div>
             <select value={scheduleFilter} onChange={(event) => setScheduleFilter(event.target.value)} className="h-14 rounded-2xl border border-zinc-800 bg-black px-4 text-sm font-black text-white outline-none">
               {SCHEDULES.map((item) => <option key={item}>{item}</option>)}
-            </select>
-            <select value={picFilter} onChange={(event) => setPicFilter(event.target.value)} className="h-14 rounded-2xl border border-zinc-800 bg-black px-4 text-sm font-black text-white outline-none">
-              {positionOptions.map((item) => <option key={item}>{item}</option>)}
             </select>
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-14 rounded-2xl border border-zinc-800 bg-black px-4 text-sm font-black text-white outline-none">
               {['All Status', 'Uploaded', 'Pending'].map((item) => <option key={item}>{item}</option>)}
