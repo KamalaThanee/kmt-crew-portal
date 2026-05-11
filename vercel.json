@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/cert-email-alerts",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}

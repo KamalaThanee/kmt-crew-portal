@@ -8,7 +8,7 @@ import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { createZipBlob, getFileExtension, safeFileName, triggerDownload } from '@/lib/certificateDownloads'
 import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
-import { ExternalLink, Search, ShieldCheck } from 'lucide-react'
+import { ExternalLink, Loader2, Mail, Save, Search, ShieldCheck } from 'lucide-react'
 
 const normalize = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
@@ -31,6 +31,30 @@ type UnifiedCertificateLogRow = CertificateLogRow & {
   source: 'crew' | 'ship'
   subject: string
   file_url?: string | null
+}
+
+type CertEmailSettings = {
+  id: string
+  ship_alert_enabled: boolean
+  my_cert_alert_enabled: boolean
+  ship_to_emails: string[] | null
+  ship_cc_emails: string[] | null
+}
+
+type CertEmailLogRow = {
+  id: string
+  alert_type: string | null
+  scope: string | null
+  trigger_label: string | null
+  recipient: string | null
+  cc: string[] | null
+  subject: string | null
+  status: string | null
+  error_message: string | null
+  crew_name: string | null
+  related_cert_count: number | null
+  sent_at: string | null
+  created_at: string | null
 }
 
 const formatLogDate = (value?: string | null) => {
@@ -80,6 +104,8 @@ const crewColumns = 'id, full_name, position, is_active, resigned_at'
 const crewCertColumns = 'id, crew_id, cert_name, issue_date, expiry_date, file_url, created_at, updated_at'
 const certLogColumns = 'id, action, old_data, new_data, actor_name, created_at'
 const crewCertLogColumns = 'id, action, old_data, new_data, actor_name, created_at, crew_id, cert_name'
+const certEmailSettingsColumns = 'id, ship_alert_enabled, my_cert_alert_enabled, ship_to_emails, ship_cc_emails'
+const certEmailLogColumns = 'id, alert_type, scope, trigger_label, recipient, cc, subject, status, error_message, crew_name, related_cert_count, sent_at, created_at'
 
 function CertificatesContent() {
   const router = useRouter()
@@ -95,6 +121,8 @@ function CertificatesContent() {
   const [rules, setRules] = useState<any[]>([])
   const [certificateLogs, setCertificateLogs] = useState<CertificateLogRow[]>([])
   const [crewCertificateLogs, setCrewCertificateLogs] = useState<CrewCertificateLogRow[]>([])
+  const [certEmailSettings, setCertEmailSettings] = useState<CertEmailSettings | null>(null)
+  const [certEmailLogs, setCertEmailLogs] = useState<CertEmailLogRow[]>([])
   
   // Filter States
   const [searchTerm, setSearchTerm] = useState('')
@@ -109,7 +137,7 @@ function CertificatesContent() {
   const canOpenShipCertificates = useMemo(() => canViewShipCertificates(currentUser?.position), [currentUser]);
 
   const fetchData = async () => {
-    const [m, c, crewsRes, allC, r, logs, crewLogs] = await Promise.all([
+    const [m, c, crewsRes, allC, r, logs, crewLogs, emailSettings, emailLogs] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
       supabase.from('crew_certs').select(crewCertColumns).eq('crew_id', currentUser?.id),
       supabase.from('crews').select(crewColumns).order('full_name'),
@@ -117,6 +145,8 @@ function CertificatesContent() {
       supabase.from('cert_rules').select('*'),
       supabase.from('ship_cert_history').select(certLogColumns).order('created_at', { ascending: false }).limit(50),
       supabase.from('crew_cert_history').select(crewCertLogColumns).order('created_at', { ascending: false }).limit(100),
+      supabase.from('cert_email_settings').select(certEmailSettingsColumns).eq('id', 'default').maybeSingle(),
+      supabase.from('cert_email_logs').select(certEmailLogColumns).order('created_at', { ascending: false }).limit(150),
     ]);
     if (m.data) setMatrix(m.data);
     if (c.data) setMyCerts(c.data);
@@ -125,6 +155,8 @@ function CertificatesContent() {
     if (r.data) setRules(r.data);
     if (logs.data) setCertificateLogs(logs.data as unknown as CertificateLogRow[]);
     if (crewLogs.data) setCrewCertificateLogs(crewLogs.data as unknown as CrewCertificateLogRow[]);
+    if (emailSettings.data) setCertEmailSettings(emailSettings.data as unknown as CertEmailSettings);
+    if (emailLogs.data) setCertEmailLogs(emailLogs.data as unknown as CertEmailLogRow[]);
     setLoading(false);
   }
 
@@ -316,6 +348,9 @@ function CertificatesContent() {
           crewRows={crews}
           crewRowsFromHistory={crewCertificateLogs}
           shipRows={certificateLogs}
+          emailSettings={certEmailSettings}
+          emailLogs={certEmailLogs}
+          onRefresh={fetchData}
         />
       )}
     </div>
@@ -327,18 +362,38 @@ function CertificateLogPanel({
   crewRows,
   crewRowsFromHistory,
   shipRows,
+  emailSettings,
+  emailLogs,
+  onRefresh,
 }: {
   crewCertRows: any[]
   crewRows: any[]
   crewRowsFromHistory: CrewCertificateLogRow[]
   shipRows: CertificateLogRow[]
+  emailSettings: CertEmailSettings | null
+  emailLogs: CertEmailLogRow[]
+  onRefresh: () => Promise<void>
 }) {
+  const [logTab, setLogTab] = useState<'activity' | 'email'>('activity')
   const [typeFilter, setTypeFilter] = useState<'all' | 'crew' | 'ship'>('all')
   const [certFilter, setCertFilter] = useState('all')
   const [userSearch, setUserSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('all')
   const [monthFilter, setMonthFilter] = useState('all')
   const [yearFilter, setYearFilter] = useState('all')
+  const [shipToInput, setShipToInput] = useState('')
+  const [shipCcInput, setShipCcInput] = useState('')
+  const [shipEnabled, setShipEnabled] = useState(true)
+  const [myCertEnabled, setMyCertEnabled] = useState(true)
+  const [savingEmailSettings, setSavingEmailSettings] = useState(false)
+
+  useEffect(() => {
+    if (!emailSettings) return
+    setShipToInput((emailSettings.ship_to_emails || []).join(', '))
+    setShipCcInput((emailSettings.ship_cc_emails || []).join(', '))
+    setShipEnabled(emailSettings.ship_alert_enabled !== false)
+    setMyCertEnabled(emailSettings.my_cert_alert_enabled !== false)
+  }, [emailSettings])
 
   const rows = useMemo<UnifiedCertificateLogRow[]>(() => {
     const crewNameById = new Map(crewRows.map((crew) => [crew.id, crew.full_name || 'Unknown crew']))
@@ -447,8 +502,134 @@ function CertificateLogPanel({
     })
   }, [actionFilter, certFilter, monthFilter, rows, typeFilter, userSearch, yearFilter])
 
+  const parseEmails = (value: string) =>
+    Array.from(new Set(String(value || '').split(/[,\n;]/).map((item) => item.trim()).filter(Boolean)))
+
+  const saveEmailSettings = async () => {
+    setSavingEmailSettings(true)
+    try {
+      const { error } = await supabase.from('cert_email_settings').upsert({
+        id: 'default',
+        ship_alert_enabled: shipEnabled,
+        my_cert_alert_enabled: myCertEnabled,
+        ship_to_emails: parseEmails(shipToInput),
+        ship_cc_emails: parseEmails(shipCcInput),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' })
+      if (error) throw error
+      toast.success('Certificate email settings saved')
+      await onRefresh()
+    } catch (error: any) {
+      toast.error(error?.message || 'Unable to save email settings')
+    } finally {
+      setSavingEmailSettings(false)
+    }
+  }
+
   return (
     <section className="space-y-5">
+      <div className="grid w-full max-w-md grid-cols-2 rounded-[26px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500">
+        {([
+          { value: 'activity', label: 'Cert Activity' },
+          { value: 'email', label: 'Email Log' },
+        ] as const).map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setLogTab(option.value)}
+            className={`rounded-[20px] px-4 py-3 transition-all ${logTab === option.value ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      {logTab === 'email' && (
+        <section className="space-y-5">
+          <div className="rounded-[34px] border border-orange-500/20 bg-black/40 p-5">
+            <div className="mb-4 flex items-center gap-3 text-orange-300">
+              <Mail size={18} />
+              <h3 className="text-sm font-black uppercase tracking-[0.25em]">Certificate Email Settings</h3>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Ship Cert To Emails</span>
+                <textarea
+                  value={shipToInput}
+                  onChange={(event) => setShipToInput(event.target.value)}
+                  placeholder="radio@company.com, vessel@company.com"
+                  className="min-h-[96px] w-full rounded-2xl border border-orange-500/20 bg-black/60 p-4 text-sm font-bold text-white outline-none placeholder:text-zinc-700"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Ship Cert CC Emails</span>
+                <textarea
+                  value={shipCcInput}
+                  onChange={(event) => setShipCcInput(event.target.value)}
+                  placeholder="office@company.com"
+                  className="min-h-[96px] w-full rounded-2xl border border-orange-500/20 bg-black/60 p-4 text-sm font-bold text-white outline-none placeholder:text-zinc-700"
+                />
+              </label>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-black uppercase tracking-widest text-zinc-300">
+                  <input type="checkbox" checked={shipEnabled} onChange={(event) => setShipEnabled(event.target.checked)} />
+                  Ship Cert Alerts
+                </label>
+                <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-black uppercase tracking-widest text-zinc-300">
+                  <input type="checkbox" checked={myCertEnabled} onChange={(event) => setMyCertEnabled(event.target.checked)} />
+                  My Cert Alerts
+                </label>
+              </div>
+              <button
+                onClick={saveEmailSettings}
+                disabled={savingEmailSettings}
+                className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white disabled:opacity-50"
+              >
+                {savingEmailSettings ? <Loader2 size={15} className="mr-2 inline animate-spin" /> : <Save size={15} className="mr-2 inline" />}
+                Save Email Settings
+              </button>
+            </div>
+          </div>
+
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+            {emailLogs.length} email log records
+          </p>
+
+          <div className="space-y-3">
+            {emailLogs.length === 0 ? (
+              <div className="rounded-[34px] border border-white/10 bg-black/30 p-12 text-center text-sm font-black uppercase tracking-widest text-zinc-600">
+                No certificate email log yet
+              </div>
+            ) : emailLogs.map((log) => (
+              <article key={log.id} className="grid gap-4 rounded-[28px] border border-white/10 bg-black/40 p-5 md:grid-cols-[180px_1fr_150px] md:items-center">
+                <div>
+                  <span className={`inline-flex rounded-full border px-3 py-2 text-[8px] font-black uppercase tracking-widest ${log.status === 'sent' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : log.status === 'failed' ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300'}`}>
+                    {log.status || 'pending'}
+                  </span>
+                  <p className="mt-2 text-[10px] font-bold normal-case text-zinc-500">{formatLogDate(log.sent_at || log.created_at)}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-black uppercase italic text-white">{log.subject || log.alert_type || 'Certificate email'}</p>
+                  <p className="mt-1 text-[11px] font-bold normal-case text-zinc-500">
+                    {log.scope || '-'} {log.trigger_label ? `| ${log.trigger_label}` : ''} | {log.related_cert_count || 0} cert(s)
+                  </p>
+                  <p className="mt-1 text-[11px] font-bold normal-case text-zinc-500">To: {log.recipient || '-'}</p>
+                  {log.error_message && <p className="mt-2 text-[11px] font-bold text-red-300">{log.error_message}</p>}
+                </div>
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">Crew</p>
+                  <p className="mt-1 text-xs font-black normal-case text-zinc-200">{log.crew_name || '-'}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {logTab === 'activity' && (
+        <>
       <div className="grid w-full max-w-lg grid-cols-3 rounded-[26px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500">
         {([
           { value: 'all', label: 'All' },
@@ -571,6 +752,8 @@ function CertificateLogPanel({
             )
           })}
         </div>
+      )}
+        </>
       )}
     </section>
   )
