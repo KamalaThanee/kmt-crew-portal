@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { ClipboardCheck, FileBadge, FileText, History, Package, PlusCircle } from 'lucide-react'
+import { CalendarCheck, ClipboardCheck, FileBadge, FileText, History, Package, PlusCircle } from 'lucide-react'
 
 export type NavbarMenuItem = {
   name: string
@@ -14,6 +14,7 @@ export const getNavbarMenuItems = (isAdmin: boolean): NavbarMenuItem[] => {
       { name: 'INVENTORY', href: '/admin/inventory', icon: Package },
       { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
       { name: 'SMS', href: '/sms-library', icon: FileText },
+      { name: 'MONTHLY REPORTS', href: '/monthly-reports', icon: CalendarCheck },
       { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
     ]
   }
@@ -21,6 +22,7 @@ export const getNavbarMenuItems = (isAdmin: boolean): NavbarMenuItem[] => {
   return [
     { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
     { name: 'SMS', href: '/sms-library', icon: FileText },
+    { name: 'MONTHLY REPORTS', href: '/monthly-reports', icon: CalendarCheck },
     { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
     { name: 'MY HISTORY', href: '/my-requests', icon: History },
   ]
@@ -30,4 +32,5 @@ export const getMobileNavLabel = (label: string) =>
   label
     .replace('REQUEST PPE', 'REQUEST')
     .replace('CERTIFICATE', 'CERT')
+    .replace('MONTHLY REPORTS', 'REPORTS')
     .replace('APPROVALS', 'APPROVE')
