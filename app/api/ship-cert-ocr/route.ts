@@ -21,6 +21,43 @@ type ShipCertOcrBody = {
   provider?: string
 }
 
+const parseJsonSafely = (value: string) => {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
+
+const getProviderErrorMessage = (responseText: string) => {
+  const parsed = parseJsonSafely(responseText)
+  const message = parsed?.error?.message || parsed?.message || responseText || 'AI provider request failed'
+  if (/request entity too large|payload too large|content length/i.test(message)) {
+    return 'AI request payload is too large. Please use a smaller PDF, split the certificate pages, or fill the fields manually.'
+  }
+  return String(message).slice(0, 600)
+}
+
+const extractJsonObject = (rawText: string) => {
+  const cleaned = rawText
+    .replace(/```json/gi, '```')
+    .replace(/```/g, '')
+    .trim()
+  const direct = parseJsonSafely(cleaned)
+  if (direct) return direct
+
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    throw new Error(`AI analysis did not return JSON. Response starts: ${cleaned.slice(0, 160)}`)
+  }
+
+  const parsed = parseJsonSafely(jsonMatch[0])
+  if (!parsed) {
+    throw new Error(`AI analysis returned invalid JSON. Response starts: ${cleaned.slice(0, 160)}`)
+  }
+  return parsed
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as ShipCertOcrBody
@@ -103,33 +140,32 @@ ${hasExtractedText ? `EXTRACTED TEXT:\n${extractedText?.slice(0, 18000)}` : ''}`
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+          },
         }),
       })
     }
 
+    const responseText = await response.text()
     if (!response.ok) {
-      const errorText = await response.text()
-      let message = errorText || 'AI provider request failed'
-      try {
-        const parsed = JSON.parse(errorText)
-        message = parsed?.error?.message || parsed?.message || message
-      } catch {
-        // Keep provider text when it is not JSON.
-      }
-      throw new Error(message)
+      throw new Error(getProviderErrorMessage(responseText))
     }
 
-    const data = await response.json()
+    const data = parseJsonSafely(responseText)
+    if (!data) {
+      throw new Error(`AI provider returned non-JSON response. Response starts: ${responseText.slice(0, 160)}`)
+    }
+
     const rawText = provider === 'openrouter'
       ? data.choices?.[0]?.message?.content
       : data.candidates?.[0]?.content?.parts?.[0]?.text
     if (!rawText) throw new Error('AI provider returned empty content')
 
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) throw new Error('AI analysis did not return JSON')
+    const parsedResult = extractJsonObject(String(rawText))
 
     return NextResponse.json({
-      ...JSON.parse(jsonMatch[0]),
+      ...parsedResult,
       analysisMode: hasExtractedText ? 'text' : 'vision',
       activeModel: modelId,
     })

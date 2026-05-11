@@ -90,11 +90,11 @@ const categoryCodePrefixes: Record<string, string> = {
 }
 
 const shipCertificateAiModels = [
+  { id: 'gemini-3.1-flash-lite-preview', provider: 'google', label: 'Gemini 3.1 Flash Lite Preview (AI Studio)' },
   { id: 'gemini-2.5-flash', provider: 'google', label: 'Gemini 2.5 Flash (AI Studio)' },
   { id: 'gemini-3-flash-preview', provider: 'google', label: 'Gemini 3 Flash Preview (AI Studio)' },
-  { id: 'gemini-3.1-flash-lite-preview', provider: 'google', label: 'Gemini 3.1 Flash Lite Preview (AI Studio)' },
-  { id: 'qwen/qwen3-vl-32b-instruct', provider: 'openrouter', label: 'Qwen3 VL 32B Instruct (OpenRouter)' },
   { id: 'google/gemini-2.5-flash-lite', provider: 'openrouter', label: 'Gemini 2.5 Flash Lite (OpenRouter)' },
+  { id: 'qwen/qwen3-vl-32b-instruct', provider: 'openrouter', label: 'Qwen3 VL 32B Instruct (OpenRouter)' },
 ]
 
 type ShipCertificateForm = {
@@ -309,6 +309,12 @@ const getFriendlyAiError = (value: unknown) => {
   }
   if (lower.includes('empty content')) {
     return 'AI could not read this file clearly. Please try a clearer PDF/image or fill manually.'
+  }
+  if (lower.includes('request entity too large') || lower.includes('payload is too large') || lower.includes('payload too large')) {
+    return 'This certificate file is too large for AI Vision. Please split/compress the PDF, upload only the needed pages, or fill manually.'
+  }
+  if (lower.includes('non-json response') || lower.includes('invalid json') || lower.includes('did not return json')) {
+    return 'AI provider returned an unreadable response. The app will try the next model automatically.'
   }
   return raw.slice(0, 240) || 'AI scan failed. Please fill manually.'
 }
@@ -683,7 +689,13 @@ export default function ShipCertificatesPage() {
               provider: model.provider,
             }),
           })
-          const result = await res.json()
+          const responseText = await res.text()
+          let result: any
+          try {
+            result = JSON.parse(responseText)
+          } catch {
+            result = { error: responseText || 'AI route returned a non-JSON response' }
+          }
           if (!res.ok || result.error) {
             latestError = getFriendlyAiError(result.error || latestError)
             modelErrors.push(`${model.label}: ${latestError}`)
