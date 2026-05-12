@@ -8,8 +8,10 @@ import { PushNudge } from '@/components/navbar/PushNudge';
 import { PpeSizeUpdateModal } from '@/components/navbar/PpeSizeUpdateModal';
 import {
   Bell,
+  Moon,
   ShieldCheck,
   ShoppingCart,
+  Sun,
   User,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -17,6 +19,7 @@ import { getOneSignalStatus, requestOneSignalPermission } from '@/lib/onesignalC
 import { getMobileNavLabel, getNavbarMenuItems } from '@/lib/navbar';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNavbarNotifications } from '@/hooks/useNavbarNotifications';
+import { applyTheme, getStoredTheme, type KmtTheme } from '@/components/ThemeBridge';
 import { toast } from 'sonner';
 
 export default function Navbar() {
@@ -29,6 +32,7 @@ export default function Navbar() {
   const [oneSignalStatus, setOneSignalStatus] = useState<Record<string, string>>({});
   const [showPushNudge, setShowPushNudge] = useState(false);
   const [showPpeSizeModal, setShowPpeSizeModal] = useState(false);
+  const [theme, setTheme] = useState<KmtTheme>('dark');
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -68,6 +72,16 @@ export default function Navbar() {
   }, [mounted, user?.id]);
 
   useEffect(() => {
+    if (!mounted) return;
+
+    const syncTheme = () => setTheme(getStoredTheme());
+    syncTheme();
+    window.addEventListener('kmt-theme-changed', syncTheme);
+
+    return () => window.removeEventListener('kmt-theme-changed', syncTheme);
+  }, [mounted]);
+
+  useEffect(() => {
     const handleCartUpdate = (e: any) => setCartCount(e.detail);
     const handleOpenPpeSizeUpdate = () => setShowPpeSizeModal(true);
     const handleClickOutside = (e: MouseEvent) => {
@@ -102,6 +116,12 @@ export default function Navbar() {
     }
   };
 
+  const handleToggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    applyTheme(nextTheme);
+    setTheme(nextTheme);
+  };
+
   if (!mounted || ['/login', '/register'].includes(pathname)) return null;
 
   return (
@@ -114,11 +134,11 @@ export default function Navbar() {
         />
       )}
 
-      <nav className="fixed top-4 left-1/2 -translate-x-1/2 w-[94%] max-w-6xl h-14 bg-black/80 backdrop-blur-xl border border-orange-500/20 rounded-2xl z-[100] px-4 flex items-center justify-between shadow-2xl">
+      <nav className="fixed top-4 left-1/2 -translate-x-1/2 w-[94%] max-w-6xl h-14 bg-[var(--nav-bg)] backdrop-blur-xl border border-[var(--nav-border)] rounded-2xl z-[100] px-4 flex items-center justify-between shadow-2xl transition-colors duration-300">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => router.push(isAdmin ? '/admin/dashboard' : '/dashboard')}>
             <ShieldCheck size={22} className="text-orange-500" />
-            <span className="font-black text-lg tracking-tighter text-white uppercase">KMT</span>
+            <span className="font-black text-lg tracking-tighter text-[var(--app-text)] uppercase">KMT</span>
           </div>
           <div className="hidden md:flex items-center gap-1">
             {menuItems.map((item) => (
@@ -128,7 +148,7 @@ export default function Navbar() {
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
                   isNavItemActive(item.href)
                     ? 'text-white bg-orange-600 shadow-lg shadow-orange-600/20'
-                    : 'text-zinc-500 hover:text-orange-400'
+                    : 'text-[var(--text-muted)] hover:text-orange-500'
                 }`}
               >
                 {item.name}
@@ -142,10 +162,10 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => setShowProfile(true)}
-              className="hidden max-w-[210px] rounded-xl border border-orange-500/20 bg-white/[0.04] px-3 py-2 text-left transition-all hover:border-orange-500/45 hover:bg-orange-500/10 lg:block"
+              className="hidden max-w-[210px] rounded-xl border border-orange-500/20 bg-[var(--card-soft)] px-3 py-2 text-left transition-all hover:border-orange-500/45 hover:bg-[var(--card-soft-hover)] lg:block"
               title={`${user.full_name || 'Crew'} | ${user.position || 'Crew'}`}
             >
-              <p className="truncate text-[10px] font-black uppercase leading-tight tracking-wide text-white">
+              <p className="truncate text-[10px] font-black uppercase leading-tight tracking-wide text-[var(--app-text)]">
                 {user.full_name || 'Crew'}
               </p>
               <p className="mt-0.5 truncate text-[8px] font-black uppercase tracking-[0.18em] text-orange-300">
@@ -154,7 +174,17 @@ export default function Navbar() {
             </button>
           )}
 
-          <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="p-2.5 text-zinc-500 hover:text-orange-500 relative transition-colors">
+          <button
+            type="button"
+            onClick={handleToggleTheme}
+            className="hidden h-9 w-9 items-center justify-center rounded-xl border border-orange-500/20 bg-[var(--card-soft)] text-[var(--icon-muted)] transition-all hover:border-orange-500/45 hover:text-orange-500 md:flex"
+            title={theme === 'dark' ? 'Switch to day mode' : 'Switch to dark mode'}
+            aria-label={theme === 'dark' ? 'Switch to day mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
+
+          <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="p-2.5 text-[var(--icon-muted)] hover:text-orange-500 relative transition-colors">
             <ShoppingCart size={18} />
             {cartCount > 0 && (
               <span className="absolute top-1 right-1 w-4 h-4 bg-orange-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black">
@@ -164,7 +194,7 @@ export default function Navbar() {
           </button>
 
           <div className="relative" ref={notifRef}>
-            <button onClick={handleOpenNotif} className="p-2.5 text-zinc-500 hover:text-orange-500 relative transition-colors">
+            <button onClick={handleOpenNotif} className="p-2.5 text-[var(--icon-muted)] hover:text-orange-500 relative transition-colors">
               <Bell size={18} />
               {unreadCount > 0 && (
                 <span className="absolute top-1 right-1 min-w-4 h-4 px-1 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black animate-pulse">
@@ -196,7 +226,7 @@ export default function Navbar() {
               className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-all ${
                 showProfile
                   ? 'bg-orange-600 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]'
-                  : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10'
+                  : 'bg-[var(--card-soft)] border-orange-500/15 text-[var(--icon-muted)] hover:bg-[var(--card-soft-hover)]'
               }`}
             >
               <User size={18} />
@@ -219,7 +249,7 @@ export default function Navbar() {
         </div>
       </nav>
 
-      <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] h-16 bg-black/90 backdrop-blur-2xl border border-orange-500/20 rounded-3xl z-[100] px-2 shadow-2xl flex items-center justify-around">
+      <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] h-16 bg-[var(--nav-bg)] backdrop-blur-2xl border border-[var(--nav-border)] rounded-3xl z-[100] px-2 shadow-2xl flex items-center justify-around transition-colors duration-300">
         {menuItems.slice(0, isAdmin ? 5 : 4).map((item) => {
           const Icon = item.icon;
           const isActive = isNavItemActive(item.href);
@@ -228,7 +258,7 @@ export default function Navbar() {
               key={item.href}
               href={item.href}
               className={`flex flex-col items-center justify-center gap-1 w-full h-full relative transition-all ${
-                isActive ? 'text-orange-500' : 'text-zinc-500'
+                isActive ? 'text-orange-500' : 'text-[var(--text-muted)]'
               }`}
             >
               <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />

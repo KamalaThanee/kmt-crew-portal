@@ -134,6 +134,13 @@ const safeFileName = (value: string) =>
     .replace(/\s+/g, '_')
     .slice(0, 150)
 
+const safeMonthlyReportName = (value: string) =>
+  String(value || 'monthly-report')
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 150)
+
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-'
   const date = new Date(value)
@@ -167,7 +174,7 @@ const rowMatchesPositionFilter = (row: MonthlyReportMaster, position: string) =>
 const buildStoredFileName = (row: MonthlyReportRow, month: string, originalName: string) => {
   const ext = originalName.includes('.') ? originalName.split('.').pop() || 'file' : 'file'
   const docNo = row.form_no && row.form_no !== 'N/A' ? row.form_no : 'NA'
-  return safeFileName(`KMT-${docNo}-${row.details}-${formatMonth(month)}.${ext}`)
+  return safeMonthlyReportName(`KMT-${docNo}-${row.details}-${formatMonth(month)}.${ext}`)
 }
 
 const openFileUrl = (fileUrl: string, fileName?: string | null) => {
@@ -320,7 +327,7 @@ export default function MonthlyReportsPage() {
     setUploadingId(row.id)
     try {
       const storedName = buildStoredFileName(row, selectedMonth, file.name)
-      const path = `${selectedMonth}/${safeFileName(row.pic)}/${row.id}/${Date.now()}-${storedName}`
+      const path = `${selectedMonth}/${safeFileName(row.pic)}/${row.id}/${storedName}`
       const { error: uploadError } = await supabase.storage.from(MONTHLY_BUCKET).upload(path, file, { upsert: true })
       if (uploadError) throw uploadError
 
@@ -464,27 +471,24 @@ export default function MonthlyReportsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#02030b] px-4 pb-28 pt-28 text-white md:px-10">
-      <div className="mx-auto max-w-7xl">
-        <section className="mb-10 flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+      <div>
+        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="mb-3 flex items-center gap-3 text-orange-500">
-              <CalendarCheck size={38} />
-              <h1 className="text-4xl font-black italic uppercase tracking-tight md:text-5xl">Monthly Reports</h1>
-            </div>
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-zinc-500">Monthly submission control and radio operator ZIP collection</p>
+            <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><CalendarCheck className="text-orange-500" size={36}/> Monthly Reports</h1>
+            <p className="text-zinc-500 mt-1 tracking-widest">Monthly submission control and radio operator ZIP collection</p>
           </div>
 
-          <div className="flex flex-col gap-3 rounded-[28px] border border-orange-500/25 bg-black/60 p-4 md:min-w-[420px]">
-            <label className="text-[10px] font-black uppercase tracking-[0.25em] text-orange-300">Report Month</label>
+          <div className="flex w-full max-w-md items-center gap-3 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[420px]">
+            <span className="shrink-0 px-4 text-[10px] font-black uppercase tracking-widest text-zinc-500">Report Month</span>
             <input
               type="month"
               value={selectedMonth}
               onChange={(event) => setSelectedMonth(event.target.value)}
-              className="rounded-2xl border border-zinc-800 bg-black px-5 py-4 text-sm font-black text-white outline-none focus:border-orange-500"
+              className="h-12 min-w-0 flex-1 rounded-[22px] border border-white/10 bg-black px-4 text-xs font-black text-white outline-none focus:border-orange-500"
             />
           </div>
-        </section>
+        </div>
 
         <section className="mb-8 grid gap-4 md:grid-cols-4">
           {positionStats.map((item) => {

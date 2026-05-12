@@ -772,57 +772,53 @@ export default function SmsLibraryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#02030b] px-4 pb-28 pt-28 text-white md:px-10">
-      <div className="mx-auto max-w-7xl">
-        <section className="mb-10 flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+      <>
+        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="mb-3 flex items-center gap-3 text-orange-500">
-              <FileText size={38} />
-              <h1 className="text-4xl font-black italic uppercase tracking-tight md:text-5xl">SMS Library</h1>
-            </div>
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-zinc-500">Controlled procedure and checklist documents</p>
+            <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><FileText className="text-orange-500" size={36}/> SMS Library</h1>
+            <p className="text-zinc-500 mt-1 tracking-widest">Controlled procedure and checklist documents</p>
           </div>
 
-          <div className="flex flex-col gap-3 md:items-end">
-            <div className="grid rounded-[28px] border border-orange-500/25 bg-black/70 p-2 md:grid-cols-4">
-              {tabs.map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`rounded-[22px] px-6 py-4 text-xs font-black uppercase transition-all ${activeTab === tab ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'text-zinc-500 hover:text-orange-300'}`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-col gap-3 md:flex-row">
-              {activeTab !== 'Revision Log' && (
-                <button
-                  onClick={downloadCategoryZip}
-                  disabled={downloadingZip || currentCategoryDocuments.length === 0}
-                  className="rounded-[24px] border border-blue-500/40 bg-blue-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-blue-100 disabled:opacity-40"
-                >
-                  {downloadingZip ? <Loader2 size={16} className="mr-2 inline animate-spin" /> : <Download size={16} className="mr-2 inline" />}
-                  Download All
-                </button>
-              )}
-              {activeTab === 'Revision Log' && (
-                <button
-                  onClick={downloadChangeLog}
-                  disabled={!activeRevisionGroup?.changeRecordUrl}
-                  className="rounded-[24px] border border-blue-500/40 bg-blue-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-blue-100 disabled:opacity-40"
-                >
-                  <Download size={16} className="mr-2 inline" /> Download Changelog
-                </button>
-              )}
-              {canManageSms && (
-                <button onClick={() => setUploadOpen(true)} className="rounded-[24px] bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-orange-600/20">
-                  <UploadCloud size={16} className="mr-2 inline" /> {uploadActionLabel}
-                </button>
-              )}
-            </div>
+          <div className="grid w-full max-w-2xl grid-cols-4 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[720px]">
+            {tabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === tab ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}
+              >
+                {tab}
+              </button>
+            ))}
           </div>
-        </section>
+        </div>
+
+        <div className="mb-8 flex flex-col gap-3 md:flex-row md:justify-end">
+          {activeTab !== 'Revision Log' && (
+            <button
+              onClick={downloadCategoryZip}
+              disabled={downloadingZip || currentCategoryDocuments.length === 0}
+              className="rounded-[24px] border border-blue-500/40 bg-blue-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-blue-100 disabled:opacity-40"
+            >
+              {downloadingZip ? <Loader2 size={16} className="mr-2 inline animate-spin" /> : <Download size={16} className="mr-2 inline" />}
+              Download All
+            </button>
+          )}
+          {activeTab === 'Revision Log' && (
+            <button
+              onClick={downloadChangeLog}
+              disabled={!activeRevisionGroup?.changeRecordUrl}
+              className="rounded-[24px] border border-blue-500/40 bg-blue-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-blue-100 disabled:opacity-40"
+            >
+              <Download size={16} className="mr-2 inline" /> Download Changelog
+            </button>
+          )}
+          {canManageSms && (
+            <button onClick={() => setUploadOpen(true)} className="rounded-[24px] bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-orange-600/20">
+              <UploadCloud size={16} className="mr-2 inline" /> {uploadActionLabel}
+            </button>
+          )}
+        </div>
 
         {latestRevisionGroup && (
           <button
@@ -920,7 +916,7 @@ export default function SmsLibraryPage() {
             ))}
           </div>
         )}
-      </div>
+      </>
 
       {selectedRevisionGroup && (
         <div className="fixed inset-0 z-[2400] flex items-center justify-center bg-black/80 p-4 backdrop-blur-xl">
