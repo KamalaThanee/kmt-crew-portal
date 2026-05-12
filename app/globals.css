@@ -158,7 +158,6 @@ textarea:focus-visible {
 
 [data-theme="light"] .text-white:not(.bg-orange-600):not(.bg-red-600):not(.bg-green-600):not(.bg-blue-600):not(.bg-emerald-600),
 [data-theme="light"] .text-slate-100,
-[data-theme="light"] .text-orange-300,
 [data-theme="light"] .text-zinc-300,
 [data-theme="light"] .text-zinc-400,
 [data-theme="light"] .text-zinc-500 {
@@ -172,6 +171,9 @@ textarea:focus-visible {
   color: var(--subtle) !important;
 }
 
+[data-theme="light"] .text-orange-100,
+[data-theme="light"] .text-orange-200,
+[data-theme="light"] .text-orange-300,
 [data-theme="light"] .text-orange-400,
 [data-theme="light"] .text-orange-500,
 [data-theme="light"] .text-orange-600 {
@@ -233,6 +235,11 @@ textarea:focus-visible {
   color: #7c6f65 !important;
   background-color: rgba(229, 221, 211, 0.72) !important;
   border-color: rgba(194, 93, 18, 0.12) !important;
+}
+
+[data-theme="light"] .disabled\:opacity-40:disabled,
+[data-theme="light"] .disabled\:opacity-50:disabled {
+  opacity: 0.82 !important;
 }
 
 [data-theme="light"] .shadow-2xl,
