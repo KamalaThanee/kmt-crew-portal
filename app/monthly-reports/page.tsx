@@ -473,10 +473,10 @@ export default function MonthlyReportsPage() {
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <div>
-        <section className="mb-10 flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
+        <section className="mb-8 flex flex-col gap-6 md:flex-row md:items-center justify-between">
           <div>
             <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><CalendarCheck className="text-orange-500" size={36}/> Monthly Reports</h1>
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-zinc-500">Monthly submission control and radio operator ZIP collection</p>
+            <p className="text-zinc-500 mt-1 tracking-widest">Monthly submission control and radio operator ZIP collection</p>
           </div>
 
           <div className="flex flex-col gap-3 rounded-[28px] border border-orange-500/25 bg-black/60 p-4 md:min-w-[420px]">

@@ -774,10 +774,10 @@ export default function SmsLibraryPage() {
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <div>
-        <section className="mb-10 flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
+        <section className="mb-8 flex flex-col gap-6 md:flex-row md:items-center justify-between">
           <div>
             <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><FileText className="text-orange-500" size={36}/> SMS Library</h1>
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-zinc-500">Controlled procedure and checklist documents</p>
+            <p className="text-zinc-500 mt-1 tracking-widest">Controlled procedure and checklist documents</p>
           </div>
 
           <div className="flex flex-col gap-3 md:items-end">
