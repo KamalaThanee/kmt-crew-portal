@@ -138,6 +138,22 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
+          {user && (
+            <button
+              type="button"
+              onClick={() => setShowProfile(true)}
+              className="hidden max-w-[210px] rounded-xl border border-orange-500/20 bg-white/[0.04] px-3 py-2 text-left transition-all hover:border-orange-500/45 hover:bg-orange-500/10 lg:block"
+              title={`${user.full_name || 'Crew'} | ${user.position || 'Crew'}`}
+            >
+              <p className="truncate text-[10px] font-black uppercase leading-tight tracking-wide text-white">
+                {user.full_name || 'Crew'}
+              </p>
+              <p className="mt-0.5 truncate text-[8px] font-black uppercase tracking-[0.18em] text-orange-300">
+                {user.position || 'Crew'}
+              </p>
+            </button>
+          )}
+
           <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="p-2.5 text-zinc-500 hover:text-orange-500 relative transition-colors">
             <ShoppingCart size={18} />
             {cartCount > 0 && (
