@@ -384,7 +384,6 @@ function CertificateLogPanel({
   const [shipToInput, setShipToInput] = useState('')
   const [shipCcInput, setShipCcInput] = useState('')
   const [shipEnabled, setShipEnabled] = useState(true)
-  const [myCertEnabled, setMyCertEnabled] = useState(true)
   const [savingEmailSettings, setSavingEmailSettings] = useState(false)
 
   useEffect(() => {
@@ -392,7 +391,6 @@ function CertificateLogPanel({
     setShipToInput((emailSettings.ship_to_emails || []).join(', '))
     setShipCcInput((emailSettings.ship_cc_emails || []).join(', '))
     setShipEnabled(emailSettings.ship_alert_enabled !== false)
-    setMyCertEnabled(emailSettings.my_cert_alert_enabled !== false)
   }, [emailSettings])
 
   const rows = useMemo<UnifiedCertificateLogRow[]>(() => {
@@ -511,7 +509,7 @@ function CertificateLogPanel({
       const { error } = await supabase.from('cert_email_settings').upsert({
         id: 'default',
         ship_alert_enabled: shipEnabled,
-        my_cert_alert_enabled: myCertEnabled,
+        my_cert_alert_enabled: true,
         ship_to_emails: parseEmails(shipToInput),
         ship_cc_emails: parseEmails(shipCcInput),
         updated_at: new Date().toISOString(),
@@ -577,10 +575,9 @@ function CertificateLogPanel({
                   <input type="checkbox" checked={shipEnabled} onChange={(event) => setShipEnabled(event.target.checked)} />
                   Ship Cert Alerts
                 </label>
-                <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-black uppercase tracking-widest text-zinc-300">
-                  <input type="checkbox" checked={myCertEnabled} onChange={(event) => setMyCertEnabled(event.target.checked)} />
-                  My Cert Alerts
-                </label>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-black uppercase tracking-widest text-zinc-500">
+                  My Cert emails auto-send to each crew email
+                </div>
               </div>
               <button
                 onClick={saveEmailSettings}
