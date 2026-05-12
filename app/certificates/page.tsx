@@ -576,7 +576,7 @@ function CertificateLogPanel({
                   Ship Cert Alerts
                 </label>
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-black uppercase tracking-widest text-zinc-500">
-                  My Cert emails auto-send to each crew email
+                  My Cert uses push notifications only
                 </div>
               </div>
               <button

@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import nodemailer from 'nodemailer'
 
-export const runtime = 'edge'
+export const runtime = 'nodejs'
 
 const TRIGGERS = [180, 90, 60, 30, 14, 7, 0] as const
 const DAY_MS = 24 * 60 * 60 * 1000
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-const resendApiKey = process.env.RESEND_API_KEY || ''
-const certEmailFrom = process.env.CERT_EMAIL_FROM || 'KMT Crew Portal <onboarding@resend.dev>'
 const cronSecret = process.env.CERT_EMAIL_CRON_SECRET || process.env.CRON_SECRET || ''
+const gmailUser = process.env.GMAIL_USER || ''
+const gmailAppPassword = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s/g, '')
+const gmailFromName = process.env.GMAIL_FROM_NAME || 'KMT Crew Portal'
+const shipCertToEmail = process.env.SHIP_CERT_TO_EMAIL || ''
+const shipCertCcEmails = process.env.SHIP_CERT_CC_EMAILS || ''
 
 type Crew = {
   id: string
@@ -108,24 +112,21 @@ function certRowsHtml(rows: Array<{ label: string; expiry: string; days: number 
 }
 
 async function sendEmail(input: { to: string[]; cc?: string[]; subject: string; html: string }) {
-  if (!resendApiKey) throw new Error('Missing RESEND_API_KEY')
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      'Content-Type': 'application/json',
+  if (!gmailUser || !gmailAppPassword) throw new Error('Missing GMAIL_USER or GMAIL_APP_PASSWORD')
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: gmailUser,
+      pass: gmailAppPassword,
     },
-    body: JSON.stringify({
-      from: certEmailFrom,
-      to: input.to,
-      cc: input.cc || [],
-      subject: input.subject,
-      html: input.html,
-    }),
   })
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(data?.message || data?.error || 'Resend email failed')
-  return data
+  return transporter.sendMail({
+    from: `${gmailFromName} <${gmailUser}>`,
+    to: input.to.join(', '),
+    cc: (input.cc || []).join(', '),
+    subject: input.subject,
+    html: input.html,
+  })
 }
 
 async function insertLog(supabaseAdmin: any, payload: Record<string, unknown>) {
@@ -284,8 +285,10 @@ async function handleMyCertMonthlySummary(supabaseAdmin: any, settings: EmailSet
 
 async function handleShipCerts(supabaseAdmin: any, settings: EmailSettings) {
   if (settings.ship_alert_enabled === false) return { sent: 0, failed: 0, skipped: true }
-  const to = normalizeEmailList(settings.ship_to_emails)
-  const cc = normalizeEmailList(settings.ship_cc_emails)
+  const envTo = normalizeEmailList(shipCertToEmail.split(/[,\n;]/))
+  const envCc = normalizeEmailList(shipCertCcEmails.split(/[,\n;]/))
+  const to = envTo.length > 0 ? envTo : normalizeEmailList(settings.ship_to_emails)
+  const cc = envCc.length > 0 ? envCc : normalizeEmailList(settings.ship_cc_emails)
   if (to.length === 0) return { sent: 0, failed: 0, skipped: true, reason: 'no_ship_recipients' }
 
   const { data } = await supabaseAdmin
@@ -360,11 +363,9 @@ export async function GET(request: Request) {
       .maybeSingle()
     const settings = (settingsRow || {}) as EmailSettings
 
-    const [myCert, myCertMonthly, shipCert] = await Promise.all([
-      handleMyCerts(supabaseAdmin, settings),
-      handleMyCertMonthlySummary(supabaseAdmin, settings),
-      handleShipCerts(supabaseAdmin, settings),
-    ])
+    const myCert = { sent: 0, failed: 0, skipped: true, reason: 'push_notify_only' }
+    const myCertMonthly = { sent: 0, failed: 0, skipped: true, reason: 'push_notify_only' }
+    const shipCert = await handleShipCerts(supabaseAdmin, settings)
 
     return NextResponse.json({ ok: true, myCert, myCertMonthly, shipCert })
   } catch (error: any) {
