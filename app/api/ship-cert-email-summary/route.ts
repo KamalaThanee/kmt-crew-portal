@@ -8,6 +8,8 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const cronSecret = process.env.CERT_EMAIL_CRON_SECRET || process.env.CRON_SECRET || ''
+const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || 'https://kmt-crew-portal.vercel.app'
+const appUrl = rawAppUrl.startsWith('http') ? rawAppUrl : `https://${rawAppUrl}`
 
 type ShipCert = {
   id: string
@@ -177,7 +179,8 @@ export async function GET(request: Request) {
     const html = `<p>Dear Team,</p>
       <p>${expiredRows.length > 0 ? 'At least one ship certificate is expired. This daily summary will continue until the expired item is corrected.' : 'One or more ship certificates reached a reminder trigger. The summary below includes all ship certificates currently in the reminder range.'}</p>
       ${certRowsHtml(rows.map((item) => ({ label: [item.cert.code, item.cert.cert_name].filter(Boolean).join(' | '), expiry: item.cert.expiry_date || '', days: item.days })))}
-      <p>Please update the ship certificate record in KMT Crew Portal after renewal.</p>`
+      <p>Please update the ship certificate in KMT Crew Portal after renewal.</p>
+      <p><a href="${escapeHtml(appUrl)}/admin/ship-certificates" style="display:inline-block;background:#f05a0a;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:10px;font-weight:bold">Open KMT Crew Portal</a></p>`
 
     return NextResponse.json({
       shouldSend: true,

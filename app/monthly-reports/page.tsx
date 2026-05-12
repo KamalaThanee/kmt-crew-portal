@@ -44,6 +44,49 @@ const scheduleTheme = (schedule: string) => {
   }
 }
 
+const positionTheme = (position: string) => {
+  const normalized = normalizeRole(position)
+  if (normalized === 'chiefengineer') {
+    return {
+      cardActive: 'border-cyan-200 bg-cyan-500/[0.12] shadow-xl shadow-cyan-500/10',
+      cardIdle: 'border-cyan-500/25 bg-cyan-500/[0.06] hover:border-cyan-400/50',
+      label: 'text-cyan-200',
+      accent: 'bg-cyan-400',
+      badge: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200',
+    }
+  }
+  if (normalized === 'chiefofficer') {
+    return {
+      cardActive: 'border-violet-200 bg-violet-500/[0.12] shadow-xl shadow-violet-500/10',
+      cardIdle: 'border-violet-500/25 bg-violet-500/[0.06] hover:border-violet-400/50',
+      label: 'text-violet-200',
+      accent: 'bg-violet-400',
+      badge: 'border-violet-500/30 bg-violet-500/10 text-violet-200',
+    }
+  }
+  if (normalized === 'safetyofficer') {
+    return {
+      cardActive: 'border-rose-200 bg-rose-500/[0.12] shadow-xl shadow-rose-500/10',
+      cardIdle: 'border-rose-500/25 bg-rose-500/[0.06] hover:border-rose-400/50',
+      label: 'text-rose-200',
+      accent: 'bg-rose-400',
+      badge: 'border-rose-500/30 bg-rose-500/10 text-rose-200',
+    }
+  }
+  return {
+    cardActive: 'border-orange-200 bg-[#1b1010] shadow-xl shadow-orange-500/10',
+    cardIdle: 'border-orange-500/20 bg-black/55 hover:border-orange-500/50',
+    label: 'text-orange-200',
+    accent: 'bg-orange-500',
+    badge: 'border-orange-500/30 bg-orange-500/10 text-orange-200',
+  }
+}
+
+const rowPositionTheme = (pic: string) => {
+  const roles = splitPicRoles(pic)
+  return positionTheme(roles[0] || pic)
+}
+
 type MonthlyReportMaster = {
   id: string
   schedule: string
@@ -447,13 +490,14 @@ export default function MonthlyReportsPage() {
           {positionStats.map((item) => {
             const active = picFilter === item.position
             const title = item.position === 'All Positions' ? 'All Uploaders' : item.position
+            const theme = positionTheme(item.position)
             return (
               <button
                 key={item.position}
                 onClick={() => setPicFilter(item.position)}
-                className={`rounded-[30px] border p-6 text-left transition-all ${active ? 'border-orange-200 bg-[#1b1010] shadow-xl shadow-orange-500/10' : 'border-orange-500/20 bg-black/55 hover:border-orange-500/50'}`}
+                className={`rounded-[30px] border p-6 text-left transition-all ${active ? theme.cardActive : theme.cardIdle}`}
               >
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-200">{title}</p>
+                <p className={`text-[10px] font-black uppercase tracking-[0.3em] ${theme.label}`}>{title}</p>
                 <div className="mt-6 flex items-end justify-between gap-4">
                   <div>
                     <p className="text-5xl font-black">{item.required}</p>
@@ -467,7 +511,7 @@ export default function MonthlyReportsPage() {
                   </div>
                 </div>
                 <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full rounded-full bg-orange-500" style={{ width: `${item.percent}%` }} />
+                  <div className={`h-full rounded-full ${theme.accent}`} style={{ width: `${item.percent}%` }} />
                 </div>
                 {item.position !== 'All Positions' && (
                   <p className={`mt-4 text-[10px] font-black uppercase tracking-widest ${item.status === 'exported' ? 'text-emerald-300' : item.status === 'updated' ? 'text-amber-200' : item.status === 'ready' ? 'text-orange-300' : 'text-zinc-600'}`}>
@@ -556,6 +600,7 @@ export default function MonthlyReportsPage() {
             <div className="divide-y divide-white/10">
               {visibleRows.map((row) => {
                 const uploaded = Boolean(row.submission?.file_url)
+                const picTheme = rowPositionTheme(row.pic)
                 return (
                   <article key={row.id} className={`relative grid gap-5 border-l-4 p-6 md:grid-cols-[0.65fr_1.45fr_0.8fr_1.15fr] md:items-center ${scheduleTheme(row.schedule).card}`}>
                     <div className={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r ${scheduleTheme(row.schedule).strip} to-transparent`} />
@@ -567,7 +612,7 @@ export default function MonthlyReportsPage() {
 
                     <div>
                       <h4 className="text-lg font-black text-white">{row.details}</h4>
-                      <p className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-blue-200">{row.pic}</p>
+                      <p className={`mt-2 inline-flex rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] ${picTheme.badge}`}>{row.pic}</p>
                     </div>
 
                     <div>
