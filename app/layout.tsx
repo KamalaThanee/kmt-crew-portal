@@ -29,7 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeToaster />
         <Navbar />
         <CartDrawer />
-        <main className="max-w-7xl mx-auto px-4">{children}</main>
+        <main className="w-full">{children}</main>
       </body>
     </html>
   );
