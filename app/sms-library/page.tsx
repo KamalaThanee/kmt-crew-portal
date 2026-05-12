@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import { canManageSmsLibrary } from '@/lib/roles'
+import { PageHeader } from '@/components/layout/PageHeader'
 import {
   buildSmsFilePath,
   getSmsCategoryFromPath,
@@ -774,24 +775,24 @@ export default function SmsLibraryPage() {
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <>
-        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><FileText className="text-orange-500" size={36}/> SMS Library</h1>
-            <p className="text-zinc-500 mt-1 tracking-widest">Controlled procedure and checklist documents</p>
-          </div>
-
-          <div className="grid w-full max-w-2xl grid-cols-4 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[720px]">
-            {tabs.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === tab ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-        </div>
+        <PageHeader
+          title="SMS Library"
+          subtitle="Controlled procedure and checklist documents"
+          icon={<FileText className="text-orange-500" size={36} />}
+          controls={(
+            <div className="grid w-full max-w-2xl grid-cols-4 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[720px]">
+              {tabs.map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`rounded-[22px] px-4 py-4 transition-all ${activeTab === tab ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          )}
+        />
 
         <div className="mb-8 flex flex-col gap-3 md:flex-row md:justify-end">
           {activeTab !== 'Revision Log' && (

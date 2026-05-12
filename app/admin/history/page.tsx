@@ -6,6 +6,7 @@ import { HistoryMetricCard } from '@/components/history/HistoryMetricCard'
 import { HistoryDesktopTable } from '@/components/history/HistoryDesktopTable'
 import { HistoryFilterBar } from '@/components/history/HistoryFilterBar'
 import { HistoryMobileCards } from '@/components/history/HistoryMobileCards'
+import { PageHeader } from '@/components/layout/PageHeader'
 import {
   PAGE_SIZE,
   type HistoryRow,
@@ -211,36 +212,34 @@ export default function AdminHistoryPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
-      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="flex items-center gap-3 text-3xl md:text-4xl font-black italic">
-            <History className="text-orange-500" size={36} />
-            Request History
-          </h1>
-          <p className="text-zinc-500 mt-1 tracking-widest">Request workflow log</p>
-        </div>
-        <div className="flex flex-col gap-3 md:items-end">
-          <div className="grid w-full max-w-md grid-cols-2 rounded-[26px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[420px]">
+      <PageHeader
+        title="Request History"
+        subtitle="Request workflow log"
+        icon={<History className="text-orange-500" size={36} />}
+        controls={(
+          <div className="flex flex-col gap-3 md:items-end">
+            <div className="grid w-full max-w-md grid-cols-2 rounded-[26px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[420px]">
+              <button
+                type="button"
+                onClick={() => router.push('/admin/approvals')}
+                className="flex items-center justify-center gap-2 rounded-[20px] px-4 py-3 transition-all hover:bg-white/5 hover:text-white"
+              >
+                <ClipboardCheck size={14} /> Pending Requests
+              </button>
+              <button type="button" className="rounded-[20px] bg-orange-600 px-4 py-3 text-white shadow-lg shadow-orange-600/25">
+                Request History
+              </button>
+            </div>
             <button
-              type="button"
-              onClick={() => router.push('/admin/approvals')}
-              className="flex items-center justify-center gap-2 rounded-[20px] px-4 py-3 transition-all hover:bg-white/5 hover:text-white"
+              onClick={handleExportExcel}
+              className="flex items-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-5 py-3 text-xs font-black uppercase text-orange-300"
             >
-              <ClipboardCheck size={14} /> Pending Requests
-            </button>
-            <button type="button" className="rounded-[20px] bg-orange-600 px-4 py-3 text-white shadow-lg shadow-orange-600/25">
-              Request History
+              <FileSpreadsheet size={16} />
+              Export Excel
             </button>
           </div>
-          <button
-            onClick={handleExportExcel}
-            className="flex items-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-5 py-3 text-xs font-black uppercase text-orange-300"
-          >
-            <FileSpreadsheet size={16} />
-            Export Excel
-          </button>
-        </div>
-      </div>
+        )}
+      />
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <HistoryMetricCard
