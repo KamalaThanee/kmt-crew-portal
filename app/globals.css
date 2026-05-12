@@ -52,3 +52,67 @@ body {
 
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-thumb { background: #f97316; border-radius: 10px; }
+
+[data-theme="light"] .bg-\[\#02030b\],
+[data-theme="light"] .bg-\[\#080913\],
+[data-theme="light"] .bg-black,
+[data-theme="light"] .bg-black\/20,
+[data-theme="light"] .bg-black\/30,
+[data-theme="light"] .bg-black\/35,
+[data-theme="light"] .bg-black\/40,
+[data-theme="light"] .bg-black\/50,
+[data-theme="light"] .bg-black\/55,
+[data-theme="light"] .bg-black\/60,
+[data-theme="light"] .bg-black\/70,
+[data-theme="light"] .bg-black\/80,
+[data-theme="light"] .bg-black\/90,
+[data-theme="light"] .bg-zinc-950,
+[data-theme="light"] .bg-zinc-900,
+[data-theme="light"] .bg-zinc-900\/40,
+[data-theme="light"] .bg-zinc-900\/50,
+[data-theme="light"] .bg-zinc-800,
+[data-theme="light"] .bg-slate-950,
+[data-theme="light"] .bg-slate-900 {
+  background-color: rgba(255, 250, 243, 0.82) !important;
+}
+
+[data-theme="light"] .bg-white\/5,
+[data-theme="light"] .bg-white\/\[0\.03\],
+[data-theme="light"] .bg-white\/\[0\.04\],
+[data-theme="light"] .bg-white\/10 {
+  background-color: rgba(255, 255, 255, 0.72) !important;
+}
+
+[data-theme="light"] .border-white\/5,
+[data-theme="light"] .border-white\/10,
+[data-theme="light"] .border-white\/15,
+[data-theme="light"] .border-zinc-800 {
+  border-color: rgba(194, 93, 18, 0.16) !important;
+}
+
+[data-theme="light"] .text-white:not(.bg-orange-600):not(.bg-red-600):not(.bg-green-600):not(.bg-blue-600):not(.bg-emerald-600),
+[data-theme="light"] .text-slate-100,
+[data-theme="light"] .text-zinc-300,
+[data-theme="light"] .text-zinc-400,
+[data-theme="light"] .text-zinc-500 {
+  color: #1f160f !important;
+}
+
+[data-theme="light"] .text-zinc-600,
+[data-theme="light"] .text-zinc-700,
+[data-theme="light"] .placeholder\:text-zinc-600::placeholder,
+[data-theme="light"] .placeholder\:text-zinc-700::placeholder {
+  color: #7c6f65 !important;
+}
+
+[data-theme="light"] input,
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+  color: #1f160f;
+}
+
+[data-theme="light"] .shadow-2xl,
+[data-theme="light"] .shadow-xl,
+[data-theme="light"] .shadow-lg {
+  --tw-shadow-color: rgba(100, 60, 24, 0.14) !important;
+}
