@@ -3,15 +3,40 @@
 @tailwind utilities;
 
 :root {
+  --background: #f6f1ea;
+  --foreground: #170f0a;
+  --primary-orange: #f97316; /* Orange-500 */
+  --app-bg: #f6f1ea;
+  --app-text: #170f0a;
+  --text-muted: #6e6259;
+  --nav-bg: rgba(255, 250, 243, 0.88);
+  --nav-border: rgba(194, 93, 18, 0.24);
+  --card-soft: rgba(255, 255, 255, 0.74);
+  --card-soft-hover: rgba(249, 115, 22, 0.12);
+  --icon-muted: #766b62;
+  --page-wash: radial-gradient(circle at top left, rgba(249, 115, 22, 0.16), transparent 34%), #f6f1ea;
+}
+
+.dark {
   --background: #000000;
   --foreground: #ffffff;
-  --primary-orange: #f97316; /* Orange-500 */
+  --app-bg: #02030b;
+  --app-text: #ffffff;
+  --text-muted: #71717a;
+  --nav-bg: rgba(0, 0, 0, 0.8);
+  --nav-border: rgba(249, 115, 22, 0.2);
+  --card-soft: rgba(255, 255, 255, 0.04);
+  --card-soft-hover: rgba(249, 115, 22, 0.1);
+  --icon-muted: #71717a;
+  --page-wash: #02030b;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: 'Inter', system-ui, sans-serif;
+  background-image: var(--page-wash);
+  transition: background-color 240ms ease, color 240ms ease;
 }
 
 /* เอฟเฟกต์เส้นขอบเรืองแสงสีส้ม */
