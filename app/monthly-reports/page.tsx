@@ -9,6 +9,7 @@ import { canManageMonthlyReports, normalizeRole } from '@/lib/roles'
 import { notifyOneSignal } from '@/lib/onesignalClient'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { PageShell } from '@/components/layout/PageShell'
 
 const MONTHLY_BUCKET = 'monthly-reports'
 const ZIP_POSITIONS = ['Chief Engineer', 'Chief Officer', 'Safety Officer'] as const
@@ -472,7 +473,7 @@ export default function MonthlyReportsPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+    <PageShell>
       <div>
         <PageHeader
           title="Monthly Reports"
@@ -668,6 +669,6 @@ export default function MonthlyReportsPage() {
           )}
         </section>
       </div>
-    </div>
+    </PageShell>
   )
 }

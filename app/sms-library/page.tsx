@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import { canManageSmsLibrary } from '@/lib/roles'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { PageShell } from '@/components/layout/PageShell'
 import {
   buildSmsFilePath,
   getSmsCategoryFromPath,
@@ -773,7 +774,7 @@ export default function SmsLibraryPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+    <PageShell>
       <>
         <PageHeader
           title="SMS Library"
@@ -1170,6 +1171,6 @@ export default function SmsLibraryPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }

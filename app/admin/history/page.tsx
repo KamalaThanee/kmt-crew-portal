@@ -7,6 +7,7 @@ import { HistoryDesktopTable } from '@/components/history/HistoryDesktopTable'
 import { HistoryFilterBar } from '@/components/history/HistoryFilterBar'
 import { HistoryMobileCards } from '@/components/history/HistoryMobileCards'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { PageShell } from '@/components/layout/PageShell'
 import {
   PAGE_SIZE,
   type HistoryRow,
@@ -211,7 +212,7 @@ export default function AdminHistoryPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+    <PageShell>
       <PageHeader
         title="Request History"
         subtitle="Request workflow log"
@@ -373,6 +374,6 @@ export default function AdminHistoryPage() {
           </button>
         </div>
       </div>
-    </div>
+    </PageShell>
   )
 }
