@@ -14,6 +14,36 @@ const ZIP_POSITIONS = ['Chief Engineer', 'Chief Officer', 'Safety Officer'] as c
 const UPLOAD_POSITIONS = ['All Positions', ...ZIP_POSITIONS] as const
 const SCHEDULES = ['All Schedules', 'Weekly', 'Inventory', 'Monthly Report']
 
+const scheduleTheme = (schedule: string) => {
+  const normalized = String(schedule || '').toLowerCase()
+  if (normalized.includes('weekly')) {
+    return {
+      card: 'border-blue-500/25 bg-blue-500/[0.06]',
+      badge: 'border-blue-500/30 bg-blue-500/10 text-blue-200',
+      strip: 'from-blue-500/50',
+    }
+  }
+  if (normalized.includes('inventory')) {
+    return {
+      card: 'border-emerald-500/25 bg-emerald-500/[0.06]',
+      badge: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
+      strip: 'from-emerald-500/50',
+    }
+  }
+  if (normalized.includes('monthly')) {
+    return {
+      card: 'border-orange-500/25 bg-orange-500/[0.07]',
+      badge: 'border-orange-500/30 bg-orange-500/10 text-orange-200',
+      strip: 'from-orange-500/50',
+    }
+  }
+  return {
+    card: 'border-white/10 bg-white/[0.03]',
+    badge: 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300',
+    strip: 'from-zinc-500/40',
+  }
+}
+
 type MonthlyReportMaster = {
   id: string
   schedule: string
@@ -527,9 +557,10 @@ export default function MonthlyReportsPage() {
               {visibleRows.map((row) => {
                 const uploaded = Boolean(row.submission?.file_url)
                 return (
-                  <article key={row.id} className="grid gap-5 p-6 md:grid-cols-[0.65fr_1.45fr_0.8fr_1.15fr] md:items-center">
+                  <article key={row.id} className={`relative grid gap-5 border-l-4 p-6 md:grid-cols-[0.65fr_1.45fr_0.8fr_1.15fr] md:items-center ${scheduleTheme(row.schedule).card}`}>
+                    <div className={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r ${scheduleTheme(row.schedule).strip} to-transparent`} />
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.25em] text-orange-300">{row.schedule}</p>
+                      <span className={`inline-flex rounded-full border px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.25em] ${scheduleTheme(row.schedule).badge}`}>{row.schedule}</span>
                       <h3 className="mt-3 text-2xl font-black italic uppercase text-white">{row.form_no}</h3>
                       <p className="mt-2 text-xs font-bold text-zinc-500">{row.period || '-'}</p>
                     </div>
