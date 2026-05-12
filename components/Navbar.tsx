@@ -237,9 +237,7 @@ export default function Navbar() {
                 user={user}
                 isAdmin={isAdmin}
                 pushOptedIn={oneSignalStatus.optedIn === 'true'}
-                theme={theme}
                 onEnablePush={() => handleEnablePush(false)}
-                onToggleTheme={handleToggleTheme}
                 onClose={() => setShowProfile(false)}
                 onLogout={() => {
                   logout();

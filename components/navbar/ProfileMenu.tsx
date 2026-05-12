@@ -1,15 +1,12 @@
 import Link from 'next/link'
-import { Bell, LogOut, Moon, Settings, Sun } from 'lucide-react'
+import { Bell, LogOut, Settings } from 'lucide-react'
 import type { CurrentUser } from '@/lib/currentUser'
-import type { KmtTheme } from '@/components/ThemeBridge'
 
 type ProfileMenuProps = {
   user: CurrentUser | null
   isAdmin: boolean
   pushOptedIn: boolean
-  theme: KmtTheme
   onEnablePush: () => void
-  onToggleTheme: () => void
   onClose: () => void
   onLogout: () => void
 }
@@ -18,9 +15,7 @@ export function ProfileMenu({
   user,
   isAdmin,
   pushOptedIn,
-  theme,
   onEnablePush,
-  onToggleTheme,
   onClose,
   onLogout,
 }: ProfileMenuProps) {
@@ -31,13 +26,6 @@ export function ProfileMenu({
         <p className="text-orange-500 text-[10px] font-black uppercase mt-1 tracking-widest">{user?.position}</p>
       </div>
       <div className="p-2 space-y-1">
-        <button
-          onClick={onToggleTheme}
-          className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-[var(--text-muted)] hover:text-orange-500 hover:bg-orange-600/10 rounded-2xl transition-all uppercase tracking-widest"
-        >
-          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-          {theme === 'dark' ? 'Day Mode' : 'Dark Mode'}
-        </button>
         {!pushOptedIn && (
           <button
             onClick={onEnablePush}

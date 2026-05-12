@@ -111,6 +111,8 @@ textarea:focus-visible {
 [data-theme="light"] .bg-black\/80,
 [data-theme="light"] .bg-black\/90,
 [data-theme="light"] .bg-zinc-950,
+[data-theme="light"] .bg-zinc-950\/45,
+[data-theme="light"] .bg-zinc-950\/70,
 [data-theme="light"] .bg-zinc-950\/80,
 [data-theme="light"] .bg-zinc-900,
 [data-theme="light"] .bg-zinc-900\/40,
@@ -155,6 +157,10 @@ textarea:focus-visible {
   background-color: rgba(237, 233, 254, 0.84) !important;
 }
 
+[data-theme="light"] .to-zinc-950 {
+  --tw-gradient-to: rgba(255, 251, 245, 0.94) var(--tw-gradient-to-position) !important;
+}
+
 [data-theme="light"] .border-white\/5,
 [data-theme="light"] .border-white\/10,
 [data-theme="light"] .border-white\/15,
@@ -197,7 +203,17 @@ textarea:focus-visible {
   color: var(--blue-text) !important;
 }
 
+[data-theme="light"] .text-blue-100\/70,
+[data-theme="light"] .text-sky-100\/70,
+[data-theme="light"] .text-sky-200,
+[data-theme="light"] .text-sky-300,
+[data-theme="light"] .text-sky-400,
+[data-theme="light"] .text-sky-500 {
+  color: var(--blue-text) !important;
+}
+
 [data-theme="light"] .text-cyan-100,
+[data-theme="light"] .text-cyan-100\/70,
 [data-theme="light"] .text-cyan-200,
 [data-theme="light"] .text-cyan-300,
 [data-theme="light"] .text-cyan-400,
@@ -206,6 +222,7 @@ textarea:focus-visible {
 }
 
 [data-theme="light"] .text-emerald-200,
+[data-theme="light"] .text-emerald-100\/70,
 [data-theme="light"] .text-emerald-300,
 [data-theme="light"] .text-emerald-400,
 [data-theme="light"] .text-emerald-500,
@@ -220,12 +237,30 @@ textarea:focus-visible {
   color: var(--danger-text) !important;
 }
 
+[data-theme="light"] .text-rose-100\/70,
+[data-theme="light"] .text-rose-200,
+[data-theme="light"] .text-rose-300,
+[data-theme="light"] .text-rose-400,
+[data-theme="light"] .text-rose-500 {
+  color: var(--danger-text) !important;
+}
+
 [data-theme="light"] .text-amber-200,
+[data-theme="light"] .text-amber-100\/70,
 [data-theme="light"] .text-amber-300,
 [data-theme="light"] .text-amber-400,
 [data-theme="light"] .text-amber-500,
 [data-theme="light"] .text-yellow-500 {
   color: var(--warning-text) !important;
+}
+
+[data-theme="light"] .text-orange-100\/70,
+[data-theme="light"] .text-violet-100\/70,
+[data-theme="light"] .text-violet-200,
+[data-theme="light"] .text-violet-300,
+[data-theme="light"] .text-violet-400,
+[data-theme="light"] .text-violet-500 {
+  color: var(--accent-text) !important;
 }
 
 [data-theme="light"] input,
