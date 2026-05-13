@@ -69,6 +69,7 @@ type CrewCert = {
 type CvTrainingProficiencyPair = {
   training?: CrewCert
   proficiency?: CrewCert
+  missingRequiredProficiency?: boolean
 }
 
 type CertMasterCvRule = {
@@ -834,6 +835,11 @@ function getStcwGroup(cert: CrewCert) {
   return 'other'
 }
 
+function requiresProficiency(cert: CrewCert) {
+  if (cert.master_requires_proficiency === true) return true
+  return Boolean(clean(cert.master_required_proficiency_key))
+}
+
 function sortCvCerts(rows: CrewCert[]) {
   return [...rows].sort((a, b) => {
     const rowA = Number(a.cv_row_no || 9999)
@@ -860,7 +866,7 @@ function buildCvCertTables(rows: CrewCert[]) {
     const groupIndex = group === 'other' ? -1 : remainingProficiency.findIndex((cert) => getStcwGroup(cert) === group)
     const index = explicitIndex >= 0 ? explicitIndex : groupIndex
     const matched = index >= 0 ? remainingProficiency.splice(index, 1)[0] : undefined
-    return { training: trainingCert, proficiency: matched }
+    return { training: trainingCert, proficiency: matched, missingRequiredProficiency: requiresProficiency(trainingCert) && !matched }
   })
   remainingProficiency.forEach((cert) => paired.push({ training: undefined, proficiency: cert }))
   return { competency, training, proficiency, paired, medical }
@@ -924,7 +930,7 @@ function CvCertificateTables({
             <tbody>
               {tables.paired.map((row, index) => (
                 <tr key={`${row.training?.id || 'training'}-${row.proficiency?.id || 'proficiency'}-${index}`} className="border-t border-orange-500/10 align-top">
-                  <CvTrainingPairCells cert={row.training} section="Certificate of Training" saving={row.training ? savingCertId === row.training.id : false} onChange={onChange} onSave={onSave} />
+                  <CvTrainingPairCells cert={row.training} section="Certificate of Training" saving={row.training ? savingCertId === row.training.id : false} missingRequiredProficiency={row.missingRequiredProficiency} onChange={onChange} onSave={onSave} />
                   <CvTrainingPairCells cert={row.proficiency} section="Certificate of Proficiency" saving={row.proficiency ? savingCertId === row.proficiency.id : false} onChange={onChange} onSave={onSave} proficiency />
                 </tr>
               ))}
@@ -1046,6 +1052,7 @@ function CvSimpleCertTable({
 
 function CvTrainingPairCells({
   cert,
+  missingRequiredProficiency,
   onChange,
   onSave,
   proficiency,
@@ -1055,6 +1062,7 @@ function CvTrainingPairCells({
   cert?: CrewCert
   section: string
   saving: boolean
+  missingRequiredProficiency?: boolean
   proficiency?: boolean
   onChange: (cert: CrewCert) => void
   onSave: (certId: string) => void
@@ -1069,6 +1077,7 @@ function CvTrainingPairCells({
       <td className="px-4 py-3">
         <div className="flex flex-col gap-2">
           <TextField label="" value={proficiency ? cert.issue_authority || '' : cert.place_of_issue || ''} onChange={(value) => onChange(proficiency ? { ...cert, issue_authority: value, cv_section: section } : { ...cert, place_of_issue: value, cv_section: section })} />
+          {missingRequiredProficiency && <p className="rounded-xl bg-red-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-red-400">COP required</p>}
           <CertActions cert={cert} saving={saving} onSave={() => onSave(cert.id)} />
         </div>
       </td>
@@ -1094,7 +1103,7 @@ function CvPairMobileCard({
       <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">Training / Proficiency Pair</p>
       <div className="space-y-4">
         {training ? (
-          <CvCertMobileCard cert={training} section="Certificate of Training" saving={savingCertId === training.id} onChange={onChange} onSave={() => onSave(training.id)} compactTitle="Certificate of Training" />
+          <CvCertMobileCard cert={training} section="Certificate of Training" saving={savingCertId === training.id} onChange={onChange} onSave={() => onSave(training.id)} compactTitle="Certificate of Training" warning={row.missingRequiredProficiency ? 'COP required for this training certificate' : ''} />
         ) : (
           <div className="rounded-2xl bg-[var(--surface)] p-4 text-xs font-black uppercase tracking-widest text-[var(--subtle)]">No training certificate in this row</div>
         )}
@@ -1117,6 +1126,7 @@ function CvCertMobileCard({
   onSave,
   saving,
   section,
+  warning,
 }: {
   cert: CrewCert
   section: string
@@ -1124,6 +1134,7 @@ function CvCertMobileCard({
   competency?: boolean
   medical?: boolean
   compactTitle?: string
+  warning?: string
   onChange: (cert: CrewCert) => void
   onSave: () => void
 }) {
@@ -1131,6 +1142,7 @@ function CvCertMobileCard({
     <div className="rounded-2xl border border-orange-500/15 bg-[var(--surface)] p-4">
       {compactTitle && <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">{compactTitle}</p>}
       <EditableCertName cert={cert} section={section} onChange={onChange} />
+      {warning && <p className="mt-2 rounded-xl bg-red-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-red-400">{warning}</p>}
       <div className="mt-3 grid gap-3">
         <TextField label={competency ? 'Capacity' : medical ? 'Name of Hospital' : 'Number'} value={competency ? cert.cv_capacity || '' : medical ? cert.place_of_issue || '' : cert.cert_number || ''} onChange={(value) => onChange(competency ? { ...cert, cv_capacity: value, cv_section: section } : medical ? { ...cert, place_of_issue: value, cv_section: section } : { ...cert, cert_number: value, cv_section: section })} />
         <DateField label="Issued Date" value={toDateValue(cert.issue_date)} onChange={(value) => onChange({ ...cert, issue_date: value, cv_section: section })} />

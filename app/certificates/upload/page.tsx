@@ -34,7 +34,7 @@ function UploadContent() {
   const [isSaving, setIsSaving] = useState(false)
   const [activeModelLabel, setActiveModelLabel] = useState('')
   const [scanResult, setScanResult] = useState<any>(null)
-  const [finalData, setFinalData] = useState({ issueDate: '', expiryDate: '' })
+  const [finalData, setFinalData] = useState({ issueDate: '', expiryDate: '', certNumber: '', placeOfIssue: '', issueAuthority: '' })
   const [passportCvData, setPassportCvData] = useState({
     nationalIdNo: '',
     nationality: '',
@@ -165,6 +165,9 @@ function UploadContent() {
           setFinalData({
             issueDate: result.issueDate || '',
             expiryDate: resolvedExpiry || '',
+            certNumber: String(result.certNumber || '').trim(),
+            placeOfIssue: String(result.placeOfIssue || '').trim(),
+            issueAuthority: String(result.issueAuthority || '').trim(),
           })
           setActiveModelLabel(`Analyzed by: ${model.label}`)
           return
@@ -223,6 +226,9 @@ function UploadContent() {
           cert_name: certName,
           issue_date: finalData.issueDate,
           expiry_date: expiryDate,
+          cert_number: finalData.certNumber || null,
+          place_of_issue: finalData.placeOfIssue || null,
+          issue_authority: finalData.issueAuthority || null,
           file_url: publicData.publicUrl,
         },
         { onConflict: 'crew_id,cert_name' },
@@ -260,6 +266,9 @@ function UploadContent() {
           cert_name: certName,
           issue_date: finalData.issueDate,
           expiry_date: expiryDate,
+          cert_number: finalData.certNumber || null,
+          place_of_issue: finalData.placeOfIssue || null,
+          issue_authority: finalData.issueAuthority || null,
           file_url: publicData.publicUrl,
           passport_cv_data: isPassportCertificate(certName) ? normalizedPassportData : null,
         },

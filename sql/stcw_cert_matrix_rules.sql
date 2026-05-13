@@ -104,6 +104,7 @@ insert into public.cert_rules (trigger_cert, required_cert)
 select trigger_cert, required_cert
 from (
   values
+    ('Advanced Training in Fire Fighting', 'Advanced Training in Fire Fighting ( COP )'),
     ('Basic Safety Training ( 4 Basic )', 'Basic Safety Training ( 4 Basic COP )'),
     ('Medical First Aid', 'Medical First Aid ( COP )'),
     ('Proficiency in Survival Craft and Rescue Boats other than Fast Rescue Boats', 'Proficiency in Survival Craft and Rescue Boats other than Fast Rescue Boats ( COP )')

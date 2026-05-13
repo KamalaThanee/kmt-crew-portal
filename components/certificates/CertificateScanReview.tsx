@@ -8,6 +8,9 @@ import { resolveExpiryDate } from '@/lib/certificates'
 type FinalCertData = {
   issueDate: string
   expiryDate: string
+  certNumber: string
+  placeOfIssue: string
+  issueAuthority: string
 }
 
 type PassportCvData = {
@@ -67,6 +70,23 @@ export function CertificateScanReview({
           label="Expiry Date"
           value={finalData.expiryDate}
           onChange={(value) => onFinalDataChange((prev) => ({ ...prev, expiryDate: value }))}
+        />
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <PassportCvInput
+          label="Certificate No."
+          value={finalData.certNumber || ''}
+          onChange={(value) => onFinalDataChange((prev) => ({ ...prev, certNumber: value }))}
+        />
+        <PassportCvInput
+          label="Place of Issue"
+          value={finalData.placeOfIssue || ''}
+          onChange={(value) => onFinalDataChange((prev) => ({ ...prev, placeOfIssue: value }))}
+        />
+        <PassportCvInput
+          label="Issue Authority"
+          value={finalData.issueAuthority || ''}
+          onChange={(value) => onFinalDataChange((prev) => ({ ...prev, issueAuthority: value }))}
         />
       </div>
 
