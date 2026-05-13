@@ -60,6 +60,11 @@ type CrewCert = {
   cv_capacity?: string | null
 }
 
+type CvTrainingProficiencyPair = {
+  training?: CrewCert
+  proficiency?: CrewCert
+}
+
 type VaccinationRow = {
   id: string
   crew_id: string
@@ -798,7 +803,7 @@ function buildCvCertTables(rows: CrewCert[]) {
   const proficiency = sortCvCerts(cvRows.filter((cert) => getCvCertSection(cert) === 'Certificate of Proficiency'))
   const medical = sortCvCerts(cvRows.filter((cert) => getCvCertSection(cert) === 'Medical'))
   const remainingProficiency = [...proficiency]
-  const paired = training.map((trainingCert) => {
+  const paired: CvTrainingProficiencyPair[] = training.map((trainingCert) => {
     const explicitIndex = remainingProficiency.findIndex((cert) => cert.cv_row_no && cert.cv_row_no === trainingCert.cv_row_no)
     const group = getStcwGroup(trainingCert)
     const groupIndex = group === 'other' ? -1 : remainingProficiency.findIndex((cert) => getStcwGroup(cert) === group)
