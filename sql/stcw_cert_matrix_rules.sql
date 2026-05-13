@@ -11,12 +11,11 @@ with all_positions as (
   from public.crews
   where nullif(trim(position), '') is not null
 )
-insert into public.cert_matrix (position, cert_name, requirement_type, category)
+insert into public.cert_matrix (position, cert_name, requirement_type)
 select
   position,
   'Basic Safety Training ( 4 Basic )',
-  'P',
-  'STCW'
+  'P'
 from all_positions
 where not exists (
   select 1
@@ -27,8 +26,7 @@ where not exists (
 
 -- If a row already exists for Basic Safety, make it mandatory.
 update public.cert_matrix
-set requirement_type = 'P',
-    category = coalesce(nullif(category, ''), 'STCW')
+set requirement_type = 'P'
 where regexp_replace(lower(cert_name), '[^a-z0-9]', '', 'g') = regexp_replace(lower('Basic Safety Training ( 4 Basic )'), '[^a-z0-9]', '', 'g');
 
 -- 2) Medical First Aid is optional (O) for selected operational positions.
@@ -41,12 +39,11 @@ with target_positions(position) as (
     ('Chief Engineer'),
     ('Second Engineer')
 )
-insert into public.cert_matrix (position, cert_name, requirement_type, category)
+insert into public.cert_matrix (position, cert_name, requirement_type)
 select
   position,
   'Medical First Aid',
-  'O',
-  'STCW'
+  'O'
 from target_positions
 where not exists (
   select 1
@@ -56,8 +53,7 @@ where not exists (
 );
 
 update public.cert_matrix
-set requirement_type = 'O',
-    category = coalesce(nullif(category, ''), 'STCW')
+set requirement_type = 'O'
 where regexp_replace(lower(cert_name), '[^a-z0-9]', '', 'g') = regexp_replace(lower('Medical First Aid'), '[^a-z0-9]', '', 'g')
   and regexp_replace(lower(position), '[^a-z0-9]', '', 'g') in (
     'bargemaster',
@@ -78,12 +74,11 @@ with target_positions(position) as (
     ('Chief Engineer'),
     ('Second Engineer')
 )
-insert into public.cert_matrix (position, cert_name, requirement_type, category)
+insert into public.cert_matrix (position, cert_name, requirement_type)
 select
   position,
   'Proficiency in Survival Craft and Rescue Boats other than Fast Rescue Boats',
-  'O',
-  'STCW'
+  'O'
 from target_positions
 where not exists (
   select 1
@@ -93,8 +88,7 @@ where not exists (
 );
 
 update public.cert_matrix
-set requirement_type = 'O',
-    category = coalesce(nullif(category, ''), 'STCW')
+set requirement_type = 'O'
 where regexp_replace(lower(cert_name), '[^a-z0-9]', '', 'g') = regexp_replace(lower('Proficiency in Survival Craft and Rescue Boats other than Fast Rescue Boats'), '[^a-z0-9]', '', 'g')
   and regexp_replace(lower(position), '[^a-z0-9]', '', 'g') in (
     'bargemaster',
