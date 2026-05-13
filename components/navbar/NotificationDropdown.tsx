@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, CheckCircle2, FileBadge, Ruler, ShipWheel, XCircle } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Ruler, XCircle } from 'lucide-react'
 import type { AdminActionItem, CrewActionItem, NavbarNotificationData } from '@/hooks/useNavbarNotifications'
 import { NotificationLinkItem } from '@/components/navbar/NotificationLinkItem'
 
@@ -13,8 +13,9 @@ type NotificationDropdownProps = {
 export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSizeModal }: NotificationDropdownProps) {
   const totalPersonalAdminUpdates = (notifData.personalUpdates || []).length
   const hasNoAlerts =
-    notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) + (notifData.shipCertAlertCount || 0) + (notifData.ppeSizeAlertCount || 0) === 0 &&
-    (notifData.updates || []).length === 0
+    notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.ppeSizeAlertCount || 0) === 0 &&
+    (notifData.updates || []).length === 0 &&
+    totalPersonalAdminUpdates === 0
 
   return (
     <div className="absolute right-0 top-12 w-80 bg-zinc-900 border border-white/10 rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 z-[110]">
@@ -88,8 +89,6 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
             )}
 
             <PpeSizeAlerts items={notifData.ppeSizeActions || []} className="px-1 pt-3" onClose={onClose} onOpenModal={onOpenPpeSizeModal} />
-            <CertificateAlerts items={notifData.personalCertActions || []} className="px-1 pt-3" onClose={onClose} />
-            <ShipCertificateAlerts items={notifData.shipCertActions || []} className="px-1 pt-3" onClose={onClose} />
           </>
         ) : (
           <>
@@ -110,8 +109,6 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
             })}
 
             <PpeSizeAlerts items={notifData.ppeSizeActions || []} className="pt-2" onClose={onClose} onOpenModal={onOpenPpeSizeModal} />
-            <CertificateAlerts items={notifData.personalCertActions || []} className="pt-2" onClose={onClose} />
-            <ShipCertificateAlerts items={notifData.shipCertActions || []} className="pt-2" onClose={onClose} />
 
             {notifData.approvedCount > 0 && <ReadyToReceiveLink count={notifData.approvedCount} onClose={onClose} />}
           </>
@@ -166,72 +163,6 @@ function PpeSizeAlerts({
             </div>
             <ArrowRight size={14} className="shrink-0 text-zinc-600 group-hover:text-orange-400" />
           </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function ShipCertificateAlerts({
-  items,
-  className,
-  onClose,
-}: {
-  items: CrewActionItem[]
-  className: string
-  onClose: () => void
-}) {
-  if (items.length === 0) return null
-
-  return (
-    <div className={className}>
-      <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-orange-300">
-        Ship Certificates
-      </p>
-      <div className="space-y-2">
-        {items.map((item: CrewActionItem) => (
-          <NotificationLinkItem
-            key={item.id}
-            href={item.href || '/admin/ship-certificates'}
-            onClick={onClose}
-            title={item.title}
-            description={item.description}
-            icon={<ShipWheel size={16} />}
-            tone="amber"
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function CertificateAlerts({
-  items,
-  className,
-  onClose,
-}: {
-  items: CrewActionItem[]
-  className: string
-  onClose: () => void
-}) {
-  if (items.length === 0) return null
-
-  return (
-    <div className={className}>
-      <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-sky-300">
-        My Certificates
-      </p>
-      <div className="space-y-2">
-        {items.map((item: CrewActionItem) => (
-          <NotificationLinkItem
-            key={item.id}
-            href={item.href || '/certificates?tab=personal'}
-            onClick={onClose}
-            title={item.title}
-            description={item.description}
-            icon={<FileBadge size={16} />}
-            tone="sky"
-          />
         ))}
       </div>
     </div>

@@ -32,7 +32,7 @@ export default function Navbar() {
   const [oneSignalStatus, setOneSignalStatus] = useState<Record<string, string>>({});
   const [showPushNudge, setShowPushNudge] = useState(false);
   const [showPpeSizeModal, setShowPpeSizeModal] = useState(false);
-  const [theme, setTheme] = useState<KmtTheme>('dark');
+  const [theme, setTheme] = useState<KmtTheme>('light');
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);

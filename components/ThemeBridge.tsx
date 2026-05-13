@@ -7,8 +7,8 @@ export type KmtTheme = "dark" | "light";
 export const KMT_THEME_KEY = "kmt_theme";
 
 export function getStoredTheme(): KmtTheme {
-  if (typeof window === "undefined") return "dark";
-  return window.localStorage.getItem(KMT_THEME_KEY) === "light" ? "light" : "dark";
+  if (typeof window === "undefined") return "light";
+  return window.localStorage.getItem(KMT_THEME_KEY) === "dark" ? "dark" : "light";
 }
 
 export function applyTheme(theme: KmtTheme) {
