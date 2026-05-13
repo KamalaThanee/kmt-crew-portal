@@ -15,7 +15,8 @@ alter table public.crew_certs
   add column if not exists place_of_issue text,
   add column if not exists issue_authority text,
   add column if not exists cv_section text,
-  add column if not exists cv_row_no integer;
+  add column if not exists cv_row_no integer,
+  add column if not exists cv_capacity text;
 
 create table if not exists public.cv_vessel_master (
   id uuid primary key default gen_random_uuid(),

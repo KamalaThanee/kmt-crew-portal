@@ -57,6 +57,7 @@ type CrewCert = {
   issue_authority?: string | null
   cv_section?: string | null
   cv_row_no?: number | null
+  cv_capacity?: string | null
 }
 
 type VaccinationRow = {
@@ -240,7 +241,7 @@ export default function CvPage() {
         .order('sign_off_date', { ascending: false, nullsFirst: false }),
       supabase
         .from('crew_certs')
-        .select('id, cert_name, issue_date, expiry_date, file_url, cert_number, place_of_issue, issue_authority, cv_section, cv_row_no')
+        .select('id, cert_name, issue_date, expiry_date, file_url, cert_number, place_of_issue, issue_authority, cv_section, cv_row_no, cv_capacity')
         .eq('crew_id', current.id),
       supabase
         .from('crew_cv_vaccinations')
@@ -386,6 +387,7 @@ export default function CvPage() {
       issue_authority: cert.issue_authority || null,
       cv_section: getCvCertSection(cert),
       cv_row_no: cert.cv_row_no || null,
+      cv_capacity: cert.cv_capacity || null,
       issue_date: cert.issue_date || null,
       expiry_date: cert.expiry_date || null,
       updated_at: new Date().toISOString(),
@@ -720,8 +722,9 @@ function buildPersonalDocs(rows: CrewCert[]) {
 function formatPersonalDoc(cert?: CrewCert) {
   if (!cert) return '-'
   const number = clean(cert.cert_number) || clean(cert.cert_name)
-  const expiry = cert.expiry_date ? `Exp ${formatDate(cert.expiry_date)}` : 'No expiry recorded'
-  return `${number} | ${expiry}`
+  const issued = cert.issue_date ? `Issued ${formatDate(cert.issue_date)}` : 'Issued -'
+  const expiry = cert.expiry_date ? `Exp ${formatDate(cert.expiry_date)}` : 'Exp -'
+  return `${number} | ${issued} | ${expiry}`
 }
 
 function isPersonalDocument(cert: CrewCert) {
@@ -742,20 +745,38 @@ function getCvCertSection(cert: CrewCert) {
 function getStcwPriority(cert: CrewCert) {
   const name = normalize(cert.cert_name)
   const stcwOrder = [
-    ['basicoffshoresafety', 'bosiet', 'foet'],
-    ['basictraining', 'personal survival', 'survival'],
-    ['fireprevention', 'firefighting', 'advancefire', 'advancedfire'],
-    ['elementaryfirstaid', 'medicalfirstaid', 'medicalcare'],
-    ['personalsafety', 'socialresponsibility', 'pssr'],
-    ['proficiencyinsurvivalcraft', 'survivalcraft', 'rescueboat'],
-    ['securityawareness', 'designatedsecurity', 'shipsecurity'],
-    ['gmdss', 'radiooperator'],
-    ['dangerousgoods', 'chemical'],
+    ['personal survival techniques', 'personalsurvivaltechniques', 'pst'],
+    ['fire prevention and fire fighting', 'firepreventionandfirefighting', 'fpff'],
+    ['elementary first aid', 'elementaryfirstaid', 'efa'],
+    ['personal safety and social responsibility', 'personalsafetyandsocialresponsibility', 'pssr'],
+    ['basic safety training', 'basicsafetytraining', 'basictraining'],
+    ['security awareness', 'securityawareness'],
+    ['designated security duties', 'designatedsecurityduties', 'dsd'],
+    ['proficiency in survival craft', 'survivalcraft', 'rescueboat', 'pscrb'],
+    ['advanced fire fighting', 'advancefirefighting', 'advancedfirefighting', 'aff'],
+    ['medical first aid', 'medicalfirstaid'],
+    ['medical care', 'medicalcare'],
+    ['gmdss', 'generaloperator', 'radiooperator'],
+    ['dangerous goods', 'dangerousgoods', 'hazmat', 'chemical'],
+    ['bosiet', 'foet', 'basicoffshoresafety'],
   ]
   const index = stcwOrder.findIndex((keywords) => keywords.some((keyword) => name.includes(normalize(keyword))))
   if (index >= 0) return index + 1
   if (name.includes('stcw')) return 50
   return 1000
+}
+
+function getStcwGroup(cert: CrewCert) {
+  const name = normalize(cert.cert_name)
+  if (name.includes('basicsafety') || name.includes('basictraining') || name.includes('personalsurvival') || name.includes('fireprevention') || name.includes('elementaryfirstaid') || name.includes('personalsafety') || name.includes('pssr')) return 'basic-safety'
+  if (name.includes('survivalcraft') || name.includes('rescueboat') || name.includes('pscrb')) return 'survival-craft'
+  if (name.includes('advancefire') || name.includes('advancedfire')) return 'advanced-fire'
+  if (name.includes('medicalfirstaid')) return 'medical-first-aid'
+  if (name.includes('medicalcare')) return 'medical-care'
+  if (name.includes('gmdss') || name.includes('radiooperator')) return 'gmdss'
+  if (name.includes('securityawareness') || name.includes('designatedsecurity') || name.includes('shipsecurity')) return 'security'
+  if (name.includes('dangerousgoods') || name.includes('hazmat') || name.includes('chemical')) return 'dangerous-goods'
+  return 'other'
 }
 
 function sortCvCerts(rows: CrewCert[]) {
@@ -776,10 +797,16 @@ function buildCvCertTables(rows: CrewCert[]) {
   const training = sortCvCerts(cvRows.filter((cert) => getCvCertSection(cert) === 'Certificate of Training'))
   const proficiency = sortCvCerts(cvRows.filter((cert) => getCvCertSection(cert) === 'Certificate of Proficiency'))
   const medical = sortCvCerts(cvRows.filter((cert) => getCvCertSection(cert) === 'Medical'))
-  const paired = Array.from({ length: Math.max(training.length, proficiency.length) }, (_, index) => ({
-    training: training[index],
-    proficiency: proficiency[index],
-  }))
+  const remainingProficiency = [...proficiency]
+  const paired = training.map((trainingCert) => {
+    const explicitIndex = remainingProficiency.findIndex((cert) => cert.cv_row_no && cert.cv_row_no === trainingCert.cv_row_no)
+    const group = getStcwGroup(trainingCert)
+    const groupIndex = group === 'other' ? -1 : remainingProficiency.findIndex((cert) => getStcwGroup(cert) === group)
+    const index = explicitIndex >= 0 ? explicitIndex : groupIndex
+    const matched = index >= 0 ? remainingProficiency.splice(index, 1)[0] : undefined
+    return { training: trainingCert, proficiency: matched }
+  })
+  remainingProficiency.forEach((cert) => paired.push({ training: undefined, proficiency: cert }))
   return { competency, training, proficiency, paired, medical }
 }
 
@@ -806,6 +833,7 @@ function CvCertificateTables({
         savingCertId={savingCertId}
         onChange={onChange}
         onSave={onSave}
+        competency
       />
 
       <div>
@@ -873,6 +901,7 @@ function CvTableTitle({ subtitle, title }: { subtitle?: string; title: string })
 
 function CvSimpleCertTable({
   medical,
+  competency,
   onChange,
   onSave,
   rows,
@@ -887,6 +916,7 @@ function CvSimpleCertTable({
   onChange: (cert: CrewCert) => void
   onSave: (certId: string) => void
   medical?: boolean
+  competency?: boolean
 }) {
   if (rows.length === 0) {
     return (
@@ -911,6 +941,7 @@ function CvSimpleCertTable({
               onChange={onChange}
               onSave={() => onSave(cert.id)}
               medical={medical}
+              competency={competency}
             />
           ))}
         </div>
@@ -918,10 +949,11 @@ function CvSimpleCertTable({
           <thead className="bg-orange-500/10 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">
             <tr>
               <th className="px-4 py-3">{medical ? 'Medical Check Up Program' : 'Certificate'}</th>
-              <th className="px-4 py-3">{medical ? 'Name of Hospital' : 'Number'}</th>
+              <th className="px-4 py-3">{competency ? 'Capacity' : medical ? 'Name of Hospital' : 'Number'}</th>
               <th className="px-4 py-3">Issued Date</th>
               <th className="px-4 py-3">Expiry Date</th>
-              <th className="px-4 py-3">{medical ? 'Certificate No.' : 'Place / Authority'}</th>
+              <th className="px-4 py-3">{competency ? 'Certificate No.' : medical ? 'Certificate No.' : 'Place / Authority'}</th>
+              {competency && <th className="px-4 py-3">Issue Authority</th>}
               <th className="px-4 py-3">Action</th>
             </tr>
           </thead>
@@ -932,13 +964,18 @@ function CvSimpleCertTable({
                   <EditableCertName cert={cert} section={section} onChange={onChange} />
                 </td>
                 <td className="px-4 py-3">
-                  <TextField label="" value={medical ? cert.place_of_issue || '' : cert.cert_number || ''} onChange={(value) => onChange(medical ? { ...cert, place_of_issue: value, cv_section: section } : { ...cert, cert_number: value, cv_section: section })} />
+                  <TextField label="" value={competency ? cert.cv_capacity || '' : medical ? cert.place_of_issue || '' : cert.cert_number || ''} onChange={(value) => onChange(competency ? { ...cert, cv_capacity: value, cv_section: section } : medical ? { ...cert, place_of_issue: value, cv_section: section } : { ...cert, cert_number: value, cv_section: section })} />
                 </td>
                 <td className="px-4 py-3"><DateField label="" value={toDateValue(cert.issue_date)} onChange={(value) => onChange({ ...cert, issue_date: value, cv_section: section })} /></td>
                 <td className="px-4 py-3"><DateField label="" value={toDateValue(cert.expiry_date)} onChange={(value) => onChange({ ...cert, expiry_date: value, cv_section: section })} /></td>
                 <td className="px-4 py-3">
-                  <TextField label="" value={medical ? cert.cert_number || '' : cert.place_of_issue || cert.issue_authority || ''} onChange={(value) => onChange(medical ? { ...cert, cert_number: value, cv_section: section } : { ...cert, place_of_issue: value, cv_section: section })} />
+                  <TextField label="" value={competency ? cert.cert_number || '' : medical ? cert.cert_number || '' : cert.place_of_issue || cert.issue_authority || ''} onChange={(value) => onChange(competency ? { ...cert, cert_number: value, cv_section: section } : medical ? { ...cert, cert_number: value, cv_section: section } : { ...cert, place_of_issue: value, cv_section: section })} />
                 </td>
+                {competency && (
+                  <td className="px-4 py-3">
+                    <TextField label="" value={cert.issue_authority || ''} onChange={(value) => onChange({ ...cert, issue_authority: value, cv_section: section })} />
+                  </td>
+                )}
                 <td className="px-4 py-3">
                   <CertActions cert={cert} saving={savingCertId === cert.id} onSave={() => onSave(cert.id)} />
                 </td>
@@ -1018,6 +1055,7 @@ function CvPairMobileCard({
 function CvCertMobileCard({
   cert,
   compactTitle,
+  competency,
   medical,
   onChange,
   onSave,
@@ -1027,6 +1065,7 @@ function CvCertMobileCard({
   cert: CrewCert
   section: string
   saving: boolean
+  competency?: boolean
   medical?: boolean
   compactTitle?: string
   onChange: (cert: CrewCert) => void
@@ -1037,10 +1076,11 @@ function CvCertMobileCard({
       {compactTitle && <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">{compactTitle}</p>}
       <EditableCertName cert={cert} section={section} onChange={onChange} />
       <div className="mt-3 grid gap-3">
-        <TextField label={medical ? 'Name of Hospital' : 'Number'} value={medical ? cert.place_of_issue || '' : cert.cert_number || ''} onChange={(value) => onChange(medical ? { ...cert, place_of_issue: value, cv_section: section } : { ...cert, cert_number: value, cv_section: section })} />
+        <TextField label={competency ? 'Capacity' : medical ? 'Name of Hospital' : 'Number'} value={competency ? cert.cv_capacity || '' : medical ? cert.place_of_issue || '' : cert.cert_number || ''} onChange={(value) => onChange(competency ? { ...cert, cv_capacity: value, cv_section: section } : medical ? { ...cert, place_of_issue: value, cv_section: section } : { ...cert, cert_number: value, cv_section: section })} />
         <DateField label="Issued Date" value={toDateValue(cert.issue_date)} onChange={(value) => onChange({ ...cert, issue_date: value, cv_section: section })} />
         <DateField label="Expiry Date" value={toDateValue(cert.expiry_date)} onChange={(value) => onChange({ ...cert, expiry_date: value, cv_section: section })} />
-        <TextField label={medical ? 'Certificate No.' : 'Place / Authority'} value={medical ? cert.cert_number || '' : cert.place_of_issue || cert.issue_authority || ''} onChange={(value) => onChange(medical ? { ...cert, cert_number: value, cv_section: section } : { ...cert, place_of_issue: value, cv_section: section })} />
+        <TextField label={competency ? 'Certificate No.' : medical ? 'Certificate No.' : 'Place / Authority'} value={competency ? cert.cert_number || '' : medical ? cert.cert_number || '' : cert.place_of_issue || cert.issue_authority || ''} onChange={(value) => onChange(competency ? { ...cert, cert_number: value, cv_section: section } : medical ? { ...cert, cert_number: value, cv_section: section } : { ...cert, place_of_issue: value, cv_section: section })} />
+        {competency && <TextField label="Issue Authority" value={cert.issue_authority || ''} onChange={(value) => onChange({ ...cert, issue_authority: value, cv_section: section })} />}
       </div>
       <div className="mt-3">
         <CertActions cert={cert} saving={saving} onSave={onSave} />
