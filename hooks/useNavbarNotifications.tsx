@@ -5,13 +5,9 @@ import { useRouter } from 'next/navigation'
 import { CheckCircle2, Clock, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
-import { canViewShipCertificates } from '@/lib/roles'
-import { getShipCertificateStatus, getShipSurveyStatus, type ShipCertificate } from '@/lib/shipCertificates'
 import { supabase } from '@/lib/supabase'
 import type { CurrentUser } from '@/lib/currentUser'
 import {
-  buildPersonalCertActions,
-  getCertTriggerStorageKey,
   getCrewNotificationStorageKey,
   playNotificationSound,
   showBrowserNotification,
@@ -50,7 +46,6 @@ export type NavbarNotificationData = {
 }
 
 type SeenCrewRequestStatuses = Record<string, string>
-type SeenCertTriggers = Record<string, boolean>
 type PpeSizeWindow = {
   id?: string
   title?: string | null
@@ -88,41 +83,6 @@ function buildPpeSizeActions(windowRow: PpeSizeWindow | null, user: CurrentUser 
   }]
 }
 
-function buildShipCertActions(rows: ShipCertificate[]): CrewActionItem[] {
-  const actions: CrewActionItem[] = []
-
-  for (const cert of rows) {
-    const status = getShipCertificateStatus(cert)
-    const survey = getShipSurveyStatus(cert)
-    const expiryAction = ['expired', 'due-30', 'due-60', 'due-90'].includes(status)
-    const surveyAction = ['survey-overdue', 'survey-due-30', 'survey-due-60', 'survey-due-90'].includes(survey)
-    if (!expiryAction && !surveyAction) continue
-
-    const code = cert.code ? `${cert.code} - ` : ''
-    const title = `${code}${cert.cert_name || 'Ship certificate'}`
-    const expiryText = expiryAction
-      ? status === 'expired'
-        ? 'certificate expired'
-        : `expiry ${status.replace('due-', 'due in ')} days`
-      : ''
-    const surveyText = surveyAction
-      ? survey === 'survey-overdue'
-        ? 'survey overdue'
-        : `survey ${survey.replace('survey-due-', 'due in ')} days`
-      : ''
-
-    actions.push({
-      id: `ship-cert-${cert.id || cert.master_id || title}`,
-      status: expiryAction ? status : survey,
-      title,
-      description: [expiryText, surveyText].filter(Boolean).join(' / '),
-      href: '/admin/ship-certificates',
-    })
-  }
-
-  return actions.slice(0, 8)
-}
-
 export function useNavbarNotifications({
   user,
   isAdmin,
@@ -145,14 +105,6 @@ export function useNavbarNotifications({
 
     const fetchNotifications = async () => {
       let currentTotal = 0
-      const fetchShipCertRows = async () => {
-        if (!canViewShipCertificates(user.position)) return []
-        const { data } = await supabase
-          .from('ship_certificates')
-          .select('id, master_id, code, cert_name, expiry_date, next_survey_date, has_survey')
-          .limit(200)
-        return (data || []) as ShipCertificate[]
-      }
       const fetchActivePpeSizeWindow = async () => {
         const { data, error } = await supabase
           .from('ppe_size_windows')
@@ -181,7 +133,7 @@ export function useNavbarNotifications({
           user,
         )
 
-        const [pendingRes, pendingRowsRes, certsRes, personalCountRes, personalUpdatesRes, shipCertRows, activePpeSizeWindow] = await Promise.all([
+        const [pendingRes, pendingRowsRes, personalCountRes, personalUpdatesRes, activePpeSizeWindow] = await Promise.all([
           supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
           supabase
             .from('ppe_requests')
@@ -189,10 +141,8 @@ export function useNavbarNotifications({
             .eq('status', 'pending')
             .order('created_at', { ascending: false })
             .limit(5),
-          supabase.from('crew_certs').select('id, crew_id, cert_name, expiry_date'),
           personalCountQuery,
           personalUpdatesQuery,
-          fetchShipCertRows(),
           fetchActivePpeSizeWindow(),
         ])
 
@@ -232,10 +182,6 @@ export function useNavbarNotifications({
         const personalApprovedCount = personalRows.filter((req: any) => req.status === 'approved').length
         const personalUpdateCount = personalCountRes.count || 0
 
-        const personalCertActions = buildPersonalCertActions(certsRes.data || [], user, { filterByCrewId: true })
-        const personalCertAlertCount = personalCertActions.length
-        const shipCertActions = buildShipCertActions(shipCertRows)
-        const shipCertAlertCount = shipCertActions.length
         const ppeSizeActions = buildPpeSizeActions(activePpeSizeWindow, user)
         const ppeSizeAlertCount = ppeSizeActions.length
 
@@ -245,18 +191,18 @@ export function useNavbarNotifications({
           expiredCerts: 0,
           ppeSizeActions,
           pendingActions,
-          shipCertActions,
+          shipCertActions: [],
           adminActions: [],
           personalUpdates,
-          personalCertActions,
+          personalCertActions: [],
           updates: [],
           approvedCount: 0,
           personalApprovedCount,
-          personalCertAlertCount,
+          personalCertAlertCount: 0,
           ppeSizeAlertCount,
-          shipCertAlertCount,
+          shipCertAlertCount: 0,
         })
-        currentTotal = pendingCount + personalUpdateCount + personalCertAlertCount + shipCertAlertCount + ppeSizeAlertCount
+        currentTotal = pendingCount + personalUpdateCount + ppeSizeAlertCount
       } else {
         const countQuery = await applyPpeRequestUserFilter(
           supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).in('status', ['approved', 'rejected']),
@@ -273,11 +219,9 @@ export function useNavbarNotifications({
           user,
         )
 
-        const [myCertsRes, { count }, { data: updates }, shipCertRows, activePpeSizeWindow] = await Promise.all([
-          supabase.from('crew_certs').select('id, cert_name, expiry_date').eq('crew_id', user.id),
+        const [{ count }, { data: updates }, activePpeSizeWindow] = await Promise.all([
           countQuery,
           updatesQuery,
-          fetchShipCertRows(),
           fetchActivePpeSizeWindow(),
         ])
         const rows = updates || []
@@ -302,10 +246,6 @@ export function useNavbarNotifications({
         })
 
         const approvedCount = rows.filter((req: any) => req.status === 'approved').length
-        const personalCertActions = buildPersonalCertActions(myCertsRes.data || [], user)
-        const personalCertAlertCount = personalCertActions.length
-        const shipCertActions = buildShipCertActions(shipCertRows)
-        const shipCertAlertCount = shipCertActions.length
         const ppeSizeActions = buildPpeSizeActions(activePpeSizeWindow, user)
         const ppeSizeAlertCount = ppeSizeActions.length
 
@@ -364,18 +304,18 @@ export function useNavbarNotifications({
           lowStock: 0,
           expiredCerts: 0,
           ppeSizeActions,
-          personalCertActions,
-          shipCertActions,
+          personalCertActions: [],
+          shipCertActions: [],
           updates: actionItems,
           approvedCount,
-          personalCertAlertCount,
+          personalCertAlertCount: 0,
           ppeSizeAlertCount,
           adminActions: [],
           personalUpdates: [],
           personalApprovedCount: 0,
-          shipCertAlertCount,
+          shipCertAlertCount: 0,
         })
-        currentTotal = (count || 0) + personalCertAlertCount + shipCertAlertCount + ppeSizeAlertCount
+        currentTotal = (count || 0) + ppeSizeAlertCount
       }
 
       const lastSeenTotal = parseInt(localStorage.getItem('kmt_notif_seen') || '0')
@@ -413,16 +353,12 @@ export function useNavbarNotifications({
 
       if (isOpening) {
         const total =
-          notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.personalCertAlertCount || 0) + (notifData.shipCertAlertCount || 0) + (notifData.ppeSizeAlertCount || 0)
+          notifData.pending +
+          notifData.lowStock +
+          notifData.expiredCerts +
+          (notifData.personalUpdates || []).length +
+          (notifData.ppeSizeAlertCount || 0)
         localStorage.setItem('kmt_notif_seen', total.toString())
-        if ((notifData.personalCertActions || []).length > 0) {
-          const storageKey = getCertTriggerStorageKey(user)
-          const seen = JSON.parse(localStorage.getItem(storageKey) || '{}') as SeenCertTriggers
-          for (const item of notifData.personalCertActions) {
-            seen[item.id] = true
-          }
-          localStorage.setItem(storageKey, JSON.stringify(seen))
-        }
         setUnreadCount(0)
       }
 
