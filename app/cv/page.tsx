@@ -28,6 +28,7 @@ type SeaServiceForm = Omit<VesselMaster, 'id'> & {
   crew_id: string
   vessel_master_id: string | null
   rank: string | null
+  charterer: string | null
   joining_date: string | null
   sign_off_date: string | null
   remarks: string | null
@@ -78,6 +79,7 @@ const emptySeaService: SeaServiceForm = {
   company: '',
   trading_area: '',
   rank: '',
+  charterer: 'PTTEP',
   joining_date: '',
   sign_off_date: '',
   remarks: '',
@@ -98,6 +100,30 @@ const emptyVessel: Omit<VesselMaster, 'id'> = {
 
 const clean = (value: unknown) => String(value || '').trim()
 const normalize = (value: unknown) => clean(value).toLowerCase().replace(/[^a-z0-9]/g, '')
+
+const rankOptions = [
+  'Barge Master',
+  'Chief Officer',
+  'Safety Officer',
+  'Radio Operator',
+  'Deck Foreman',
+  'AB',
+  'Rigger',
+  'Crane Operator',
+  'Chief Engineer',
+  'Second Engineer',
+  'Third Engineer',
+  'Oiler',
+  'Electrician',
+  'Cook',
+  'Steward',
+  'Messman',
+  'Master',
+  'Chief Mate',
+  'Second Mate',
+  'Able Seaman',
+  'Ordinary Seaman',
+]
 
 const toDateValue = (value?: string | null) => {
   if (!value) return ''
@@ -195,7 +221,8 @@ export default function CvPage() {
         .from('crew_cv_sea_services')
         .select('*')
         .eq('crew_id', current.id)
-        .order('joining_date', { ascending: false }),
+        .order('joining_date', { ascending: false, nullsFirst: false })
+        .order('sign_off_date', { ascending: false, nullsFirst: false }),
       supabase
         .from('crew_certs')
         .select('id, cert_name, issue_date, expiry_date, file_url')
@@ -415,8 +442,8 @@ export default function CvPage() {
               <div className="flex items-center gap-3">
                 <Ship className="text-orange-500" />
                 <div>
-                  <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Sea Service Entry</h2>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Select vessel, then fill rank and dates</p>
+                  <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Sailing Voyages Entry</h2>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">CV-ready voyage data: select vessel, then fill rank, charter, and dates</p>
                 </div>
               </div>
               <select value={selectedVesselId} onChange={(event) => applyVesselShortcut(event.target.value)} className="rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] px-4 py-3 text-xs font-black text-[var(--headline)]">
@@ -434,14 +461,11 @@ export default function CvPage() {
               <TextField label="IMO No." value={serviceForm.imo_no || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, imo_no: value }))} />
               <TextField label="GRT" value={serviceForm.grt || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, grt: value }))} />
               <TextField label="DWT" value={serviceForm.dwt || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, dwt: value }))} />
-              <TextField label="Engine Type" value={serviceForm.engine_type || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, engine_type: value }))} />
-              <TextField label="BHP" value={serviceForm.bhp || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, bhp: value }))} />
-              <TextField label="Company" value={serviceForm.company || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, company: value }))} />
-              <TextField label="Trading Area" value={serviceForm.trading_area || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, trading_area: value }))} />
-              <TextField label="Rank" value={serviceForm.rank || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, rank: value }))} />
-              <TextField label="Remarks" value={serviceForm.remarks || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, remarks: value }))} />
+              <RankField label="Rank" value={serviceForm.rank || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, rank: value }))} />
+              <SelectField label="Charter" value={serviceForm.charterer || 'PTTEP'} options={['PTTEP', 'Other']} onChange={(value) => setServiceForm((prev) => ({ ...prev, charterer: value }))} />
               <DateField label="Joining Date" value={serviceForm.joining_date || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, joining_date: value }))} />
               <DateField label="Sign Off Date" value={serviceForm.sign_off_date || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, sign_off_date: value }))} />
+              <TextField label="Remarks" value={serviceForm.remarks || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, remarks: value }))} />
             </div>
 
             <button onClick={saveSeaService} disabled={savingService || sqlMissing} className="mt-5 rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
@@ -591,13 +615,13 @@ function LinkedCertCard({ cert, label }: { cert?: CrewCert; label: string }) {
 function SeaServiceHistory({ onDelete, services }: { onDelete: (id: string) => void; services: SeaServiceRow[] }) {
   return (
     <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
-      <h2 className="mb-5 text-xl font-black italic uppercase text-[var(--headline)]">Sea Service History</h2>
+      <h2 className="mb-5 text-xl font-black italic uppercase text-[var(--headline)]">Sailing Voyages History</h2>
       <div className="space-y-3">
         {services.length === 0 && <div className="rounded-3xl bg-[var(--surface-strong)] p-6 text-[var(--subtle)]">No sea service records yet.</div>}
         {services.map((row) => {
           const days = dayDiffInclusive(row.joining_date, row.sign_off_date)
           return (
-            <div key={row.id} className="grid gap-4 rounded-3xl border border-orange-500/15 bg-[var(--surface-strong)] p-5 md:grid-cols-[1.4fr_1fr_1fr_auto] md:items-center">
+            <div key={row.id} className="grid gap-4 rounded-3xl border border-orange-500/15 bg-[var(--surface-strong)] p-5 md:grid-cols-[1.4fr_1fr_1fr_1fr_auto] md:items-center">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">{row.vessel_type || 'Vessel'}</p>
                 <h3 className="mt-1 text-lg font-black italic uppercase text-[var(--headline)]">{row.vessel_name}</h3>
@@ -606,6 +630,10 @@ function SeaServiceHistory({ onDelete, services }: { onDelete: (id: string) => v
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Rank</p>
                 <p className="text-sm font-black text-[var(--headline)]">{row.rank || '-'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Charter</p>
+                <p className="text-sm font-black text-[var(--headline)]">{row.charterer || '-'}</p>
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Period</p>
@@ -637,6 +665,7 @@ function buildSeaServicePayload(form: SeaServiceForm) {
     company: clean(form.company) || null,
     trading_area: clean(form.trading_area) || null,
     rank: clean(form.rank) || null,
+    charterer: clean(form.charterer) || null,
     joining_date: form.joining_date || null,
     sign_off_date: form.sign_off_date || null,
     remarks: clean(form.remarks) || null,
@@ -662,6 +691,43 @@ function TextField({ label, onChange, value }: { label: string; onChange: (value
         onChange={(event) => onChange(event.target.value)}
         className="w-full rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] px-4 py-3 text-sm font-black text-[var(--headline)] outline-none transition-all focus:border-orange-500"
       />
+    </label>
+  )
+}
+
+function RankField({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) {
+  return (
+    <label className="space-y-1.5">
+      <span className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">{label}</span>
+      <input
+        list="cv-rank-options"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Search rank..."
+        className="w-full rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] px-4 py-3 text-sm font-black text-[var(--headline)] outline-none transition-all focus:border-orange-500"
+      />
+      <datalist id="cv-rank-options">
+        {rankOptions.map((rank) => (
+          <option key={rank} value={rank} />
+        ))}
+      </datalist>
+    </label>
+  )
+}
+
+function SelectField({ label, onChange, options, value }: { label: string; onChange: (value: string) => void; options: string[]; value: string }) {
+  return (
+    <label className="space-y-1.5">
+      <span className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] px-4 py-3 text-sm font-black text-[var(--headline)] outline-none transition-all focus:border-orange-500"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
+      </select>
     </label>
   )
 }

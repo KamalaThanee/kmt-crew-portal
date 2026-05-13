@@ -44,12 +44,16 @@ create table if not exists public.crew_cv_sea_services (
   company text,
   trading_area text,
   rank text,
+  charterer text,
   joining_date date,
   sign_off_date date,
   remarks text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.crew_cv_sea_services
+  add column if not exists charterer text;
 
 create index if not exists idx_cv_vessel_master_name
 on public.cv_vessel_master (vessel_name);
