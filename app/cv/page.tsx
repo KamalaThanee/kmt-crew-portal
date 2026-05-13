@@ -699,7 +699,7 @@ function RankField({ label, onChange, value }: { label: string; onChange: (value
         <option value="">Select rank...</option>
         {value && !rankGroups.some((group) => group.options.includes(value)) && (
           <option value={value}>{value}</option>
-        ))}
+        )}
         {rankGroups.map((group) => (
           <optgroup key={group.label} label={group.label}>
             {group.options.map((rank) => (
