@@ -56,11 +56,24 @@ type CrewCert = {
   place_of_issue?: string | null
   issue_authority?: string | null
   cv_section?: string | null
+  cv_row_no?: number | null
+}
+
+type VaccinationRow = {
+  id: string
+  crew_id: string
+  vaccine_name: string
+  dose_detail: string | null
+  date_given: string | null
+  expiry_date: string | null
+  place_given: string | null
+  remarks: string | null
 }
 
 type CvTab = 'form' | 'service' | 'vessels'
 type ActiveUser = CurrentUser & { id: string }
 const defaultCvCompany = 'Truth Maritime Services'
+const cvCertSections = ['Certificate of Competency', 'Certificate of Training', 'Certificate of Proficiency', 'Medical'] as const
 
 const emptyProfile: CvProfile = {
   national_id_no: '',
@@ -101,6 +114,16 @@ const emptyVessel: Omit<VesselMaster, 'id'> = {
   bhp: '',
   company: '',
   trading_area: '',
+}
+
+const emptyVaccination: Omit<VaccinationRow, 'id'> = {
+  crew_id: '',
+  vaccine_name: '',
+  dose_detail: '',
+  date_given: '',
+  expiry_date: '',
+  place_given: '',
+  remarks: '',
 }
 
 const clean = (value: unknown) => String(value || '').trim()
@@ -158,11 +181,14 @@ export default function CvPage() {
   const [vessels, setVessels] = useState<VesselMaster[]>([])
   const [services, setServices] = useState<SeaServiceRow[]>([])
   const [certRows, setCertRows] = useState<CrewCert[]>([])
+  const [vaccinations, setVaccinations] = useState<VaccinationRow[]>([])
   const [serviceForm, setServiceForm] = useState<SeaServiceForm>(emptySeaService)
   const [vesselForm, setVesselForm] = useState<Omit<VesselMaster, 'id'>>(emptyVessel)
+  const [vaccinationForm, setVaccinationForm] = useState<Omit<VaccinationRow, 'id'>>(emptyVaccination)
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingService, setSavingService] = useState(false)
   const [savingCertId, setSavingCertId] = useState('')
+  const [savingVaccination, setSavingVaccination] = useState(false)
   const [selectedVesselId, setSelectedVesselId] = useState('')
   const [activeTab, setActiveTab] = useState<CvTab>('form')
 
@@ -183,6 +209,7 @@ export default function CvPage() {
       cv_company: clean((current as any).cv_company || defaultCvCompany),
     })
     setServiceForm((prev) => ({ ...prev, crew_id: currentId, rank: current.position || '' }))
+    setVaccinationForm((prev) => ({ ...prev, crew_id: currentId }))
     loadCv(activeUser)
   }, [router])
 
@@ -197,31 +224,12 @@ export default function CvPage() {
     }
   }, [services])
 
-  const linkedDocs = useMemo(() => {
-    const findCert = (keywords: string[]) =>
-      certRows.find((cert) => keywords.some((keyword) => normalize(cert.cert_name).includes(normalize(keyword))))
-
-    return [
-      { label: 'Passport', cert: findCert(['passport']) },
-      { label: 'Seaman Book', cert: findCert(['seaman book', 'seamans book', 'seaman']) },
-      { label: 'TOEIC', cert: findCert(['toeic']) },
-      { label: 'Medical Fitness', cert: findCert(['medical']) },
-    ]
-  }, [certRows])
-
-  const cvCertRows = useMemo(() => {
-    return [...certRows]
-      .sort((a, b) => {
-        const sectionOrder = getCvCertSectionOrder(a) - getCvCertSectionOrder(b)
-        if (sectionOrder !== 0) return sectionOrder
-        return String(a.cert_name || '').localeCompare(String(b.cert_name || ''))
-      })
-  }, [certRows])
+  const cvCertTables = useMemo(() => buildCvCertTables(certRows), [certRows])
 
   async function loadCv(current: ActiveUser) {
     setLoading(true)
     setSqlMissing(false)
-    const [vesselRes, serviceRes, certRes] = await Promise.all([
+    const [vesselRes, serviceRes, certRes, vaccinationRes] = await Promise.all([
       supabase.from('cv_vessel_master').select('*').order('vessel_name', { ascending: true }),
       supabase
         .from('crew_cv_sea_services')
@@ -231,11 +239,16 @@ export default function CvPage() {
         .order('sign_off_date', { ascending: false, nullsFirst: false }),
       supabase
         .from('crew_certs')
-        .select('id, cert_name, issue_date, expiry_date, file_url, cert_number, place_of_issue, issue_authority, cv_section')
+        .select('id, cert_name, issue_date, expiry_date, file_url, cert_number, place_of_issue, issue_authority, cv_section, cv_row_no')
         .eq('crew_id', current.id),
+      supabase
+        .from('crew_cv_vaccinations')
+        .select('*')
+        .eq('crew_id', current.id)
+        .order('date_given', { ascending: false, nullsFirst: false }),
     ])
 
-    if (vesselRes.error || serviceRes.error) {
+    if (vesselRes.error || serviceRes.error || vaccinationRes.error) {
       setSqlMissing(true)
       setLoading(false)
       return
@@ -244,6 +257,7 @@ export default function CvPage() {
     setVessels((vesselRes.data || []) as VesselMaster[])
     setServices((serviceRes.data || []) as SeaServiceRow[])
     if (!certRes.error) setCertRows((certRes.data || []) as CrewCert[])
+    setVaccinations((vaccinationRes.data || []) as VaccinationRow[])
     setLoading(false)
   }
 
@@ -370,6 +384,7 @@ export default function CvPage() {
       place_of_issue: cert.place_of_issue || null,
       issue_authority: cert.issue_authority || null,
       cv_section: getCvCertSection(cert),
+      cv_row_no: cert.cv_row_no || null,
       issue_date: cert.issue_date || null,
       expiry_date: cert.expiry_date || null,
       updated_at: new Date().toISOString(),
@@ -381,6 +396,45 @@ export default function CvPage() {
       return
     }
     toast.success('CV certificate detail saved')
+  }
+
+  async function saveVaccination() {
+    if (!user?.id) return
+    const activeUser = user as ActiveUser
+    if (!vaccinationForm.vaccine_name) {
+      toast.error('Please fill vaccination name')
+      return
+    }
+    setSavingVaccination(true)
+    const payload = {
+      crew_id: activeUser.id,
+      vaccine_name: clean(vaccinationForm.vaccine_name),
+      dose_detail: clean(vaccinationForm.dose_detail) || null,
+      date_given: vaccinationForm.date_given || null,
+      expiry_date: vaccinationForm.expiry_date || null,
+      place_given: clean(vaccinationForm.place_given) || null,
+      remarks: clean(vaccinationForm.remarks) || null,
+      updated_at: new Date().toISOString(),
+    }
+    const { error } = await supabase.from('crew_cv_vaccinations').insert(payload)
+    setSavingVaccination(false)
+    if (error) {
+      toast.error(`${error.message}. Run sql/crew_cv_foundation.sql first.`)
+      return
+    }
+    toast.success('Vaccination detail added')
+    setVaccinationForm({ ...emptyVaccination, crew_id: activeUser.id })
+    await loadCv(activeUser)
+  }
+
+  async function deleteVaccination(id: string) {
+    const { error } = await supabase.from('crew_cv_vaccinations').delete().eq('id', id)
+    if (error) {
+      toast.error(error.message)
+      return
+    }
+    setVaccinations((prev) => prev.filter((item) => item.id !== id))
+    toast.success('Vaccination detail deleted')
   }
 
   if (loading) {
@@ -442,37 +496,41 @@ export default function CvPage() {
             <div className="mb-5 flex items-center gap-3">
               <FileBadge className="text-orange-500" />
               <div>
-                <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Linked Certificate Data</h2>
-                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Check what the CV can pull from personal certificates.</p>
+                <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Certificates and Training</h2>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">CV form layout: competency, training/proficiency pairs, medical fitness, and vaccination details.</p>
               </div>
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {linkedDocs.map((item) => (
-                <LinkedCertCard key={item.label} label={item.label} cert={item.cert} />
-              ))}
-            </div>
+            <CvCertificateTables
+              tables={cvCertTables}
+              savingCertId={savingCertId}
+              onChange={(nextCert) => setCertRows((prev) => prev.map((item) => item.id === nextCert.id ? nextCert : item))}
+              onSave={(certId) => {
+                const currentCert = certRows.find((item) => item.id === certId)
+                if (currentCert) saveCertCvDetails(currentCert)
+              }}
+            />
           </section>
 
           <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
             <div className="mb-5 flex items-center gap-3">
               <FileBadge className="text-orange-500" />
               <div>
-                <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Certificates and Training</h2>
-                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Auto-filled from uploaded crew certificates. Edit missing CV fields once, then export CV later.</p>
+                <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Vaccination Details</h2>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Manual CV fields for vaccine, dose, date, place, and remarks.</p>
               </div>
             </div>
-            <div className="space-y-3">
-              {cvCertRows.length === 0 && <div className="rounded-3xl bg-[var(--surface-strong)] p-6 text-[var(--subtle)]">No uploaded certificates found for this crew yet.</div>}
-              {cvCertRows.map((cert) => (
-                <CvCertificateRow
-                  key={cert.id}
-                  cert={cert}
-                  saving={savingCertId === cert.id}
-                  onChange={(nextCert) => setCertRows((prev) => prev.map((item) => item.id === cert.id ? nextCert : item))}
-                  onSave={() => saveCertCvDetails(cert)}
-                />
-              ))}
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
+              <TextField label="Vaccine" value={vaccinationForm.vaccine_name} onChange={(value) => setVaccinationForm((prev) => ({ ...prev, vaccine_name: value }))} />
+              <TextField label="Dose / Detail" value={vaccinationForm.dose_detail || ''} onChange={(value) => setVaccinationForm((prev) => ({ ...prev, dose_detail: value }))} />
+              <DateField label="Date Given" value={vaccinationForm.date_given || ''} onChange={(value) => setVaccinationForm((prev) => ({ ...prev, date_given: value }))} />
+              <DateField label="Expiry Date" value={vaccinationForm.expiry_date || ''} onChange={(value) => setVaccinationForm((prev) => ({ ...prev, expiry_date: value }))} />
+              <TextField label="Place" value={vaccinationForm.place_given || ''} onChange={(value) => setVaccinationForm((prev) => ({ ...prev, place_given: value }))} />
+              <TextField label="Remarks" value={vaccinationForm.remarks || ''} onChange={(value) => setVaccinationForm((prev) => ({ ...prev, remarks: value }))} />
             </div>
+            <button onClick={saveVaccination} disabled={savingVaccination || sqlMissing} className="mt-5 rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+              <Plus size={15} className="mr-2 inline" /> {savingVaccination ? 'Saving...' : 'Add Vaccination'}
+            </button>
+            <VaccinationTable rows={vaccinations} onDelete={deleteVaccination} />
           </section>
         </>
       )}
@@ -643,76 +701,272 @@ function FormLine({ editable, label, value }: { editable?: ReactNode; label: str
   )
 }
 
-function LinkedCertCard({ cert, label }: { cert?: CrewCert; label: string }) {
-  return (
-    <div className={`rounded-3xl border p-5 ${cert ? 'border-emerald-500/20 bg-emerald-500/10' : 'border-amber-500/20 bg-amber-500/10'}`}>
-      <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">{label}</p>
-      <h3 className="mt-2 text-base font-black italic uppercase text-[var(--headline)]">{cert?.cert_name || 'Not linked yet'}</h3>
-      <p className="mt-2 text-xs normal-case text-[var(--subtle)]">
-        Issued {formatDate(cert?.issue_date)} | Expiry {formatDate(cert?.expiry_date)}
-      </p>
-      {cert?.file_url && (
-        <a href={cert.file_url} target="_blank" rel="noreferrer" className="mt-4 inline-flex rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
-          View file
-        </a>
-      )}
-    </div>
-  )
-}
-
 function getCvCertSection(cert: CrewCert) {
   const explicit = clean(cert.cv_section)
   if (explicit) return explicit
   const name = normalize(cert.cert_name)
-  if (name.includes('medical')) return 'Medical'
-  if (name.includes('coc') || name.includes('cop') || name.includes('proficiency') || name.includes('gmdss') || name.includes('endorsement')) return 'Certificate of Proficiency'
+  if (name.includes('medical') || name.includes('fitness')) return 'Medical'
+  if (name.includes('competency') || name.includes('coc') || name.includes('license') || name.includes('licence')) return 'Certificate of Competency'
+  if (name.includes('proficiency') || name.includes('cop') || name.includes('gmdss') || name.includes('endorsement')) return 'Certificate of Proficiency'
   return 'Certificate of Training'
 }
 
-function getCvCertSectionOrder(cert: CrewCert) {
-  const section = getCvCertSection(cert)
-  if (section === 'Certificate of Training') return 1
-  if (section === 'Certificate of Proficiency') return 2
-  if (section === 'Medical') return 3
-  return 4
+function sortCvCerts(rows: CrewCert[]) {
+  return [...rows].sort((a, b) => {
+    const rowA = Number(a.cv_row_no || 9999)
+    const rowB = Number(b.cv_row_no || 9999)
+    if (rowA !== rowB) return rowA - rowB
+    return String(a.cert_name || '').localeCompare(String(b.cert_name || ''))
+  })
 }
 
-function CvCertificateRow({
+function buildCvCertTables(rows: CrewCert[]) {
+  const competency = sortCvCerts(rows.filter((cert) => getCvCertSection(cert) === 'Certificate of Competency'))
+  const training = sortCvCerts(rows.filter((cert) => getCvCertSection(cert) === 'Certificate of Training'))
+  const proficiency = sortCvCerts(rows.filter((cert) => getCvCertSection(cert) === 'Certificate of Proficiency'))
+  const medical = sortCvCerts(rows.filter((cert) => getCvCertSection(cert) === 'Medical'))
+  const paired = Array.from({ length: Math.max(training.length, proficiency.length) }, (_, index) => ({
+    training: training[index],
+    proficiency: proficiency[index],
+  }))
+  return { competency, training, proficiency, paired, medical }
+}
+
+function CvCertificateTables({
+  onChange,
+  onSave,
+  savingCertId,
+  tables,
+}: {
+  tables: ReturnType<typeof buildCvCertTables>
+  savingCertId: string
+  onChange: (cert: CrewCert) => void
+  onSave: (certId: string) => void
+}) {
+  const hasAnyCert = tables.competency.length || tables.paired.length || tables.medical.length
+  if (!hasAnyCert) return <div className="rounded-3xl bg-[var(--surface-strong)] p-6 text-[var(--subtle)]">No uploaded certificates found for this crew yet.</div>
+
+  return (
+    <div className="space-y-6">
+      <CvSimpleCertTable
+        title="Certificate of Competency"
+        rows={tables.competency}
+        section="Certificate of Competency"
+        savingCertId={savingCertId}
+        onChange={onChange}
+        onSave={onSave}
+      />
+
+      <div>
+        <CvTableTitle title="Certificates of Training and Certificate of Proficiency" subtitle="Training certificates can sit on the same row as the related STCW proficiency certificate." />
+        <div className="overflow-x-auto rounded-3xl border border-orange-500/20">
+          <table className="min-w-[1080px] w-full text-left text-xs">
+            <thead className="bg-orange-500/10 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">
+              <tr>
+                <th className="px-4 py-3">Training Certificate</th>
+                <th className="px-4 py-3">Number</th>
+                <th className="px-4 py-3">Issued Date</th>
+                <th className="px-4 py-3">Expiry Date</th>
+                <th className="px-4 py-3">Place of Issue</th>
+                <th className="px-4 py-3">Proficiency Certificate</th>
+                <th className="px-4 py-3">Number</th>
+                <th className="px-4 py-3">Issued Date</th>
+                <th className="px-4 py-3">Expiry Date</th>
+                <th className="px-4 py-3">Issue Authority</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tables.paired.map((row, index) => (
+                <tr key={`${row.training?.id || 'training'}-${row.proficiency?.id || 'proficiency'}-${index}`} className="border-t border-orange-500/10 align-top">
+                  <CvTrainingPairCells cert={row.training} section="Certificate of Training" saving={row.training ? savingCertId === row.training.id : false} onChange={onChange} onSave={onSave} />
+                  <CvTrainingPairCells cert={row.proficiency} section="Certificate of Proficiency" saving={row.proficiency ? savingCertId === row.proficiency.id : false} onChange={onChange} onSave={onSave} proficiency />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <CvSimpleCertTable
+        title="Medical Fitness Certificates / Details"
+        rows={tables.medical}
+        section="Medical"
+        savingCertId={savingCertId}
+        onChange={onChange}
+        onSave={onSave}
+        medical
+      />
+    </div>
+  )
+}
+
+function CvTableTitle({ subtitle, title }: { subtitle?: string; title: string }) {
+  return (
+    <div className="mb-3">
+      <h3 className="text-sm font-black uppercase tracking-widest text-[var(--accent-text)]">{title}</h3>
+      {subtitle && <p className="mt-1 text-xs normal-case text-[var(--subtle)]">{subtitle}</p>}
+    </div>
+  )
+}
+
+function CvSimpleCertTable({
+  medical,
+  onChange,
+  onSave,
+  rows,
+  savingCertId,
+  section,
+  title,
+}: {
+  title: string
+  section: string
+  rows: CrewCert[]
+  savingCertId: string
+  onChange: (cert: CrewCert) => void
+  onSave: (certId: string) => void
+  medical?: boolean
+}) {
+  if (rows.length === 0) {
+    return (
+      <div>
+        <CvTableTitle title={title} />
+        <div className="rounded-3xl bg-[var(--surface-strong)] p-5 text-xs font-black uppercase tracking-widest text-[var(--subtle)]">No records yet</div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <CvTableTitle title={title} />
+      <div className="overflow-x-auto rounded-3xl border border-orange-500/20">
+        <table className="min-w-[920px] w-full text-left text-xs">
+          <thead className="bg-orange-500/10 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">
+            <tr>
+              <th className="px-4 py-3">{medical ? 'Medical Check Up Program' : 'Certificate'}</th>
+              <th className="px-4 py-3">{medical ? 'Name of Hospital' : 'Number'}</th>
+              <th className="px-4 py-3">Issued Date</th>
+              <th className="px-4 py-3">Expiry Date</th>
+              <th className="px-4 py-3">{medical ? 'Certificate No.' : 'Place / Authority'}</th>
+              <th className="px-4 py-3">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((cert) => (
+              <tr key={cert.id} className="border-t border-orange-500/10 align-top">
+                <td className="px-4 py-3">
+                  <EditableCertName cert={cert} section={section} onChange={onChange} />
+                </td>
+                <td className="px-4 py-3">
+                  <TextField label="" value={medical ? cert.place_of_issue || '' : cert.cert_number || ''} onChange={(value) => onChange(medical ? { ...cert, place_of_issue: value, cv_section: section } : { ...cert, cert_number: value, cv_section: section })} />
+                </td>
+                <td className="px-4 py-3"><DateField label="" value={toDateValue(cert.issue_date)} onChange={(value) => onChange({ ...cert, issue_date: value, cv_section: section })} /></td>
+                <td className="px-4 py-3"><DateField label="" value={toDateValue(cert.expiry_date)} onChange={(value) => onChange({ ...cert, expiry_date: value, cv_section: section })} /></td>
+                <td className="px-4 py-3">
+                  <TextField label="" value={medical ? cert.cert_number || '' : cert.place_of_issue || cert.issue_authority || ''} onChange={(value) => onChange(medical ? { ...cert, cert_number: value, cv_section: section } : { ...cert, place_of_issue: value, cv_section: section })} />
+                </td>
+                <td className="px-4 py-3">
+                  <CertActions cert={cert} saving={savingCertId === cert.id} onSave={() => onSave(cert.id)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function CvTrainingPairCells({
   cert,
   onChange,
   onSave,
+  proficiency,
   saving,
+  section,
 }: {
-  cert: CrewCert
-  onChange: (cert: CrewCert) => void
-  onSave: () => void
+  cert?: CrewCert
+  section: string
   saving: boolean
+  proficiency?: boolean
+  onChange: (cert: CrewCert) => void
+  onSave: (certId: string) => void
 }) {
-  const section = getCvCertSection(cert)
+  if (!cert) return <td className="px-4 py-3 text-[var(--subtle)]" colSpan={5}>-</td>
   return (
-    <div className="rounded-3xl border border-orange-500/15 bg-[var(--surface-strong)] p-4">
-      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">{section}</p>
-          <h3 className="mt-1 text-sm font-black italic uppercase text-[var(--headline)]">{cert.cert_name}</h3>
+    <>
+      <td className="px-4 py-3"><EditableCertName cert={cert} section={section} onChange={onChange} /></td>
+      <td className="px-4 py-3"><TextField label="" value={cert.cert_number || ''} onChange={(value) => onChange({ ...cert, cert_number: value, cv_section: section })} /></td>
+      <td className="px-4 py-3"><DateField label="" value={toDateValue(cert.issue_date)} onChange={(value) => onChange({ ...cert, issue_date: value, cv_section: section })} /></td>
+      <td className="px-4 py-3"><DateField label="" value={toDateValue(cert.expiry_date)} onChange={(value) => onChange({ ...cert, expiry_date: value, cv_section: section })} /></td>
+      <td className="px-4 py-3">
+        <div className="flex flex-col gap-2">
+          <TextField label="" value={proficiency ? cert.issue_authority || '' : cert.place_of_issue || ''} onChange={(value) => onChange(proficiency ? { ...cert, issue_authority: value, cv_section: section } : { ...cert, place_of_issue: value, cv_section: section })} />
+          <CertActions cert={cert} saving={saving} onSave={() => onSave(cert.id)} />
         </div>
-        {cert.file_url && (
-          <a href={cert.file_url} target="_blank" rel="noreferrer" className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
-            View file
-          </a>
-        )}
+      </td>
+    </>
+  )
+}
+
+function EditableCertName({ cert, onChange, section }: { cert: CrewCert; section: string; onChange: (cert: CrewCert) => void }) {
+  return (
+    <div className="min-w-[190px]">
+      <p className="mb-2 text-sm font-black italic uppercase text-[var(--headline)]">{cert.cert_name}</p>
+      <div className="grid grid-cols-[80px_1fr] gap-2">
+        <TextField label="" value={cert.cv_row_no ? String(cert.cv_row_no) : ''} onChange={(value) => onChange({ ...cert, cv_row_no: value ? Number(value) : null, cv_section: section })} />
+        <SelectField label="" value={getCvCertSection(cert)} options={[...cvCertSections]} onChange={(value) => onChange({ ...cert, cv_section: value })} />
       </div>
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
-        <SelectField label="CV Section" value={section} options={['Certificate of Training', 'Certificate of Proficiency', 'Medical']} onChange={(value) => onChange({ ...cert, cv_section: value })} />
-        <TextField label="Number" value={cert.cert_number || ''} onChange={(value) => onChange({ ...cert, cert_number: value })} />
-        <DateField label="Issued Date" value={toDateValue(cert.issue_date)} onChange={(value) => onChange({ ...cert, issue_date: value })} />
-        <DateField label="Expiry Date" value={toDateValue(cert.expiry_date)} onChange={(value) => onChange({ ...cert, expiry_date: value })} />
-        <TextField label="Place of Issue" value={cert.place_of_issue || ''} onChange={(value) => onChange({ ...cert, place_of_issue: value })} />
-        <TextField label="Issue Authority" value={cert.issue_authority || ''} onChange={(value) => onChange({ ...cert, issue_authority: value })} />
-      </div>
-      <button onClick={onSave} disabled={saving} className="mt-4 rounded-2xl bg-orange-600 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
-        {saving ? 'Saving...' : 'Save CV Cert Detail'}
+    </div>
+  )
+}
+
+function CertActions({ cert, onSave, saving }: { cert: CrewCert; onSave: () => void; saving: boolean }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {cert.file_url && (
+        <a href={cert.file_url} target="_blank" rel="noreferrer" className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
+          File
+        </a>
+      )}
+      <button onClick={onSave} disabled={saving} className="rounded-2xl bg-orange-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+        {saving ? 'Saving...' : 'Save'}
       </button>
+    </div>
+  )
+}
+
+function VaccinationTable({ onDelete, rows }: { rows: VaccinationRow[]; onDelete: (id: string) => void }) {
+  if (rows.length === 0) return <div className="mt-5 rounded-3xl bg-[var(--surface-strong)] p-5 text-xs font-black uppercase tracking-widest text-[var(--subtle)]">No vaccination records yet</div>
+  return (
+    <div className="mt-5 overflow-x-auto rounded-3xl border border-orange-500/20">
+      <table className="min-w-[880px] w-full text-left text-xs">
+        <thead className="bg-orange-500/10 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">
+          <tr>
+            <th className="px-4 py-3">Vaccine</th>
+            <th className="px-4 py-3">Dose / Detail</th>
+            <th className="px-4 py-3">Date Given</th>
+            <th className="px-4 py-3">Expiry Date</th>
+            <th className="px-4 py-3">Place</th>
+            <th className="px-4 py-3">Remarks</th>
+            <th className="px-4 py-3">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id} className="border-t border-orange-500/10">
+              <td className="px-4 py-3 font-black text-[var(--headline)]">{row.vaccine_name}</td>
+              <td className="px-4 py-3 text-[var(--headline)]">{row.dose_detail || '-'}</td>
+              <td className="px-4 py-3 text-[var(--headline)]">{formatDate(row.date_given)}</td>
+              <td className="px-4 py-3 text-[var(--headline)]">{formatDate(row.expiry_date)}</td>
+              <td className="px-4 py-3 text-[var(--headline)]">{row.place_given || '-'}</td>
+              <td className="px-4 py-3 text-[var(--subtle)]">{row.remarks || '-'}</td>
+              <td className="px-4 py-3">
+                <button onClick={() => onDelete(row.id)} className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--danger-text)]">Delete</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
