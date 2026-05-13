@@ -52,6 +52,10 @@ type CrewCert = {
   issue_date: string | null
   expiry_date: string | null
   file_url: string | null
+  cert_number?: string | null
+  place_of_issue?: string | null
+  issue_authority?: string | null
+  cv_section?: string | null
 }
 
 type CvTab = 'form' | 'service' | 'vessels'
@@ -158,6 +162,7 @@ export default function CvPage() {
   const [vesselForm, setVesselForm] = useState<Omit<VesselMaster, 'id'>>(emptyVessel)
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingService, setSavingService] = useState(false)
+  const [savingCertId, setSavingCertId] = useState('')
   const [selectedVesselId, setSelectedVesselId] = useState('')
   const [activeTab, setActiveTab] = useState<CvTab>('form')
 
@@ -204,6 +209,15 @@ export default function CvPage() {
     ]
   }, [certRows])
 
+  const cvCertRows = useMemo(() => {
+    return [...certRows]
+      .sort((a, b) => {
+        const sectionOrder = getCvCertSectionOrder(a) - getCvCertSectionOrder(b)
+        if (sectionOrder !== 0) return sectionOrder
+        return String(a.cert_name || '').localeCompare(String(b.cert_name || ''))
+      })
+  }, [certRows])
+
   async function loadCv(current: ActiveUser) {
     setLoading(true)
     setSqlMissing(false)
@@ -217,7 +231,7 @@ export default function CvPage() {
         .order('sign_off_date', { ascending: false, nullsFirst: false }),
       supabase
         .from('crew_certs')
-        .select('id, cert_name, issue_date, expiry_date, file_url')
+        .select('id, cert_name, issue_date, expiry_date, file_url, cert_number, place_of_issue, issue_authority, cv_section')
         .eq('crew_id', current.id),
     ])
 
@@ -349,6 +363,26 @@ export default function CvPage() {
     toast.success('Vessel shortcut deleted')
   }
 
+  async function saveCertCvDetails(cert: CrewCert) {
+    setSavingCertId(cert.id)
+    const payload = {
+      cert_number: cert.cert_number || null,
+      place_of_issue: cert.place_of_issue || null,
+      issue_authority: cert.issue_authority || null,
+      cv_section: getCvCertSection(cert),
+      issue_date: cert.issue_date || null,
+      expiry_date: cert.expiry_date || null,
+      updated_at: new Date().toISOString(),
+    }
+    const { error } = await supabase.from('crew_certs').update(payload).eq('id', cert.id)
+    setSavingCertId('')
+    if (error) {
+      toast.error(`${error.message}. Run sql/crew_cv_foundation.sql first.`)
+      return
+    }
+    toast.success('CV certificate detail saved')
+  }
+
   if (loading) {
     return <PageShell><div className="animate-pulse text-[var(--accent-text)]">LOADING CV...</div></PageShell>
   }
@@ -415,6 +449,28 @@ export default function CvPage() {
             <div className="grid gap-3 md:grid-cols-2">
               {linkedDocs.map((item) => (
                 <LinkedCertCard key={item.label} label={item.label} cert={item.cert} />
+              ))}
+            </div>
+          </section>
+
+          <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
+            <div className="mb-5 flex items-center gap-3">
+              <FileBadge className="text-orange-500" />
+              <div>
+                <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Certificates and Training</h2>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Auto-filled from uploaded crew certificates. Edit missing CV fields once, then export CV later.</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {cvCertRows.length === 0 && <div className="rounded-3xl bg-[var(--surface-strong)] p-6 text-[var(--subtle)]">No uploaded certificates found for this crew yet.</div>}
+              {cvCertRows.map((cert) => (
+                <CvCertificateRow
+                  key={cert.id}
+                  cert={cert}
+                  saving={savingCertId === cert.id}
+                  onChange={(nextCert) => setCertRows((prev) => prev.map((item) => item.id === cert.id ? nextCert : item))}
+                  onSave={() => saveCertCvDetails(cert)}
+                />
               ))}
             </div>
           </section>
@@ -600,6 +656,63 @@ function LinkedCertCard({ cert, label }: { cert?: CrewCert; label: string }) {
           View file
         </a>
       )}
+    </div>
+  )
+}
+
+function getCvCertSection(cert: CrewCert) {
+  const explicit = clean(cert.cv_section)
+  if (explicit) return explicit
+  const name = normalize(cert.cert_name)
+  if (name.includes('medical')) return 'Medical'
+  if (name.includes('coc') || name.includes('cop') || name.includes('proficiency') || name.includes('gmdss') || name.includes('endorsement')) return 'Certificate of Proficiency'
+  return 'Certificate of Training'
+}
+
+function getCvCertSectionOrder(cert: CrewCert) {
+  const section = getCvCertSection(cert)
+  if (section === 'Certificate of Training') return 1
+  if (section === 'Certificate of Proficiency') return 2
+  if (section === 'Medical') return 3
+  return 4
+}
+
+function CvCertificateRow({
+  cert,
+  onChange,
+  onSave,
+  saving,
+}: {
+  cert: CrewCert
+  onChange: (cert: CrewCert) => void
+  onSave: () => void
+  saving: boolean
+}) {
+  const section = getCvCertSection(cert)
+  return (
+    <div className="rounded-3xl border border-orange-500/15 bg-[var(--surface-strong)] p-4">
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">{section}</p>
+          <h3 className="mt-1 text-sm font-black italic uppercase text-[var(--headline)]">{cert.cert_name}</h3>
+        </div>
+        {cert.file_url && (
+          <a href={cert.file_url} target="_blank" rel="noreferrer" className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
+            View file
+          </a>
+        )}
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
+        <SelectField label="CV Section" value={section} options={['Certificate of Training', 'Certificate of Proficiency', 'Medical']} onChange={(value) => onChange({ ...cert, cv_section: value })} />
+        <TextField label="Number" value={cert.cert_number || ''} onChange={(value) => onChange({ ...cert, cert_number: value })} />
+        <DateField label="Issued Date" value={toDateValue(cert.issue_date)} onChange={(value) => onChange({ ...cert, issue_date: value })} />
+        <DateField label="Expiry Date" value={toDateValue(cert.expiry_date)} onChange={(value) => onChange({ ...cert, expiry_date: value })} />
+        <TextField label="Place of Issue" value={cert.place_of_issue || ''} onChange={(value) => onChange({ ...cert, place_of_issue: value })} />
+        <TextField label="Issue Authority" value={cert.issue_authority || ''} onChange={(value) => onChange({ ...cert, issue_authority: value })} />
+      </div>
+      <button onClick={onSave} disabled={saving} className="mt-4 rounded-2xl bg-orange-600 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+        {saving ? 'Saving...' : 'Save CV Cert Detail'}
+      </button>
     </div>
   )
 }

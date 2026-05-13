@@ -10,6 +10,12 @@ alter table public.crews
   add column if not exists cv_last_updated_at timestamptz,
   add column if not exists passport_cv_updated_at timestamptz;
 
+alter table public.crew_certs
+  add column if not exists cert_number text,
+  add column if not exists place_of_issue text,
+  add column if not exists issue_authority text,
+  add column if not exists cv_section text;
+
 create table if not exists public.cv_vessel_master (
   id uuid primary key default gen_random_uuid(),
   vessel_name text not null,
