@@ -121,6 +121,7 @@ export default function CvPage() {
       router.replace('/login')
       return
     }
+    const currentId = current.id
     setUser(current)
     setProfile({
       national_id_no: clean((current as any).national_id_no),
@@ -129,7 +130,7 @@ export default function CvPage() {
       place_of_birth: clean((current as any).place_of_birth),
       cv_company: clean((current as any).cv_company || 'TMS'),
     })
-    setServiceForm((prev) => ({ ...prev, crew_id: current.id, rank: current.position || '' }))
+    setServiceForm((prev) => ({ ...prev, crew_id: currentId, rank: current.position || '' }))
     loadCv(current)
   }, [router])
 
