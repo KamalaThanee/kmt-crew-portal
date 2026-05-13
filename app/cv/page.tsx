@@ -224,6 +224,7 @@ export default function CvPage() {
     }
   }, [services])
 
+  const personalDocs = useMemo(() => buildPersonalDocs(certRows), [certRows])
   const cvCertTables = useMemo(() => buildCvCertTables(certRows), [certRows])
 
   async function loadCv(current: ActiveUser) {
@@ -483,6 +484,9 @@ export default function CvPage() {
               <FormLine label="Nationality" editable={<TextField label="" value={profile.nationality} onChange={(value) => setProfile((prev) => ({ ...prev, nationality: value }))} />} />
               <FormLine label="Date of Birth" editable={<DateField label="" value={profile.date_of_birth} onChange={(value) => setProfile((prev) => ({ ...prev, date_of_birth: value }))} />} />
               <FormLine label="Place of Birth" editable={<TextField label="" value={profile.place_of_birth} onChange={(value) => setProfile((prev) => ({ ...prev, place_of_birth: value }))} />} />
+              <FormLine label="Passport" value={formatPersonalDoc(personalDocs.passport)} />
+              <FormLine label="Seaman Book" value={formatPersonalDoc(personalDocs.seamanBook)} />
+              <FormLine label="TOEIC" value={formatPersonalDoc(personalDocs.toeic)} />
               <FormLine label="Safety Shoe" value={clean((user as any)?.boot_size) || '-'} />
               <FormLine label="Boiler Suit" value={`${clean((user as any)?.suit_color) || '-'} | ${clean((user as any)?.suit_size) || '-'}`} />
               <FormLine label="Company" editable={<TextField label="" value={profile.cv_company} onChange={(value) => setProfile((prev) => ({ ...prev, cv_company: value }))} />} />
@@ -701,14 +705,57 @@ function FormLine({ editable, label, value }: { editable?: ReactNode; label: str
   )
 }
 
+function findCertByKeywords(rows: CrewCert[], keywords: string[]) {
+  return rows.find((cert) => keywords.some((keyword) => normalize(cert.cert_name).includes(normalize(keyword))))
+}
+
+function buildPersonalDocs(rows: CrewCert[]) {
+  return {
+    passport: findCertByKeywords(rows, ['passport']),
+    seamanBook: findCertByKeywords(rows, ['seaman book', 'seamans book', 'seaman book', 'seaman']),
+    toeic: findCertByKeywords(rows, ['toeic']),
+  }
+}
+
+function formatPersonalDoc(cert?: CrewCert) {
+  if (!cert) return '-'
+  const number = clean(cert.cert_number) || clean(cert.cert_name)
+  const expiry = cert.expiry_date ? `Exp ${formatDate(cert.expiry_date)}` : 'No expiry recorded'
+  return `${number} | ${expiry}`
+}
+
+function isPersonalDocument(cert: CrewCert) {
+  const name = normalize(cert.cert_name)
+  return name.includes('passport') || name.includes('seaman') || name.includes('toeic')
+}
+
 function getCvCertSection(cert: CrewCert) {
   const explicit = clean(cert.cv_section)
   if (explicit) return explicit
   const name = normalize(cert.cert_name)
   if (name.includes('medical') || name.includes('fitness')) return 'Medical'
-  if (name.includes('competency') || name.includes('coc') || name.includes('license') || name.includes('licence')) return 'Certificate of Competency'
+  if (name.includes('competency') || name.includes('coc') || name.includes('certificateofcompetency') || name.includes('license') || name.includes('licence')) return 'Certificate of Competency'
   if (name.includes('proficiency') || name.includes('cop') || name.includes('gmdss') || name.includes('endorsement')) return 'Certificate of Proficiency'
   return 'Certificate of Training'
+}
+
+function getStcwPriority(cert: CrewCert) {
+  const name = normalize(cert.cert_name)
+  const stcwOrder = [
+    ['basicoffshoresafety', 'bosiet', 'foet'],
+    ['basictraining', 'personal survival', 'survival'],
+    ['fireprevention', 'firefighting', 'advancefire', 'advancedfire'],
+    ['elementaryfirstaid', 'medicalfirstaid', 'medicalcare'],
+    ['personalsafety', 'socialresponsibility', 'pssr'],
+    ['proficiencyinsurvivalcraft', 'survivalcraft', 'rescueboat'],
+    ['securityawareness', 'designatedsecurity', 'shipsecurity'],
+    ['gmdss', 'radiooperator'],
+    ['dangerousgoods', 'chemical'],
+  ]
+  const index = stcwOrder.findIndex((keywords) => keywords.some((keyword) => name.includes(normalize(keyword))))
+  if (index >= 0) return index + 1
+  if (name.includes('stcw')) return 50
+  return 1000
 }
 
 function sortCvCerts(rows: CrewCert[]) {
@@ -716,15 +763,19 @@ function sortCvCerts(rows: CrewCert[]) {
     const rowA = Number(a.cv_row_no || 9999)
     const rowB = Number(b.cv_row_no || 9999)
     if (rowA !== rowB) return rowA - rowB
+    const stcwA = getStcwPriority(a)
+    const stcwB = getStcwPriority(b)
+    if (stcwA !== stcwB) return stcwA - stcwB
     return String(a.cert_name || '').localeCompare(String(b.cert_name || ''))
   })
 }
 
 function buildCvCertTables(rows: CrewCert[]) {
-  const competency = sortCvCerts(rows.filter((cert) => getCvCertSection(cert) === 'Certificate of Competency'))
-  const training = sortCvCerts(rows.filter((cert) => getCvCertSection(cert) === 'Certificate of Training'))
-  const proficiency = sortCvCerts(rows.filter((cert) => getCvCertSection(cert) === 'Certificate of Proficiency'))
-  const medical = sortCvCerts(rows.filter((cert) => getCvCertSection(cert) === 'Medical'))
+  const cvRows = rows.filter((cert) => !isPersonalDocument(cert))
+  const competency = sortCvCerts(cvRows.filter((cert) => getCvCertSection(cert) === 'Certificate of Competency'))
+  const training = sortCvCerts(cvRows.filter((cert) => getCvCertSection(cert) === 'Certificate of Training'))
+  const proficiency = sortCvCerts(cvRows.filter((cert) => getCvCertSection(cert) === 'Certificate of Proficiency'))
+  const medical = sortCvCerts(cvRows.filter((cert) => getCvCertSection(cert) === 'Medical'))
   const paired = Array.from({ length: Math.max(training.length, proficiency.length) }, (_, index) => ({
     training: training[index],
     proficiency: proficiency[index],
@@ -759,7 +810,18 @@ function CvCertificateTables({
 
       <div>
         <CvTableTitle title="Certificates of Training and Certificate of Proficiency" subtitle="Training certificates can sit on the same row as the related STCW proficiency certificate." />
-        <div className="overflow-x-auto rounded-3xl border border-orange-500/20">
+        <div className="space-y-3 md:hidden">
+          {tables.paired.map((row, index) => (
+            <CvPairMobileCard
+              key={`${row.training?.id || 'training'}-${row.proficiency?.id || 'proficiency'}-${index}-mobile`}
+              row={row}
+              savingCertId={savingCertId}
+              onChange={onChange}
+              onSave={onSave}
+            />
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto rounded-3xl border border-orange-500/20 md:block">
           <table className="min-w-[1080px] w-full text-left text-xs">
             <thead className="bg-orange-500/10 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">
               <tr>
@@ -839,7 +901,20 @@ function CvSimpleCertTable({
     <div>
       <CvTableTitle title={title} />
       <div className="overflow-x-auto rounded-3xl border border-orange-500/20">
-        <table className="min-w-[920px] w-full text-left text-xs">
+        <div className="space-y-3 p-3 md:hidden">
+          {rows.map((cert) => (
+            <CvCertMobileCard
+              key={`${cert.id}-mobile`}
+              cert={cert}
+              section={section}
+              saving={savingCertId === cert.id}
+              onChange={onChange}
+              onSave={() => onSave(cert.id)}
+              medical={medical}
+            />
+          ))}
+        </div>
+        <table className="hidden min-w-[920px] w-full text-left text-xs md:table">
           <thead className="bg-orange-500/10 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">
             <tr>
               <th className="px-4 py-3">{medical ? 'Medical Check Up Program' : 'Certificate'}</th>
@@ -905,6 +980,72 @@ function CvTrainingPairCells({
         </div>
       </td>
     </>
+  )
+}
+
+function CvPairMobileCard({
+  onChange,
+  onSave,
+  row,
+  savingCertId,
+}: {
+  row: { training?: CrewCert; proficiency?: CrewCert }
+  savingCertId: string
+  onChange: (cert: CrewCert) => void
+  onSave: (certId: string) => void
+}) {
+  const training = row.training
+  const proficiency = row.proficiency
+  return (
+    <div className="rounded-3xl border border-orange-500/20 bg-[var(--surface-strong)] p-4">
+      <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">Training / Proficiency Pair</p>
+      <div className="space-y-4">
+        {training ? (
+          <CvCertMobileCard cert={training} section="Certificate of Training" saving={savingCertId === training.id} onChange={onChange} onSave={() => onSave(training.id)} compactTitle="Certificate of Training" />
+        ) : (
+          <div className="rounded-2xl bg-[var(--surface)] p-4 text-xs font-black uppercase tracking-widest text-[var(--subtle)]">No training certificate in this row</div>
+        )}
+        {proficiency ? (
+          <CvCertMobileCard cert={proficiency} section="Certificate of Proficiency" saving={savingCertId === proficiency.id} onChange={onChange} onSave={() => onSave(proficiency.id)} compactTitle="Certificate of Proficiency" />
+        ) : (
+          <div className="rounded-2xl bg-[var(--surface)] p-4 text-xs font-black uppercase tracking-widest text-[var(--subtle)]">No proficiency certificate in this row</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CvCertMobileCard({
+  cert,
+  compactTitle,
+  medical,
+  onChange,
+  onSave,
+  saving,
+  section,
+}: {
+  cert: CrewCert
+  section: string
+  saving: boolean
+  medical?: boolean
+  compactTitle?: string
+  onChange: (cert: CrewCert) => void
+  onSave: () => void
+}) {
+  return (
+    <div className="rounded-2xl border border-orange-500/15 bg-[var(--surface)] p-4">
+      {compactTitle && <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">{compactTitle}</p>}
+      <EditableCertName cert={cert} section={section} onChange={onChange} />
+      <div className="mt-3 grid gap-3">
+        <TextField label={medical ? 'Name of Hospital' : 'Number'} value={medical ? cert.place_of_issue || '' : cert.cert_number || ''} onChange={(value) => onChange(medical ? { ...cert, place_of_issue: value, cv_section: section } : { ...cert, cert_number: value, cv_section: section })} />
+        <DateField label="Issued Date" value={toDateValue(cert.issue_date)} onChange={(value) => onChange({ ...cert, issue_date: value, cv_section: section })} />
+        <DateField label="Expiry Date" value={toDateValue(cert.expiry_date)} onChange={(value) => onChange({ ...cert, expiry_date: value, cv_section: section })} />
+        <TextField label={medical ? 'Certificate No.' : 'Place / Authority'} value={medical ? cert.cert_number || '' : cert.place_of_issue || cert.issue_authority || ''} onChange={(value) => onChange(medical ? { ...cert, cert_number: value, cv_section: section } : { ...cert, place_of_issue: value, cv_section: section })} />
+      </div>
+      <div className="mt-3">
+        <CertActions cert={cert} saving={saving} onSave={onSave} />
+      </div>
+    </div>
   )
 }
 
