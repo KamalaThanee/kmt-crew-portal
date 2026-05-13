@@ -58,11 +58,27 @@ type CrewCert = {
   cv_section?: string | null
   cv_row_no?: number | null
   cv_capacity?: string | null
+  master_cert_family?: string | null
+  master_cv_section?: string | null
+  master_stcw_group_key?: string | null
+  master_requires_proficiency?: boolean | null
+  master_required_proficiency_key?: string | null
+  master_cv_order?: number | null
 }
 
 type CvTrainingProficiencyPair = {
   training?: CrewCert
   proficiency?: CrewCert
+}
+
+type CertMasterCvRule = {
+  cert_name: string
+  cert_family?: string | null
+  cv_section?: string | null
+  stcw_group_key?: string | null
+  requires_proficiency?: boolean | null
+  required_proficiency_key?: string | null
+  cv_order?: number | null
 }
 
 type VaccinationRow = {
@@ -236,7 +252,7 @@ export default function CvPage() {
   async function loadCv(current: ActiveUser) {
     setLoading(true)
     setSqlMissing(false)
-    const [vesselRes, serviceRes, certRes, vaccinationRes] = await Promise.all([
+    const [vesselRes, serviceRes, certRes, certMasterRes, vaccinationRes] = await Promise.all([
       supabase.from('cv_vessel_master').select('*').order('vessel_name', { ascending: true }),
       supabase
         .from('crew_cv_sea_services')
@@ -248,6 +264,9 @@ export default function CvPage() {
         .from('crew_certs')
         .select('id, cert_name, issue_date, expiry_date, file_url, cert_number, place_of_issue, issue_authority, cv_section, cv_row_no, cv_capacity')
         .eq('crew_id', current.id),
+      supabase
+        .from('cert_master')
+        .select('cert_name, cert_family, cv_section, stcw_group_key, requires_proficiency, required_proficiency_key, cv_order'),
       supabase
         .from('crew_cv_vaccinations')
         .select('*')
@@ -263,7 +282,7 @@ export default function CvPage() {
 
     setVessels((vesselRes.data || []) as VesselMaster[])
     setServices((serviceRes.data || []) as SeaServiceRow[])
-    if (!certRes.error) setCertRows((certRes.data || []) as CrewCert[])
+    if (!certRes.error) setCertRows(attachCertMasterRules((certRes.data || []) as CrewCert[], (certMasterRes.data || []) as CertMasterCvRule[]))
     setVaccinations((vaccinationRes.data || []) as VaccinationRow[])
     setLoading(false)
   }
@@ -716,6 +735,30 @@ function findCertByKeywords(rows: CrewCert[], keywords: string[]) {
   return rows.find((cert) => keywords.some((keyword) => normalize(cert.cert_name).includes(normalize(keyword))))
 }
 
+function attachCertMasterRules(rows: CrewCert[], masterRows: CertMasterCvRule[]) {
+  const exact = new Map(masterRows.map((row) => [normalize(row.cert_name), row]))
+  return rows.map((cert) => {
+    const certKey = normalize(cert.cert_name)
+    const master =
+      exact.get(certKey) ||
+      masterRows.find((row) => {
+        const masterKey = normalize(row.cert_name)
+        return masterKey && (masterKey.includes(certKey) || certKey.includes(masterKey))
+      })
+
+    if (!master) return cert
+    return {
+      ...cert,
+      master_cert_family: master.cert_family || null,
+      master_cv_section: master.cv_section || null,
+      master_stcw_group_key: master.stcw_group_key || null,
+      master_requires_proficiency: master.requires_proficiency ?? null,
+      master_required_proficiency_key: master.required_proficiency_key || null,
+      master_cv_order: master.cv_order ?? null,
+    }
+  })
+}
+
 function buildPersonalDocs(rows: CrewCert[]) {
   return {
     passport: findCertByKeywords(rows, ['passport']),
@@ -733,11 +776,15 @@ function formatPersonalDoc(cert?: CrewCert) {
 }
 
 function isPersonalDocument(cert: CrewCert) {
+  if (clean(cert.master_cv_section) === 'Personal Document') return true
+  if (clean(cert.master_cert_family) === 'Personal Document') return true
   const name = normalize(cert.cert_name)
   return name.includes('passport') || name.includes('seaman') || name.includes('toeic')
 }
 
 function getCvCertSection(cert: CrewCert) {
+  const masterSection = clean(cert.master_cv_section)
+  if (masterSection) return masterSection
   const explicit = clean(cert.cv_section)
   if (explicit) return explicit
   const name = normalize(cert.cert_name)
@@ -748,6 +795,7 @@ function getCvCertSection(cert: CrewCert) {
 }
 
 function getStcwPriority(cert: CrewCert) {
+  if (typeof cert.master_cv_order === 'number') return cert.master_cv_order
   const name = normalize(cert.cert_name)
   const stcwOrder = [
     ['personal survival techniques', 'personalsurvivaltechniques', 'pst'],
@@ -772,15 +820,17 @@ function getStcwPriority(cert: CrewCert) {
 }
 
 function getStcwGroup(cert: CrewCert) {
+  const masterGroup = clean(cert.master_stcw_group_key)
+  if (masterGroup) return masterGroup
   const name = normalize(cert.cert_name)
-  if (name.includes('basicsafety') || name.includes('basictraining') || name.includes('personalsurvival') || name.includes('fireprevention') || name.includes('elementaryfirstaid') || name.includes('personalsafety') || name.includes('pssr')) return 'basic-safety'
-  if (name.includes('survivalcraft') || name.includes('rescueboat') || name.includes('pscrb')) return 'survival-craft'
-  if (name.includes('advancefire') || name.includes('advancedfire')) return 'advanced-fire'
-  if (name.includes('medicalfirstaid')) return 'medical-first-aid'
-  if (name.includes('medicalcare')) return 'medical-care'
+  if (name.includes('basicsafety') || name.includes('basictraining') || name.includes('personalsurvival') || name.includes('fireprevention') || name.includes('elementaryfirstaid') || name.includes('personalsafety') || name.includes('pssr')) return 'basic_safety'
+  if (name.includes('survivalcraft') || name.includes('rescueboat') || name.includes('pscrb')) return 'survival_craft'
+  if (name.includes('advancefire') || name.includes('advancedfire')) return 'advanced_fire'
+  if (name.includes('medicalfirstaid')) return 'medical_first_aid'
+  if (name.includes('medicalcare')) return 'medical_care'
   if (name.includes('gmdss') || name.includes('radiooperator')) return 'gmdss'
   if (name.includes('securityawareness') || name.includes('designatedsecurity') || name.includes('shipsecurity')) return 'security'
-  if (name.includes('dangerousgoods') || name.includes('hazmat') || name.includes('chemical')) return 'dangerous-goods'
+  if (name.includes('dangerousgoods') || name.includes('hazmat') || name.includes('chemical')) return 'dangerous_goods'
   return 'other'
 }
 
@@ -805,7 +855,8 @@ function buildCvCertTables(rows: CrewCert[]) {
   const remainingProficiency = [...proficiency]
   const paired: CvTrainingProficiencyPair[] = training.map((trainingCert) => {
     const explicitIndex = remainingProficiency.findIndex((cert) => cert.cv_row_no && cert.cv_row_no === trainingCert.cv_row_no)
-    const group = getStcwGroup(trainingCert)
+    const requiredKey = clean(trainingCert.master_required_proficiency_key)
+    const group = requiredKey || getStcwGroup(trainingCert)
     const groupIndex = group === 'other' ? -1 : remainingProficiency.findIndex((cert) => getStcwGroup(cert) === group)
     const index = explicitIndex >= 0 ? explicitIndex : groupIndex
     const matched = index >= 0 ? remainingProficiency.splice(index, 1)[0] : undefined

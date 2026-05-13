@@ -18,6 +18,15 @@ alter table public.crew_certs
   add column if not exists cv_row_no integer,
   add column if not exists cv_capacity text;
 
+alter table public.cert_master
+  add column if not exists cert_family text default 'Other',
+  add column if not exists cv_section text,
+  add column if not exists stcw_group_key text,
+  add column if not exists requires_proficiency boolean default false,
+  add column if not exists required_proficiency_key text,
+  add column if not exists cv_order integer,
+  add column if not exists cv_notes text;
+
 create table if not exists public.cv_vessel_master (
   id uuid primary key default gen_random_uuid(),
   vessel_name text not null,
@@ -84,6 +93,76 @@ on public.crew_cv_sea_services (crew_id, joining_date desc);
 
 create index if not exists idx_crew_cv_vaccinations_crew_dates
 on public.crew_cv_vaccinations (crew_id, date_given desc);
+
+create index if not exists idx_cert_master_cv_section
+on public.cert_master (cv_section);
+
+create index if not exists idx_cert_master_stcw_group_key
+on public.cert_master (stcw_group_key);
+
+update public.cert_master
+set
+  cert_family = case
+    when lower(cert_name) like '%passport%' then 'Personal Document'
+    when lower(cert_name) like '%seaman%' then 'Personal Document'
+    when lower(cert_name) like '%toeic%' then 'Personal Document'
+    when lower(cert_name) like '%medical%' or lower(cert_name) like '%fitness%' then 'Medical'
+    when lower(cert_name) like '%bosiet%' or lower(cert_name) like '%foet%' or lower(cert_name) like '%offshore%' or lower(cert_name) like '%huet%' then 'Offshore'
+    when lower(cert_name) like '%stcw%' or lower(cert_name) like '%proficiency%' or lower(cert_name) like '%gmdss%' or lower(cert_name) like '%advanced fire%' or lower(cert_name) like '%advance fire%' or lower(cert_name) like '%survival craft%' or lower(cert_name) like '%security%' or lower(cert_name) like '%dangerous goods%' then 'STCW'
+    else coalesce(nullif(cert_family, ''), 'Other')
+  end,
+  cv_section = case
+    when lower(cert_name) like '%passport%' or lower(cert_name) like '%seaman%' or lower(cert_name) like '%toeic%' then 'Personal Document'
+    when lower(cert_name) like '%medical%' or lower(cert_name) like '%fitness%' then 'Medical'
+    when lower(cert_name) like '%competency%' or lower(cert_name) like '%coc%' or lower(cert_name) like '%certificate of competency%' then 'Certificate of Competency'
+    when lower(cert_name) like '%proficiency%' or lower(cert_name) like '%cop%' then 'Certificate of Proficiency'
+    else coalesce(nullif(cv_section, ''), 'Certificate of Training')
+  end,
+  stcw_group_key = case
+    when lower(cert_name) like '%basic safety%' or lower(cert_name) like '%personal survival%' or lower(cert_name) like '%fire prevention%' or lower(cert_name) like '%elementary first aid%' or lower(cert_name) like '%personal safety%' then 'basic_safety'
+    when lower(cert_name) like '%survival craft%' or lower(cert_name) like '%rescue boat%' or lower(cert_name) like '%pscrb%' then 'survival_craft'
+    when lower(cert_name) like '%advanced fire%' or lower(cert_name) like '%advance fire%' then 'advanced_fire'
+    when lower(cert_name) like '%medical first aid%' then 'medical_first_aid'
+    when lower(cert_name) like '%medical care%' then 'medical_care'
+    when lower(cert_name) like '%gmdss%' or lower(cert_name) like '%radio operator%' then 'gmdss'
+    when lower(cert_name) like '%security awareness%' or lower(cert_name) like '%designated security%' or lower(cert_name) like '%ship security%' then 'security'
+    when lower(cert_name) like '%dangerous goods%' or lower(cert_name) like '%hazmat%' or lower(cert_name) like '%chemical%' then 'dangerous_goods'
+    else stcw_group_key
+  end,
+  requires_proficiency = case
+    when lower(cert_name) like '%basic safety%' or lower(cert_name) like '%advanced fire%' or lower(cert_name) like '%advance fire%' or lower(cert_name) like '%survival craft%' or lower(cert_name) like '%medical first aid%' or lower(cert_name) like '%medical care%' or lower(cert_name) like '%gmdss%' or lower(cert_name) like '%security%' then true
+    else coalesce(requires_proficiency, false)
+  end,
+  required_proficiency_key = case
+    when lower(cert_name) like '%basic safety%' then 'basic_safety'
+    when lower(cert_name) like '%survival craft%' or lower(cert_name) like '%rescue boat%' or lower(cert_name) like '%pscrb%' then 'survival_craft'
+    when lower(cert_name) like '%advanced fire%' or lower(cert_name) like '%advance fire%' then 'advanced_fire'
+    when lower(cert_name) like '%medical first aid%' then 'medical_first_aid'
+    when lower(cert_name) like '%medical care%' then 'medical_care'
+    when lower(cert_name) like '%gmdss%' then 'gmdss'
+    when lower(cert_name) like '%security%' then 'security'
+    else required_proficiency_key
+  end,
+  cv_order = case
+    when lower(cert_name) like '%competency%' or lower(cert_name) like '%coc%' then 10
+    when lower(cert_name) like '%basic safety%' then 100
+    when lower(cert_name) like '%personal survival%' then 110
+    when lower(cert_name) like '%fire prevention%' then 120
+    when lower(cert_name) like '%elementary first aid%' then 130
+    when lower(cert_name) like '%personal safety%' then 140
+    when lower(cert_name) like '%security awareness%' then 150
+    when lower(cert_name) like '%designated security%' then 160
+    when lower(cert_name) like '%survival craft%' or lower(cert_name) like '%rescue boat%' or lower(cert_name) like '%pscrb%' then 170
+    when lower(cert_name) like '%advanced fire%' or lower(cert_name) like '%advance fire%' then 180
+    when lower(cert_name) like '%medical first aid%' then 190
+    when lower(cert_name) like '%medical care%' then 200
+    when lower(cert_name) like '%gmdss%' then 210
+    when lower(cert_name) like '%dangerous goods%' then 220
+    when lower(cert_name) like '%bosiet%' or lower(cert_name) like '%foet%' or lower(cert_name) like '%offshore%' then 500
+    when lower(cert_name) like '%medical%' or lower(cert_name) like '%fitness%' then 900
+    else cv_order
+  end
+where cert_name is not null;
 
 alter table public.cv_vessel_master enable row level security;
 alter table public.crew_cv_sea_services enable row level security;
