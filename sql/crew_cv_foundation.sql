@@ -7,6 +7,8 @@ alter table public.crews
   add column if not exists date_of_birth date,
   add column if not exists place_of_birth text,
   add column if not exists cv_company text,
+  add column if not exists toeic_score text,
+  add column if not exists toeic_test_date date,
   add column if not exists cv_last_updated_at timestamptz,
   add column if not exists passport_cv_updated_at timestamptz;
 
