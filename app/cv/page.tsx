@@ -1091,7 +1091,7 @@ function CvPairMobileCard({
   row,
   savingCertId,
 }: {
-  row: { training?: CrewCert; proficiency?: CrewCert }
+  row: CvTrainingProficiencyPair
   savingCertId: string
   onChange: (cert: CrewCert) => void
   onSave: (certId: string) => void
