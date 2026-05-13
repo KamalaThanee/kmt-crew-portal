@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { getStoredTheme, type KmtTheme } from "@/components/ThemeBridge";
 
 export default function ThemeToaster() {
-  const [theme, setTheme] = useState<KmtTheme>("dark");
+  const [theme, setTheme] = useState<KmtTheme>("light");
 
   useEffect(() => {
     const syncTheme = () => setTheme(getStoredTheme());

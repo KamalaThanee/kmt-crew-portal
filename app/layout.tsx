@@ -9,7 +9,8 @@ import ThemeToaster from "@/components/ThemeToaster";
 const themeInitScript = `
   (function () {
     try {
-      var theme = window.localStorage.getItem('kmt_theme') === 'light' ? 'light' : 'dark';
+      var storedTheme = window.localStorage.getItem('kmt_theme');
+      var theme = storedTheme === 'dark' ? 'dark' : 'light';
       document.documentElement.classList.toggle('dark', theme === 'dark');
       document.documentElement.dataset.theme = theme;
     } catch (error) {}
@@ -18,7 +19,7 @@ const themeInitScript = `
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" data-theme="light" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
