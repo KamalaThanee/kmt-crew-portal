@@ -56,13 +56,14 @@ type CrewCert = {
 
 type CvTab = 'form' | 'service' | 'vessels'
 type ActiveUser = CurrentUser & { id: string }
+const defaultCvCompany = 'Truth Maritime Services'
 
 const emptyProfile: CvProfile = {
   national_id_no: '',
   nationality: '',
   date_of_birth: '',
   place_of_birth: '',
-  cv_company: '',
+  cv_company: defaultCvCompany,
 }
 
 const emptySeaService: SeaServiceForm = {
@@ -174,7 +175,7 @@ export default function CvPage() {
       nationality: clean((current as any).nationality),
       date_of_birth: toDateValue((current as any).date_of_birth),
       place_of_birth: clean((current as any).place_of_birth),
-      cv_company: clean((current as any).cv_company || 'TMS'),
+      cv_company: clean((current as any).cv_company || defaultCvCompany),
     })
     setServiceForm((prev) => ({ ...prev, crew_id: currentId, rank: current.position || '' }))
     loadCv(activeUser)
