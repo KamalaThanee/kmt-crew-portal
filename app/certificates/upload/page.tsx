@@ -10,6 +10,13 @@ import { CertificateScanReview } from '@/components/certificates/CertificateScan
 import { CertificateUploadDropzone } from '@/components/certificates/CertificateUploadDropzone'
 
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at
+const isPassportCertificate = (value: string) => value.toLowerCase().includes('passport')
+const normalizePassportCvData = (value: any) => ({
+  nationalIdNo: String(value?.nationalIdNo || '').trim(),
+  nationality: String(value?.nationality || '').trim(),
+  dateOfBirth: String(value?.dateOfBirth || '').trim(),
+  placeOfBirth: String(value?.placeOfBirth || '').trim(),
+})
 
 function UploadContent() {
   const router = useRouter()
@@ -28,6 +35,12 @@ function UploadContent() {
   const [activeModelLabel, setActiveModelLabel] = useState('')
   const [scanResult, setScanResult] = useState<any>(null)
   const [finalData, setFinalData] = useState({ issueDate: '', expiryDate: '' })
+  const [passportCvData, setPassportCvData] = useState({
+    nationalIdNo: '',
+    nationality: '',
+    dateOfBirth: '',
+    placeOfBirth: '',
+  })
 
   useEffect(() => {
     const localUser = JSON.parse(localStorage.getItem('kmt_user') || 'null')
@@ -88,6 +101,7 @@ function UploadContent() {
 
     setFile(selected)
     setScanResult(null)
+    setPassportCvData({ nationalIdNo: '', nationality: '', dateOfBirth: '', placeOfBirth: '' })
 
     const isPdf = selected.type === 'application/pdf'
     if (isPdf) {
@@ -147,6 +161,7 @@ function UploadContent() {
           })
 
           setScanResult(result)
+          setPassportCvData(normalizePassportCvData(result.passportCvData))
           setFinalData({
             issueDate: result.issueDate || '',
             expiryDate: resolvedExpiry || '',
@@ -214,6 +229,25 @@ function UploadContent() {
       )
 
       if (dbError) throw dbError
+      const normalizedPassportData = normalizePassportCvData(passportCvData)
+      const passportUpdate: Record<string, string> = {}
+      if (isPassportCertificate(certName)) {
+        if (normalizedPassportData.nationalIdNo) passportUpdate.national_id_no = normalizedPassportData.nationalIdNo
+        if (normalizedPassportData.nationality) passportUpdate.nationality = normalizedPassportData.nationality
+        if (normalizedPassportData.dateOfBirth) passportUpdate.date_of_birth = normalizedPassportData.dateOfBirth
+        if (normalizedPassportData.placeOfBirth) passportUpdate.place_of_birth = normalizedPassportData.placeOfBirth
+        if (Object.keys(passportUpdate).length > 0) {
+          passportUpdate.passport_cv_updated_at = new Date().toISOString()
+          const { error: passportError } = await supabase
+            .from('crews')
+            .update(passportUpdate)
+            .eq('id', targetCrew.id || user.id)
+
+          if (passportError && !String(passportError.message || '').toLowerCase().includes('column')) {
+            throw passportError
+          }
+        }
+      }
 
       await supabase.from('crew_cert_history').insert({
         crew_id: targetCrew.id || user.id,
@@ -227,6 +261,7 @@ function UploadContent() {
           issue_date: finalData.issueDate,
           expiry_date: expiryDate,
           file_url: publicData.publicUrl,
+          passport_cv_data: isPassportCertificate(certName) ? normalizedPassportData : null,
         },
         actor_name: user.full_name || user.position || 'Unknown user',
       })
@@ -269,8 +304,11 @@ function UploadContent() {
             certPolicy={certPolicy}
             finalData={finalData}
             isSaving={isSaving}
+            isPassport={isPassportCertificate(certName)}
+            passportCvData={passportCvData}
             scanResult={scanResult}
             onFinalDataChange={setFinalData}
+            onPassportCvDataChange={setPassportCvData}
             onSave={handleSave}
           />
         )}

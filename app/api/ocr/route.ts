@@ -23,9 +23,15 @@ export async function POST(req: Request) {
        - BOSIET/FOET can satisfy "Basic Offshore Safety Training / Further Offshore Training" only when the document title/content explicitly indicates BOSIET, FOET, Basic Offshore Safety, or Further Offshore Training.
        - Use maritime/STCW compliance knowledge, but reject when unsure. Do not approve a lower-level certificate for a higher-level requirement.
     3. DATE: Convert Thai years to CE. If the document does not clearly show an expiry date, return expiryDate as an empty string. Only use "2099-12-31" when the certificate explicitly states it never expires.
+    4. PASSPORT CV FIELDS: If the selected requirement or uploaded document is a passport, extract CV profile fields from the passport page:
+       - nationalIdNo: national identification / personal number if clearly printed. Do not use the passport number unless it is explicitly labeled as national ID / personal no.
+       - nationality: nationality text exactly as shown, normalized to English when obvious.
+       - dateOfBirth: date of birth as YYYY-MM-DD.
+       - placeOfBirth: place of birth exactly as shown.
+       If a field is not clearly visible, return an empty string for that field.
 
     Return ONLY raw JSON:
-    {"issueDate": "YYYY-MM-DD or empty", "expiryDate": "YYYY-MM-DD or empty", "detectedPersonName": "text", "detectedCertName": "text", "personNameMatch": true, "certTypeMatch": true, "expiryFoundInDocument": true, "note": "Explain your reasoning briefly in English."}`;
+    {"issueDate": "YYYY-MM-DD or empty", "expiryDate": "YYYY-MM-DD or empty", "detectedPersonName": "text", "detectedCertName": "text", "personNameMatch": true, "certTypeMatch": true, "expiryFoundInDocument": true, "passportCvData": {"nationalIdNo": "text or empty", "nationality": "text or empty", "dateOfBirth": "YYYY-MM-DD or empty", "placeOfBirth": "text or empty"}, "note": "Explain your reasoning briefly in English."}`;
 
     const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
     let response;

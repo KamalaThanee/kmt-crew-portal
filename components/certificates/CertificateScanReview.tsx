@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { type Dispatch, type SetStateAction, useRef } from 'react'
 import { AlertTriangle, CalendarDays, CheckCircle, Loader2 } from 'lucide-react'
 import type { CertPolicy } from '@/lib/certificates'
 import { resolveExpiryDate } from '@/lib/certificates'
@@ -10,13 +10,23 @@ type FinalCertData = {
   expiryDate: string
 }
 
+type PassportCvData = {
+  nationalIdNo: string
+  nationality: string
+  dateOfBirth: string
+  placeOfBirth: string
+}
+
 type CertificateScanReviewProps = {
   canSave: boolean
   certPolicy: CertPolicy
   finalData: FinalCertData
+  isPassport?: boolean
   isSaving: boolean
+  passportCvData?: PassportCvData
   scanResult: any
   onFinalDataChange: (updater: (previous: FinalCertData) => FinalCertData) => void
+  onPassportCvDataChange?: Dispatch<SetStateAction<PassportCvData>>
   onSave: () => void
 }
 
@@ -24,9 +34,12 @@ export function CertificateScanReview({
   canSave,
   certPolicy,
   finalData,
+  isPassport = false,
   isSaving,
+  passportCvData,
   scanResult,
   onFinalDataChange,
+  onPassportCvDataChange,
   onSave,
 }: CertificateScanReviewProps) {
   return (
@@ -82,6 +95,37 @@ export function CertificateScanReview({
             )}
             {certPolicy.noExpiry && <p className="text-[10px] text-blue-400 font-bold mt-3">This certificate is configured as no-expiry.</p>}
           </div>
+
+          {isPassport && passportCvData && onPassportCvDataChange && (
+            <div className="rounded-3xl border border-orange-500/20 bg-orange-500/10 p-5">
+              <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">Passport CV Fields</p>
+              <p className="mt-1 text-[10px] font-bold normal-case text-slate-400">
+                These fields will prefill the future CV profile. Review and edit before saving.
+              </p>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <PassportCvInput
+                  label="National ID No."
+                  value={passportCvData.nationalIdNo}
+                  onChange={(value) => onPassportCvDataChange((prev) => ({ ...prev, nationalIdNo: value }))}
+                />
+                <PassportCvInput
+                  label="Nationality"
+                  value={passportCvData.nationality}
+                  onChange={(value) => onPassportCvDataChange((prev) => ({ ...prev, nationality: value }))}
+                />
+                <CertDatePicker
+                  label="Date of Birth"
+                  value={passportCvData.dateOfBirth}
+                  onChange={(value) => onPassportCvDataChange((prev) => ({ ...prev, dateOfBirth: value }))}
+                />
+                <PassportCvInput
+                  label="Place of Birth"
+                  value={passportCvData.placeOfBirth}
+                  onChange={(value) => onPassportCvDataChange((prev) => ({ ...prev, placeOfBirth: value }))}
+                />
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -94,6 +138,20 @@ export function CertificateScanReview({
         Confirm & Save
       </button>
     </div>
+  )
+}
+
+function PassportCvInput({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) {
+  return (
+    <label className="space-y-1.5">
+      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-white/10 bg-black p-4 text-sm font-bold text-white outline-none transition-all focus:border-orange-500"
+        placeholder="Not detected"
+      />
+    </label>
   )
 }
 
