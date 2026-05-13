@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { CalendarCheck, ClipboardCheck, FileBadge, FileText, History, Package, PlusCircle } from 'lucide-react'
+import { CalendarCheck, ClipboardCheck, FileBadge, FileText, FileUser, History, Package, PlusCircle } from 'lucide-react'
 
 export type NavbarMenuItem = {
   name: string
@@ -13,6 +13,7 @@ export const getNavbarMenuItems = (isAdmin: boolean): NavbarMenuItem[] => {
       { name: 'APPROVALS', href: '/admin/approvals', icon: ClipboardCheck },
       { name: 'INVENTORY', href: '/admin/inventory', icon: Package },
       { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
+      { name: 'CV', href: '/cv', icon: FileUser },
       { name: 'SMS', href: '/sms-library', icon: FileText },
       { name: 'MONTHLY REPORTS', href: '/monthly-reports', icon: CalendarCheck },
       { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
@@ -21,6 +22,7 @@ export const getNavbarMenuItems = (isAdmin: boolean): NavbarMenuItem[] => {
 
   return [
     { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
+    { name: 'CV', href: '/cv', icon: FileUser },
     { name: 'SMS', href: '/sms-library', icon: FileText },
     { name: 'MONTHLY REPORTS', href: '/monthly-reports', icon: CalendarCheck },
     { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
