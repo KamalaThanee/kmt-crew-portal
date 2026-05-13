@@ -101,28 +101,19 @@ const emptyVessel: Omit<VesselMaster, 'id'> = {
 const clean = (value: unknown) => String(value || '').trim()
 const normalize = (value: unknown) => clean(value).toLowerCase().replace(/[^a-z0-9]/g, '')
 
-const rankOptions = [
-  'Barge Master',
-  'Chief Officer',
-  'Safety Officer',
-  'Radio Operator',
-  'Deck Foreman',
-  'AB',
-  'Rigger',
-  'Crane Operator',
-  'Chief Engineer',
-  'Second Engineer',
-  'Third Engineer',
-  'Oiler',
-  'Electrician',
-  'Cook',
-  'Steward',
-  'Messman',
-  'Master',
-  'Chief Mate',
-  'Second Mate',
-  'Able Seaman',
-  'Ordinary Seaman',
+const rankGroups = [
+  {
+    label: 'Barge crew',
+    options: ['Barge Master', 'Chief Officer', 'Safety Officer', 'Radio Operator', 'Deck Foreman', 'AB', 'Rigger', 'Crane Operator'],
+  },
+  {
+    label: 'Catering',
+    options: ['Chief Cook', 'Cook', 'Steward', 'Messman'],
+  },
+  {
+    label: 'Merchant ship',
+    options: ['Master', 'Chief Mate', 'Second Mate', 'Chief Engineer', 'Second Engineer', 'Third Engineer', 'Oiler', 'Able Seaman', 'Ordinary Seaman'],
+  },
 ]
 
 const toDateValue = (value?: string | null) => {
@@ -699,18 +690,23 @@ function RankField({ label, onChange, value }: { label: string; onChange: (value
   return (
     <label className="space-y-1.5">
       <span className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">{label}</span>
-      <input
-        list="cv-rank-options"
+      <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="Search rank..."
         className="w-full rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] px-4 py-3 text-sm font-black text-[var(--headline)] outline-none transition-all focus:border-orange-500"
-      />
-      <datalist id="cv-rank-options">
-        {rankOptions.map((rank) => (
-          <option key={rank} value={rank} />
+      >
+        <option value="">Select rank...</option>
+        {value && !rankGroups.some((group) => group.options.includes(value)) && (
+          <option value={value}>{value}</option>
         ))}
-      </datalist>
+        {rankGroups.map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {group.options.map((rank) => (
+              <option key={`${group.label}-${rank}`} value={rank}>{rank}</option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
     </label>
   )
 }
