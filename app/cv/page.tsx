@@ -46,6 +46,7 @@ type CvProfile = {
   cv_company: string
   toeic_score: string
   toeic_test_date: string
+  picture_data_url: string
 }
 
 type CrewCert = {
@@ -107,6 +108,7 @@ const emptyProfile: CvProfile = {
   cv_company: defaultCvCompany,
   toeic_score: '',
   toeic_test_date: '',
+  picture_data_url: '',
 }
 
 const emptySeaService: SeaServiceForm = {
@@ -212,6 +214,7 @@ const splitCrewName = (value?: string | null) => {
 }
 
 const manualCompetencyKey = (crewId: string) => `kmt_cv_manual_competency_${crewId}`
+const cvPictureKey = (crewId: string) => `kmt_cv_picture_${crewId}`
 
 const buildManualCompetency = (crew?: CurrentUser | null): CrewCert => ({
   id: `manual-cv-competency-${crew?.id || 'current'}`,
@@ -236,6 +239,136 @@ const readManualCompetency = (crew: ActiveUser) => {
   } catch {
     return fallback
   }
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+function applyCvTemplateBorders(XLSX: typeof import('xlsx'), worksheet: any) {
+  const ranges = ['A2:M10', 'A14:M17', 'A20:M38', 'A40:M43', 'A45:M48', 'A51:M70']
+  const border = {
+    top: { style: 'thin', color: { rgb: '000000' } },
+    bottom: { style: 'thin', color: { rgb: '000000' } },
+    left: { style: 'thin', color: { rgb: '000000' } },
+    right: { style: 'thin', color: { rgb: '000000' } },
+  }
+  ranges.forEach((rangeAddress) => {
+    const range = XLSX.utils.decode_range(rangeAddress)
+    for (let row = range.s.r; row <= range.e.r; row++) {
+      for (let col = range.s.c; col <= range.e.c; col++) {
+        const address = XLSX.utils.encode_cell({ r: row, c: col })
+        worksheet[address] = {
+          ...(worksheet[address] || { t: 's', v: '' }),
+          s: {
+            ...(worksheet[address]?.s || {}),
+            border: worksheet[address]?.s?.border || border,
+            alignment: { ...(worksheet[address]?.s?.alignment || {}), vertical: 'center', wrapText: true },
+          },
+        }
+      }
+    }
+  })
+}
+
+function downloadWorkbook(workbook: ArrayBuffer | Uint8Array, fileName: string) {
+  const blobSource = workbook instanceof Uint8Array
+    ? workbook.buffer.slice(workbook.byteOffset, workbook.byteOffset + workbook.byteLength) as ArrayBuffer
+    : workbook
+  const blob = new Blob([blobSource], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function parseDataUrl(dataUrl: string) {
+  const [meta, payload] = dataUrl.split(',')
+  const mime = meta.match(/data:([^;]+)/)?.[1] || 'image/png'
+  const extension = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : mime.includes('webp') ? 'webp' : 'png'
+  const binary = atob(payload || '')
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
+  return { bytes, extension, mime }
+}
+
+function xmlEscape(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function ensureContentType(contentTypes: string, extension: string, mime: string, drawingPath: string) {
+  let next = contentTypes
+  if (!next.includes(`Extension="${extension}"`)) {
+    next = next.replace('</Types>', `<Default Extension="${extension}" ContentType="${mime}"/></Types>`)
+  }
+  const drawingPart = `/${drawingPath}`
+  if (!next.includes(`PartName="${drawingPart}"`)) {
+    next = next.replace('</Types>', `<Override PartName="${drawingPart}" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`)
+  }
+  return next
+}
+
+async function embedCvPictureInWorkbook(workbookArray: ArrayBuffer, pictureDataUrl: string) {
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(workbookArray)
+  const sheetPath = 'xl/worksheets/sheet1.xml'
+  const sheetRelsPath = 'xl/worksheets/_rels/sheet1.xml.rels'
+  const drawingPath = 'xl/drawings/drawing1.xml'
+  const drawingRelsPath = 'xl/drawings/_rels/drawing1.xml.rels'
+  const image = parseDataUrl(pictureDataUrl)
+  const imagePath = `xl/media/cv-picture.${image.extension}`
+
+  let sheetXml = await zip.file(sheetPath)?.async('string')
+  if (!sheetXml) return workbookArray
+  if (!sheetXml.includes('xmlns:r=')) {
+    sheetXml = sheetXml.replace('<worksheet ', '<worksheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ')
+  }
+
+  let sheetRels = await zip.file(sheetRelsPath)?.async('string')
+  if (!sheetRels) {
+    sheetRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>'
+  }
+  if (!sheetRels.includes('rIdCvPicture')) {
+    sheetRels = sheetRels.replace('</Relationships>', '<Relationship Id="rIdCvPicture" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>')
+  }
+  if (!sheetXml.includes('rIdCvPicture')) {
+    sheetXml = sheetXml.replace('</worksheet>', '<drawing r:id="rIdCvPicture"/></worksheet>')
+  }
+
+  const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <xdr:twoCellAnchor editAs="oneCell">
+    <xdr:from><xdr:col>9</xdr:col><xdr:colOff>80000</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>80000</xdr:rowOff></xdr:from>
+    <xdr:to><xdr:col>13</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>9</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+    <xdr:pic>
+      <xdr:nvPicPr><xdr:cNvPr id="1" name="${xmlEscape('CV Picture')}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>
+      <xdr:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rIdImage1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>
+      <xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>
+    </xdr:pic>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+</xdr:wsDr>`
+  const drawingRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdImage1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/cv-picture.' + image.extension + '"/></Relationships>'
+
+  const contentTypes = await zip.file('[Content_Types].xml')?.async('string')
+  if (contentTypes) zip.file('[Content_Types].xml', ensureContentType(contentTypes, image.extension, image.mime, drawingPath))
+  zip.file(sheetPath, sheetXml)
+  zip.file(sheetRelsPath, sheetRels)
+  zip.file(drawingPath, drawingXml)
+  zip.file(drawingRelsPath, drawingRels)
+  zip.file(imagePath, image.bytes)
+  return zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' })
 }
 
 export default function CvPage() {
@@ -276,6 +409,7 @@ export default function CvPage() {
       cv_company: clean((current as any).cv_company || defaultCvCompany),
       toeic_score: clean((current as any).toeic_score),
       toeic_test_date: toDateValue((current as any).toeic_test_date),
+      picture_data_url: localStorage.getItem(cvPictureKey(currentId)) || '',
     })
     setServiceForm((prev) => ({ ...prev, crew_id: currentId, rank: current.position || '' }))
     setVaccinationForm((prev) => ({ ...prev, crew_id: currentId }))
@@ -388,10 +522,25 @@ export default function CvPage() {
     if (manualCompetency && user?.id) {
       localStorage.setItem(manualCompetencyKey(user.id), JSON.stringify(manualCompetency))
     }
+    if (profile.picture_data_url && user?.id) {
+      localStorage.setItem(cvPictureKey(user.id), profile.picture_data_url)
+    }
     localStorage.setItem('kmt_user', JSON.stringify(nextUser))
     window.dispatchEvent(new Event('kmt-user-changed'))
     setUser(nextUser)
     toast.success('CV profile saved')
+  }
+
+  async function handleCvPictureUpload(file?: File | null) {
+    if (!file || !user?.id) return
+    if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+      toast.error('Please upload JPG or PNG image')
+      return
+    }
+    const dataUrl = await readFileAsDataUrl(file)
+    setProfile((prev) => ({ ...prev, picture_data_url: dataUrl }))
+    localStorage.setItem(cvPictureKey(user.id), dataUrl)
+    toast.success('CV picture ready for export')
   }
 
   async function exportCvExcel() {
@@ -486,9 +635,13 @@ export default function CvPage() {
       setCell(`M${row}`, Math.ceil(dayDiffInclusive(service.joining_date, service.sign_off_date) / 30) || '')
     })
 
+    applyCvTemplateBorders(XLSX, worksheet)
+
     const stamp = new Date().toISOString().slice(0, 10)
     const fileName = `KMT-CV-${clean(user.full_name).replace(/[^a-z0-9]+/gi, '-') || 'Crew'}-${stamp}.xlsx`
-    XLSX.writeFile(workbook, fileName, { bookType: 'xlsx' } as any)
+    const xlsxArray = XLSX.write(workbook, { bookType: 'xlsx', type: 'array', cellStyles: true } as any) as ArrayBuffer
+    const finalWorkbook = profile.picture_data_url ? await embedCvPictureInWorkbook(xlsxArray, profile.picture_data_url) : xlsxArray
+    downloadWorkbook(finalWorkbook, fileName)
   }
 
   function updateCvCert(nextCert: CrewCert) {
@@ -685,6 +838,32 @@ export default function CvPage() {
               <FormLine label="Safety Shoe" value={clean((user as any)?.boot_size) || '-'} />
               <FormLine label="Boiler Suit" value={`${clean((user as any)?.suit_color) || '-'} | ${clean((user as any)?.suit_size) || '-'}`} />
               <FormLine label="Company" editable={<TextField label="" value={profile.cv_company} onChange={(value) => setProfile((prev) => ({ ...prev, cv_company: value }))} />} />
+            </div>
+            <div className="mt-5 rounded-[28px] border border-orange-500/20 bg-[var(--surface-strong)] p-4">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">CV Picture</p>
+                  <p className="mt-1 text-xs text-[var(--subtle)]">This image will be placed into the Picture box when exporting the CV Excel form.</p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center justify-center rounded-2xl bg-orange-600 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20">
+                  Upload Picture
+                  <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => handleCvPictureUpload(event.target.files?.[0])} />
+                </label>
+              </div>
+              {profile.picture_data_url && (
+                <div className="mt-4 flex items-center gap-4">
+                  <img src={profile.picture_data_url} alt="CV preview" className="h-28 w-24 rounded-2xl border border-orange-500/20 object-cover" />
+                  <button
+                    onClick={() => {
+                      setProfile((prev) => ({ ...prev, picture_data_url: '' }))
+                      if (user?.id) localStorage.removeItem(cvPictureKey(user.id))
+                    }}
+                    className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-red-500"
+                  >
+                    Remove Picture
+                  </button>
+                </div>
+              )}
             </div>
           </section>
 
