@@ -171,16 +171,12 @@ const isRequiredProficiencyPlaceholder = (cert?: CrewCert | null) => Boolean(cer
 
 const rankGroups = [
   {
-    label: 'Barge crew',
-    options: ['Barge Master', 'Chief Officer', 'Safety Officer', 'Radio Operator', 'Deck Foreman', 'AB', 'Rigger', 'Crane Operator'],
-  },
-  {
-    label: 'Catering',
-    options: ['Chief Cook', 'Cook', 'Steward', 'Messman'],
+    label: 'Accommodation barge',
+    options: ['Barge Master', 'Chief Officer', 'Safety Officer', 'Radio Operator', 'Crane Operator', 'Bosun', 'Assist Bosun', 'Deck helper', 'Chief Engineer', 'Second Engineer', 'Electrician', 'Tr.Electrician', 'Fitter', 'Oiler', 'Catering'],
   },
   {
     label: 'Merchant ship',
-    options: ['Master', 'Chief Mate', 'Second Mate', 'Chief Engineer', 'Second Engineer', 'Third Engineer', 'Oiler', 'Able Seaman', 'Ordinary Seaman'],
+    options: ['Master', 'Chief Officer', 'Second Officer', 'Third Officer', 'Fourth Officer', 'Deck Cadet', 'Bosun', 'Able Seaman', 'Ordinary Seaman', 'Chief Engineer', 'Second Engineer', 'Third Engineer', 'Fourth Engineer', 'Electrician', 'Engine Cadet', 'Fitter', 'Oiler', 'Wiper', 'Chief Cook', 'Mess Man'],
   },
 ]
 
@@ -389,6 +385,48 @@ function xmlEscape(value: string) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+function certNeedsCvRefresh(cert: CrewCert) {
+  if (!cert.file_url || isManualCvCert(cert) || isRequiredProficiencyPlaceholder(cert)) return false
+  const section = getCvCertSection(cert)
+  if (section === 'Certificate of Competency') {
+    return !cert.cert_name || !cert.issue_date || !cert.cert_number || !cert.issue_authority
+  }
+  if (section === 'Certificate of Proficiency') {
+    return !cert.issue_date || !cert.expiry_date || !cert.cert_number || !cert.issue_authority
+  }
+  if (section === 'Certificate of Training' || section === 'Medical') {
+    return !cert.issue_date || !cert.expiry_date || !cert.cert_number || !cert.place_of_issue
+  }
+  return !cert.issue_date || !cert.expiry_date
+}
+
+const transparentCvPicturePngBase64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnH8x8AAAAASUVORK5CYII='
+
+async function imageDataUrlToPngBytes(dataUrl?: string | null) {
+  if (!dataUrl) return Uint8Array.from(atob(transparentCvPicturePngBase64), (char) => char.charCodeAt(0))
+  if (dataUrl.startsWith('data:image/png')) return parseDataUrl(dataUrl).bytes
+
+  return new Promise<Uint8Array>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = image.naturalWidth || image.width || 1
+      canvas.height = image.naturalHeight || image.height || 1
+      const context = canvas.getContext('2d')
+      if (!context) {
+        reject(new Error('Could not prepare CV picture for export'))
+        return
+      }
+      context.drawImage(image, 0, 0)
+      const pngDataUrl = canvas.toDataURL('image/png')
+      resolve(parseDataUrl(pngDataUrl).bytes)
+    }
+    image.onerror = () => reject(new Error('Could not prepare CV picture for export'))
+    image.src = dataUrl
+  })
+}
+
 function normalizePassportCvProfileData(value: any): PassportCvProfileData {
   return {
     nationalIdNo: clean(value?.nationalIdNo || value?.national_id_no),
@@ -480,55 +518,12 @@ function ensureContentType(contentTypes: string, extension: string, mime: string
   return next
 }
 
-async function embedCvPictureInWorkbook(workbookArray: ArrayBuffer, pictureDataUrl: string) {
+async function embedCvPictureInWorkbook(workbookArray: ArrayBuffer, pictureDataUrl?: string | null) {
   const JSZip = (await import('jszip')).default
   const zip = await JSZip.loadAsync(workbookArray)
-  const sheetPath = 'xl/worksheets/sheet1.xml'
-  const sheetRelsPath = 'xl/worksheets/_rels/sheet1.xml.rels'
-  const drawingPath = 'xl/drawings/drawing1.xml'
-  const drawingRelsPath = 'xl/drawings/_rels/drawing1.xml.rels'
-  const image = parseDataUrl(pictureDataUrl)
-  const imagePath = `xl/media/cv-picture.${image.extension}`
-
-  let sheetXml = await zip.file(sheetPath)?.async('string')
-  if (!sheetXml) return workbookArray
-  if (!sheetXml.includes('xmlns:r=')) {
-    sheetXml = sheetXml.replace('<worksheet ', '<worksheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ')
-  }
-
-  let sheetRels = await zip.file(sheetRelsPath)?.async('string')
-  if (!sheetRels) {
-    sheetRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>'
-  }
-  if (!sheetRels.includes('rIdCvPicture')) {
-    sheetRels = sheetRels.replace('</Relationships>', '<Relationship Id="rIdCvPicture" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>')
-  }
-  if (!sheetXml.includes('rIdCvPicture')) {
-    sheetXml = sheetXml.replace('</worksheet>', '<drawing r:id="rIdCvPicture"/></worksheet>')
-  }
-
-  const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-  <xdr:twoCellAnchor editAs="twoCell">
-    <xdr:from><xdr:col>9</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
-    <xdr:to><xdr:col>13</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>9</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
-    <xdr:pic>
-      <xdr:nvPicPr><xdr:cNvPr id="1" name="${xmlEscape('CV Picture')}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>
-      <xdr:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rIdImage1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>
-      <xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>
-    </xdr:pic>
-    <xdr:clientData/>
-  </xdr:twoCellAnchor>
-</xdr:wsDr>`
-  const drawingRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdImage1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/cv-picture.' + image.extension + '"/></Relationships>'
-
-  const contentTypes = await zip.file('[Content_Types].xml')?.async('string')
-  if (contentTypes) zip.file('[Content_Types].xml', ensureContentType(contentTypes, image.extension, image.mime, drawingPath))
-  zip.file(sheetPath, sheetXml)
-  zip.file(sheetRelsPath, sheetRels)
-  zip.file(drawingPath, drawingXml)
-  zip.file(drawingRelsPath, drawingRels)
-  zip.file(imagePath, image.bytes)
+  const templatePicturePath = 'xl/media/image1.png'
+  if (!zip.file(templatePicturePath)) return workbookArray
+  zip.file(templatePicturePath, await imageDataUrlToPngBytes(pictureDataUrl))
   return zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' })
 }
 
@@ -552,6 +547,7 @@ export default function CvPage() {
   const [fillingPassportProfile, setFillingPassportProfile] = useState(false)
   const [checkedPassportHistory, setCheckedPassportHistory] = useState(false)
   const [savingVaccination, setSavingVaccination] = useState(false)
+  const [refreshingCvData, setRefreshingCvData] = useState(false)
   const [selectedVesselId, setSelectedVesselId] = useState('')
   const [activeTab, setActiveTab] = useState<CvTab>('form')
   const [manualCompetency, setManualCompetency] = useState<CrewCert | null>(null)
@@ -597,6 +593,11 @@ export default function CvPage() {
       vesselCount: new Set(services.map((row) => row.vessel_name).filter(Boolean)).size,
     }
   }, [services])
+
+  const cvRefreshTargets = useMemo(
+    () => certRows.filter((cert) => certNeedsCvRefresh(cert)),
+    [certRows],
+  )
 
   const personalDocs = useMemo(() => buildPersonalDocs(certRows), [certRows])
   const cvSourceRows = useMemo(() => {
@@ -1225,6 +1226,22 @@ export default function CvPage() {
     }
   }
 
+  async function refreshCvDataFromFiles() {
+    if (cvRefreshTargets.length === 0) {
+      toast.success('CV data is already up to date')
+      return
+    }
+    setRefreshingCvData(true)
+    try {
+      for (const cert of cvRefreshTargets) {
+        await fillMissingCertFromFile(cert)
+      }
+      toast.success('CV data refresh completed')
+    } finally {
+      setRefreshingCvData(false)
+    }
+  }
+
   async function saveVaccination() {
     if (!user?.id) return
     const activeUser = user as ActiveUser
@@ -1284,6 +1301,24 @@ export default function CvPage() {
           </p>
         </div>
       )}
+
+      <div className="mb-6 flex flex-col gap-3 rounded-[32px] border border-orange-500/20 bg-[var(--surface)] p-5 shadow-xl md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[var(--accent-text)]">CV Data Status</p>
+          <p className="mt-1 text-sm font-black text-[var(--headline)]">
+            {cvRefreshTargets.length === 0 ? 'Data up to date' : `${cvRefreshTargets.length} certificate file(s) still need AI fill`}
+          </p>
+          <p className="mt-1 text-xs text-[var(--subtle)]">Uses saved crew certificate files only. Missing CV fields will be backfilled and stored in the database.</p>
+        </div>
+        <button
+          type="button"
+          onClick={refreshCvDataFromFiles}
+          disabled={refreshingCvData || cvRefreshTargets.length === 0}
+          className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-blue-500 disabled:opacity-50"
+        >
+          {cvRefreshTargets.length === 0 ? 'Data up to date' : refreshingCvData ? 'Refreshing...' : 'Refresh data'}
+        </button>
+      </div>
 
       <div className="mb-6 rounded-[32px] border border-orange-500/20 bg-[var(--surface)] p-2 shadow-xl">
         <div className={`grid gap-2 ${admin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
