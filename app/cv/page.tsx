@@ -1833,7 +1833,7 @@ function CvCertFormCard({
   const nameLabel = medical ? 'Medical Check Up Program' : competency ? 'Certificate of Competency / Proficiency' : titleOverride || section
   const secondLabel = competency ? 'Capacity' : medical ? 'Name of Hospital' : 'Number'
   const secondValue = competency ? cert.cv_capacity || '' : medical ? cert.place_of_issue || '' : cert.cert_number || ''
-  const authorityLabel = competency ? 'Issue Authority' : medical ? 'Certificate No.' : proficiency ? 'Issue Authority' : 'Training Institute'
+  const authorityLabel = competency ? 'Issue Authority' : medical ? 'Certificate No.' : proficiency ? 'Issue Authority' : 'Place of Issue'
   const authorityValue = competency ? cert.issue_authority || '' : medical ? cert.cert_number || '' : proficiency ? cert.issue_authority || '' : cert.place_of_issue || ''
 
   return (

@@ -16,6 +16,7 @@ export function PersonalCertificatesPanel({
 }: PersonalCertificatesPanelProps) {
   const mandatoryCount = myCertData.list.filter((cert: any) => cert.is_mandatory).length
   const displayedCerts = personalFilter === 'all' ? myCertData.list : myCertData.list.filter((cert: any) => cert.status === personalFilter)
+  const displayedCertRows = buildPersonalCertRows(displayedCerts)
   const dashboardTiles = [
     { id: 'all', label: 'All', value: myCertData.list.length, detail: 'Required and optional', icon: ShieldCheck, className: 'border-orange-500/30 bg-orange-500/10 text-orange-500' },
     { id: 'ok', label: 'Ready', value: myCertData.ok, detail: 'Valid certificates', icon: CheckCircle2, className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500' },
@@ -67,49 +68,128 @@ export function PersonalCertificatesPanel({
         <p className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--subtle)]">
           {displayedCerts.length} shown / {myCertData.list.length} certificate records
         </p>
-        {displayedCerts.map((item: any, idx: number) => (
-          <div key={idx} className={`group grid gap-4 rounded-[24px] border bg-[var(--surface)] p-5 shadow-xl transition-all md:grid-cols-[1fr_auto] md:items-center ${item.status === 'missing' ? 'border-red-500/20' : item.status === 'optional' ? 'border-[var(--border)] opacity-70' : 'border-orange-500/15 hover:border-orange-500/35'}`}>
-            <div className="flex min-w-0 items-center gap-4">
-              <div className={`rounded-2xl p-3.5 ${item.status === 'ok' ? 'bg-emerald-500/10 text-emerald-500' : item.status === 'warning' ? 'bg-amber-500/10 text-amber-500' : item.status === 'optional' ? 'bg-zinc-500/10 text-[var(--muted-text)]' : 'bg-red-500/10 text-red-500'}`}>
-                {item.status === 'ok' ? <CheckCircle2 size={24} /> : item.status === 'optional' ? <Clock size={24} /> : <AlertTriangle size={24} />}
+        {displayedCertRows.map((row: any, idx: number) => (
+          <div key={`${row.item.cert_name}-${idx}`} className="space-y-2">
+            <PersonalCertCard item={row.item} onUploadCertificate={onUploadCertificate} />
+            {row.children.map((child: any) => (
+              <div key={`${row.item.cert_name}-${child.cert_name}`} className="pl-8 md:pl-16">
+                <PersonalCertCard item={child} onUploadCertificate={onUploadCertificate} child />
               </div>
-              <div className="min-w-0">
-                <p className={`mb-1 text-[8px] font-black uppercase tracking-widest ${item.is_mandatory ? 'text-orange-500' : 'text-[var(--muted-text)]'}`}>{item.is_mandatory ? 'Mandatory' : 'Optional'}</p>
-                <h3 className="text-sm font-black leading-tight text-[var(--headline)] md:text-base">{item.cert_name}</h3>
-                {(item.requiredCert || item.triggerCert) && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {item.requiredCert && (
-                      <span className="rounded-full border border-orange-500/25 bg-orange-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-orange-500">
-                        Requires COP: {item.requiredCert}
-                      </span>
-                    )}
-                    {item.triggerCert && (
-                      <span className="rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-blue-500">
-                        COP for: {item.triggerCert}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {item.uploaded && <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">Exp: {formatExpiryLabel(item.uploaded.expiry_date)}</p>}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {item.uploaded?.file_url && (
-                <a
-                  href={item.uploaded.file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-xl bg-[var(--chip-bg)] p-3 text-orange-500 transition-all hover:bg-orange-600 hover:text-white"
-                  aria-label={`Open ${item.cert_name}`}
-                  title="Open uploaded certificate"
-                >
-                  <Eye size={16} />
-                </a>
-              )}
-              <button onClick={() => onUploadCertificate(item.cert_name)} className="rounded-xl bg-orange-600 px-6 py-3 text-[10px] font-black uppercase text-white shadow-lg shadow-orange-600/20 transition-all active:scale-95">Upload</button>
-            </div>
+            ))}
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function normalizeCertName(value: unknown) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function isCopCertificateName(value: unknown) {
+  const normalized = normalizeCertName(value)
+  return normalized.includes('cop') || normalized.includes('certificateofproficiency')
+}
+
+function buildPersonalCertRows(items: any[]) {
+  const itemByName = new Map(items.map((item) => [normalizeCertName(item.cert_name), item]))
+  const childNames = new Set<string>()
+
+  const rows = items.map((item) => {
+    const children: any[] = []
+    if (item.requiredCert && isCopCertificateName(item.requiredCert)) {
+      const child = itemByName.get(normalizeCertName(item.requiredCert))
+      if (child) {
+        children.push(child)
+        childNames.add(normalizeCertName(child.cert_name))
+      }
+    }
+    return { item, children }
+  })
+
+  return rows.filter((row) => !childNames.has(normalizeCertName(row.item.cert_name)))
+}
+
+function CertMetaGrid({ item }: { item: any }) {
+  if (!item.uploaded) return null
+  const meta = [
+    { label: 'Number', value: item.uploaded.cert_number },
+    { label: 'Issued', value: item.uploaded.issue_date },
+    { label: 'Expiry', value: formatExpiryLabel(item.uploaded.expiry_date) },
+  ].filter((entry) => entry.value)
+
+  if (meta.length === 0) return null
+
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+      {meta.map((entry) => (
+        <div key={entry.label} className="rounded-xl border border-orange-500/15 bg-orange-500/5 px-3 py-2">
+          <p className="text-[8px] font-black uppercase tracking-widest text-[var(--subtle)]">{entry.label}</p>
+          <p className="mt-1 truncate text-[10px] font-black uppercase tracking-wide text-[var(--headline)]">{entry.value}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function PersonalCertCard({ child, item, onUploadCertificate }: { child?: boolean; item: any; onUploadCertificate: (certName: string) => void }) {
+  const hasCopChild = item.requiredCert && isCopCertificateName(item.requiredCert)
+  const isCopChild = item.triggerCert && isCopCertificateName(item.cert_name)
+  const hasRelatedRequirement = item.requiredCert && !isCopCertificateName(item.requiredCert)
+  const isRelatedRequirement = item.triggerCert && !isCopCertificateName(item.cert_name)
+
+  return (
+    <div className={`group grid gap-4 rounded-[24px] border bg-[var(--surface)] p-5 shadow-xl transition-all md:grid-cols-[1fr_auto] md:items-center ${child ? 'border-blue-500/20 bg-blue-500/5' : item.status === 'missing' ? 'border-red-500/20' : item.status === 'optional' ? 'border-[var(--border)] opacity-70' : 'border-orange-500/15 hover:border-orange-500/35'}`}>
+      <div className="flex min-w-0 items-start gap-4">
+        <div className={`rounded-2xl p-3.5 ${item.status === 'ok' ? 'bg-emerald-500/10 text-emerald-500' : item.status === 'warning' ? 'bg-amber-500/10 text-amber-500' : item.status === 'optional' ? 'bg-zinc-500/10 text-[var(--muted-text)]' : 'bg-red-500/10 text-red-500'}`}>
+          {item.status === 'ok' ? <CheckCircle2 size={24} /> : item.status === 'optional' ? <Clock size={24} /> : <AlertTriangle size={24} />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className={`mb-1 text-[8px] font-black uppercase tracking-widest ${item.is_mandatory ? 'text-orange-500' : 'text-[var(--muted-text)]'}`}>
+            {child ? 'Related proficiency' : item.is_mandatory ? 'Mandatory' : 'Optional'}
+          </p>
+          <h3 className="text-sm font-black leading-tight text-[var(--headline)] md:text-base">{item.cert_name}</h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {hasCopChild && (
+              <span className="rounded-full border border-orange-500/25 bg-orange-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-orange-500">
+                COP required below
+              </span>
+            )}
+            {isCopChild && (
+              <span className="rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-blue-500">
+                COP for: {item.triggerCert}
+              </span>
+            )}
+            {hasRelatedRequirement && (
+              <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-600">
+                Also requires: {item.requiredCert}
+              </span>
+            )}
+            {isRelatedRequirement && (
+              <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-600">
+                Related to: {item.triggerCert}
+              </span>
+            )}
+          </div>
+          <CertMetaGrid item={item} />
+          {item.uploaded && <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">Exp: {formatExpiryLabel(item.uploaded.expiry_date)}</p>}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {item.uploaded?.file_url && (
+          <a
+            href={item.uploaded.file_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-xl bg-[var(--chip-bg)] p-3 text-orange-500 transition-all hover:bg-orange-600 hover:text-white"
+            aria-label={`Open ${item.cert_name}`}
+            title="Open uploaded certificate"
+          >
+            <Eye size={16} />
+          </a>
+        )}
+        <button onClick={() => onUploadCertificate(item.cert_name)} className="rounded-xl bg-orange-600 px-6 py-3 text-[10px] font-black uppercase text-white shadow-lg shadow-orange-600/20 transition-all active:scale-95">Upload</button>
       </div>
     </div>
   )

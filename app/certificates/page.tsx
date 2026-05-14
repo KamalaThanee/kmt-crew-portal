@@ -101,7 +101,7 @@ const certificateTabCopy: Record<string, { title: string; subtitle: string }> = 
 }
 
 const crewColumns = 'id, full_name, position, is_active, resigned_at'
-const crewCertColumns = 'id, crew_id, cert_name, issue_date, expiry_date, file_url, created_at, updated_at'
+const crewCertColumns = 'id, crew_id, cert_name, issue_date, expiry_date, file_url, cert_number, place_of_issue, issue_authority, created_at, updated_at'
 const certLogColumns = 'id, action, old_data, new_data, actor_name, created_at'
 const crewCertLogColumns = 'id, action, old_data, new_data, actor_name, created_at, crew_id, cert_name'
 const certEmailSettingsColumns = 'id, ship_alert_enabled, my_cert_alert_enabled, ship_to_emails, ship_cc_emails'
