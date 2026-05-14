@@ -102,6 +102,7 @@ const certificateTabCopy: Record<string, { title: string; subtitle: string }> = 
 
 const crewColumns = 'id, full_name, position, is_active, resigned_at'
 const crewCertColumns = 'id, crew_id, cert_name, issue_date, expiry_date, file_url, cert_number, place_of_issue, issue_authority, created_at, updated_at'
+const certMasterColumns = 'cert_name, cert_family, cv_section, stcw_group_key, requires_proficiency, required_proficiency_key, cv_order'
 const certLogColumns = 'id, action, old_data, new_data, actor_name, created_at'
 const crewCertLogColumns = 'id, action, old_data, new_data, actor_name, created_at, crew_id, cert_name'
 const certEmailSettingsColumns = 'id, ship_alert_enabled, my_cert_alert_enabled, ship_to_emails, ship_cc_emails'
@@ -115,6 +116,7 @@ function CertificatesContent() {
   const [loading, setLoading] = useState(true)
   
   const [matrix, setMatrix] = useState<any[]>([])
+  const [certMaster, setCertMaster] = useState<any[]>([])
   const [myCerts, setMyCerts] = useState<any[]>([])
   const [allCerts, setAllCerts] = useState<any[]>([])
   const [crews, setCrews] = useState<any[]>([])
@@ -137,8 +139,9 @@ function CertificatesContent() {
   const canOpenShipCertificates = useMemo(() => canViewShipCertificates(currentUser?.position), [currentUser]);
 
   const fetchData = async () => {
-    const [m, c, crewsRes, allC, r, logs, crewLogs, emailSettings, emailLogs] = await Promise.all([
+    const [m, master, c, crewsRes, allC, r, logs, crewLogs, emailSettings, emailLogs] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
+      supabase.from('cert_master').select(certMasterColumns),
       supabase.from('crew_certs').select(crewCertColumns).eq('crew_id', currentUser?.id),
       supabase.from('crews').select(crewColumns).order('full_name'),
       supabase.from('crew_certs').select(crewCertColumns),
@@ -149,6 +152,7 @@ function CertificatesContent() {
       supabase.from('cert_email_logs').select(certEmailLogColumns).order('created_at', { ascending: false }).limit(150),
     ]);
     if (m.data) setMatrix(m.data);
+    if (master.data) setCertMaster(master.data);
     if (c.data) setMyCerts(c.data);
     if (crewsRes.data) setCrews(crewsRes.data.filter(isCrewActive));
     if (allC.data) setAllCerts(allC.data);
@@ -190,10 +194,10 @@ function CertificatesContent() {
   }, [currentUser]);
 
   const calculateCerts = (targetCrew: any, crewCertList: any[]) => {
-    return calculateCrewCertificateCompliance({ crew: targetCrew, crewCerts: crewCertList, matrix, rules })
+    return calculateCrewCertificateCompliance({ crew: targetCrew, crewCerts: crewCertList, matrix, rules, certMaster })
   }
 
-  const myCertData = useMemo(() => calculateCerts(currentUser || {}, myCerts), [currentUser, myCerts, matrix, rules]);
+  const myCertData = useMemo(() => calculateCerts(currentUser || {}, myCerts), [currentUser, myCerts, matrix, rules, certMaster]);
 
   const allPositions = useMemo(() => ['All', ...new Set(crews.map(c => c.position))].sort(), [crews]);
   const allCertTypes = useMemo(() => ['All', ...new Set(matrix.map(m => m.cert_name))].sort(), [matrix]);
@@ -209,7 +213,7 @@ function CertificatesContent() {
       }
       return matchSearch && matchPos && matchCert;
     });
-  }, [crews, allCerts, matrix, rules, searchTerm, filterPos, filterSpecificCert]);
+  }, [crews, allCerts, matrix, rules, certMaster, searchTerm, filterPos, filterSpecificCert]);
 
   const crewSummary = useMemo(() => {
     return {

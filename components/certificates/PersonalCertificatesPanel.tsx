@@ -98,13 +98,23 @@ function buildPersonalCertRows(items: any[]) {
 
   const rows = items.map((item) => {
     const children: any[] = []
-    if (item.requiredCert && isCopCertificateName(item.requiredCert)) {
-      const child = itemByName.get(normalizeCertName(item.requiredCert))
+    const requiredCerts = Array.isArray(item.requiredCerts) ? item.requiredCerts : item.requiredCert ? [item.requiredCert] : []
+    requiredCerts.forEach((requiredCert: string) => {
+      const child = itemByName.get(normalizeCertName(requiredCert))
       if (child) {
         children.push(child)
         childNames.add(normalizeCertName(child.cert_name))
+      } else {
+        children.push({
+          cert_name: requiredCert,
+          status: 'missing',
+          is_mandatory: false,
+          triggerCert: item.cert_name,
+          cert_family: item.cert_family || item.category,
+          virtualRelated: true,
+        })
       }
-    }
+    })
     return { item, children }
   })
 
@@ -134,10 +144,13 @@ function CertMetaGrid({ item }: { item: any }) {
 }
 
 function PersonalCertCard({ child, item, onUploadCertificate }: { child?: boolean; item: any; onUploadCertificate: (certName: string) => void }) {
-  const hasCopChild = item.requiredCert && isCopCertificateName(item.requiredCert)
+  const requiredCerts = Array.isArray(item.requiredCerts) ? item.requiredCerts : item.requiredCert ? [item.requiredCert] : []
+  const hasCopChild = requiredCerts.some(isCopCertificateName)
   const isCopChild = item.triggerCert && isCopCertificateName(item.cert_name)
-  const hasRelatedRequirement = item.requiredCert && !isCopCertificateName(item.requiredCert)
+  const relatedRequirements = requiredCerts.filter((cert: string) => !isCopCertificateName(cert))
+  const hasRelatedRequirement = relatedRequirements.length > 0
   const isRelatedRequirement = item.triggerCert && !isCopCertificateName(item.cert_name)
+  const categoryLabel = item.cert_family || item.category
 
   return (
     <div className={`group grid gap-4 rounded-[24px] border bg-[var(--surface)] p-5 shadow-xl transition-all md:grid-cols-[1fr_auto] md:items-center ${child ? 'border-blue-500/20 bg-blue-500/5' : item.status === 'missing' ? 'border-red-500/20' : item.status === 'optional' ? 'border-[var(--border)] opacity-70' : 'border-orange-500/15 hover:border-orange-500/35'}`}>
@@ -147,10 +160,15 @@ function PersonalCertCard({ child, item, onUploadCertificate }: { child?: boolea
         </div>
         <div className="min-w-0 flex-1">
           <p className={`mb-1 text-[8px] font-black uppercase tracking-widest ${item.is_mandatory ? 'text-orange-500' : 'text-[var(--muted-text)]'}`}>
-            {child ? 'Related proficiency' : item.is_mandatory ? 'Mandatory' : 'Optional'}
+            {child ? (isCopChild ? 'Related proficiency' : 'Related requirement') : item.is_mandatory ? 'Mandatory' : 'Optional'}
           </p>
           <h3 className="text-sm font-black leading-tight text-[var(--headline)] md:text-base">{item.cert_name}</h3>
           <div className="mt-2 flex flex-wrap gap-2">
+            {categoryLabel && (
+              <span className="rounded-full border border-zinc-500/20 bg-zinc-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-[var(--muted-text)]">
+                {categoryLabel}
+              </span>
+            )}
             {hasCopChild && (
               <span className="rounded-full border border-orange-500/25 bg-orange-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-orange-500">
                 COP required below
@@ -162,9 +180,11 @@ function PersonalCertCard({ child, item, onUploadCertificate }: { child?: boolea
               </span>
             )}
             {hasRelatedRequirement && (
-              <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-600">
-                Also requires: {item.requiredCert}
-              </span>
+              relatedRequirements.map((requiredCert: string) => (
+                <span key={requiredCert} className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-600">
+                  Also requires: {requiredCert}
+                </span>
+              ))
             )}
             {isRelatedRequirement && (
               <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-600">
@@ -173,7 +193,6 @@ function PersonalCertCard({ child, item, onUploadCertificate }: { child?: boolea
             )}
           </div>
           <CertMetaGrid item={item} />
-          {item.uploaded && <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">Exp: {formatExpiryLabel(item.uploaded.expiry_date)}</p>}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
