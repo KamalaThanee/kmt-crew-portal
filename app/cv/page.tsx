@@ -241,9 +241,14 @@ function formatCvCertName(value?: string | null) {
     .trim()
 }
 
+function isGenericCompetencyName(value?: string | null) {
+  const normalized = normalize(value)
+  return normalized === 'certificateofcompetencycoc' || normalized === 'certificateofcompetency'
+}
+
 const buildManualCompetency = (crew?: CurrentUser | null): CrewCert => ({
   id: `manual-cv-competency-${crew?.id || 'current'}`,
-  cert_name: 'Certificate of Competency ( COC )',
+  cert_name: '',
   issue_date: null,
   expiry_date: null,
   file_url: null,
@@ -251,7 +256,7 @@ const buildManualCompetency = (crew?: CurrentUser | null): CrewCert => ({
   place_of_issue: '',
   issue_authority: '',
   cv_section: 'Certificate of Competency',
-  cv_capacity: crew?.position || '',
+  cv_capacity: '',
   master_cv_section: 'Certificate of Competency',
   master_cv_order: 10,
 })
@@ -887,17 +892,19 @@ export default function CvPage() {
       return
     }
     setSavingCertId(cert.id)
-    const payload = {
+    const section = getCvCertSection(cert)
+    const payload: Record<string, any> = {
       cert_number: cert.cert_number || null,
       place_of_issue: cert.place_of_issue || null,
       issue_authority: cert.issue_authority || null,
-      cv_section: getCvCertSection(cert),
+      cv_section: section,
       cv_row_no: cert.cv_row_no || null,
       cv_capacity: cert.cv_capacity || null,
       issue_date: cert.issue_date || null,
       expiry_date: cert.expiry_date || null,
       updated_at: new Date().toISOString(),
     }
+    if (section === 'Certificate of Competency' && cert.cert_name) payload.cert_name = cert.cert_name
     const { error } = await supabase.from('crew_certs').update(payload).eq('id', cert.id)
     setSavingCertId('')
     if (error) {
@@ -1830,7 +1837,7 @@ function CvCertFormCard({
   onHide?: () => void
   onSave: () => void
 }) {
-  const nameLabel = medical ? 'Medical Check Up Program' : competency ? 'Certificate of Competency / Proficiency' : titleOverride || section
+  const nameLabel = medical ? 'Medical Check Up Program' : competency ? 'Certificate of Competency' : titleOverride || section
   const secondLabel = competency ? 'Capacity' : medical ? 'Name of Hospital' : 'Number'
   const secondValue = competency ? cert.cv_capacity || '' : medical ? cert.place_of_issue || '' : cert.cert_number || ''
   const authorityLabel = competency ? 'Issue Authority' : medical ? 'Certificate No.' : proficiency ? 'Issue Authority' : 'Place of Issue'
@@ -1881,10 +1888,12 @@ function CvCertFormCard({
 }
 
 function EditableCertName({ cert, onChange, section }: { cert: CrewCert; section: string; onChange: (cert: CrewCert) => void }) {
-  if (isManualCvCert(cert)) {
+  const competency = section === 'Certificate of Competency'
+  if (isManualCvCert(cert) || competency) {
     return (
       <input
-        value={cert.cert_name}
+        value={competency && isGenericCompetencyName(cert.cert_name) ? '' : cert.cert_name}
+        placeholder={competency ? 'Master on ships of 3,000 gross tonnage or more' : 'Certificate name'}
         onChange={(event) => onChange({ ...cert, cert_name: event.target.value, cv_section: section, master_cv_section: section })}
         className="w-full rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] px-4 py-3 text-sm font-black italic uppercase text-[var(--headline)] outline-none transition-all focus:border-orange-500"
       />
