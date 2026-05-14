@@ -50,6 +50,13 @@ type CvProfile = {
   picture_data_url: string
 }
 
+type PassportCvProfileData = {
+  nationalIdNo?: string | null
+  nationality?: string | null
+  dateOfBirth?: string | null
+  placeOfBirth?: string | null
+}
+
 type CrewCert = {
   id: string
   cert_name: string
@@ -382,6 +389,19 @@ function xmlEscape(value: string) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+function normalizePassportCvProfileData(value: any): PassportCvProfileData {
+  return {
+    nationalIdNo: clean(value?.nationalIdNo || value?.national_id_no),
+    nationality: clean(value?.nationality),
+    dateOfBirth: toDateValue(value?.dateOfBirth || value?.date_of_birth),
+    placeOfBirth: clean(value?.placeOfBirth || value?.place_of_birth),
+  }
+}
+
+function hasPassportCvProfileData(value: PassportCvProfileData) {
+  return Boolean(value.nationalIdNo || value.nationality || value.dateOfBirth || value.placeOfBirth)
+}
+
 const cvSpreadsheetNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 
 function encodeCvCol(index: number) {
@@ -529,6 +549,8 @@ export default function CvPage() {
   const [savingService, setSavingService] = useState(false)
   const [savingCertId, setSavingCertId] = useState('')
   const [fillingCertId, setFillingCertId] = useState('')
+  const [fillingPassportProfile, setFillingPassportProfile] = useState(false)
+  const [checkedPassportHistory, setCheckedPassportHistory] = useState(false)
   const [savingVaccination, setSavingVaccination] = useState(false)
   const [selectedVesselId, setSelectedVesselId] = useState('')
   const [activeTab, setActiveTab] = useState<CvTab>('form')
@@ -584,10 +606,21 @@ export default function CvPage() {
   }, [certRows, hiddenCvCertIds, manualCompetency, manualCvCerts])
   const cvCertTables = useMemo(() => applyCvPairOrder(buildCvCertTables(cvSourceRows), cvPairOrder), [cvPairOrder, cvSourceRows])
 
+  useEffect(() => {
+    if (!user?.id || checkedPassportHistory) return
+    const missingPassportFields = !profile.national_id_no || !profile.nationality || !profile.date_of_birth || !profile.place_of_birth
+    if (!missingPassportFields) {
+      setCheckedPassportHistory(true)
+      return
+    }
+    setCheckedPassportHistory(true)
+    fillPassportProfileFromHistory(false).catch(() => undefined)
+  }, [checkedPassportHistory, profile.date_of_birth, profile.national_id_no, profile.nationality, profile.place_of_birth, user?.id])
+
   async function loadCv(current: ActiveUser) {
     setLoading(true)
     setSqlMissing(false)
-    const [vesselRes, serviceRes, certRes, certMasterRes, vaccinationRes] = await Promise.all([
+    const [vesselRes, serviceRes, certRes, certMasterRes, vaccinationRes, crewProfileRes] = await Promise.all([
       supabase.from('cv_vessel_master').select('*').order('vessel_name', { ascending: true }),
       supabase
         .from('crew_cv_sea_services')
@@ -607,6 +640,11 @@ export default function CvPage() {
         .select('*')
         .eq('crew_id', current.id)
         .order('date_given', { ascending: false, nullsFirst: false }),
+      supabase
+        .from('crews')
+        .select('national_id_no, nationality, date_of_birth, place_of_birth, cv_company, toeic_score, toeic_test_date, suit_color, suit_size, boot_size')
+        .eq('id', current.id)
+        .maybeSingle(),
     ])
 
     if (vesselRes.error || serviceRes.error || vaccinationRes.error) {
@@ -617,6 +655,23 @@ export default function CvPage() {
 
     setVessels((vesselRes.data || []) as VesselMaster[])
     setServices((serviceRes.data || []) as SeaServiceRow[])
+    if (!crewProfileRes.error && crewProfileRes.data) {
+      const dbProfile = crewProfileRes.data as any
+      setProfile((prev) => ({
+        ...prev,
+        national_id_no: clean(dbProfile.national_id_no) || prev.national_id_no,
+        nationality: clean(dbProfile.nationality) || prev.nationality,
+        date_of_birth: toDateValue(dbProfile.date_of_birth) || prev.date_of_birth,
+        place_of_birth: clean(dbProfile.place_of_birth) || prev.place_of_birth,
+        cv_company: clean(dbProfile.cv_company) || prev.cv_company,
+        toeic_score: clean(dbProfile.toeic_score) || prev.toeic_score,
+        toeic_test_date: toDateValue(dbProfile.toeic_test_date) || prev.toeic_test_date,
+      }))
+      const nextUser = { ...current, ...dbProfile }
+      setUser(nextUser)
+      localStorage.setItem('kmt_user', JSON.stringify(nextUser))
+      window.dispatchEvent(new Event('kmt-user-changed'))
+    }
     if (!certRes.error) setCertRows(attachCertMasterRules((certRes.data || []) as CrewCert[], (certMasterRes.data || []) as CertMasterCvRule[]))
     setVaccinations((vaccinationRes.data || []) as VaccinationRow[])
     setLoading(false)
@@ -683,6 +738,118 @@ export default function CvPage() {
     window.dispatchEvent(new Event('kmt-user-changed'))
     setUser(nextUser)
     toast.success('CV profile saved')
+  }
+
+  async function persistPassportProfileData(data: PassportCvProfileData, successMessage = 'Passport data added to CV profile', showToast = true) {
+    if (!user?.id || !hasPassportCvProfileData(data)) return false
+
+    const payload: Record<string, string> = {}
+    if (data.nationalIdNo && !profile.national_id_no) payload.national_id_no = data.nationalIdNo
+    if (data.nationality && !profile.nationality) payload.nationality = data.nationality
+    if (data.dateOfBirth && !profile.date_of_birth) payload.date_of_birth = data.dateOfBirth
+    if (data.placeOfBirth && !profile.place_of_birth) payload.place_of_birth = data.placeOfBirth
+    if (Object.keys(payload).length === 0) return false
+
+    payload.passport_cv_updated_at = new Date().toISOString()
+    const { error } = await supabase.from('crews').update(payload).eq('id', user.id)
+    if (error) throw error
+
+    const nextProfile = {
+      ...profile,
+      national_id_no: payload.national_id_no || profile.national_id_no,
+      nationality: payload.nationality || profile.nationality,
+      date_of_birth: payload.date_of_birth || profile.date_of_birth,
+      place_of_birth: payload.place_of_birth || profile.place_of_birth,
+    }
+    const nextUser = { ...user, ...payload }
+    setProfile(nextProfile)
+    setUser(nextUser)
+    localStorage.setItem('kmt_user', JSON.stringify(nextUser))
+    window.dispatchEvent(new Event('kmt-user-changed'))
+    if (showToast) toast.success(successMessage)
+    return true
+  }
+
+  async function fillPassportProfileFromHistory(showToast = true) {
+    if (!user?.id) return false
+    const { data, error } = await supabase
+      .from('crew_cert_history')
+      .select('new_data')
+      .eq('crew_id', user.id)
+      .ilike('cert_name', '%passport%')
+      .order('created_at', { ascending: false })
+      .limit(20)
+
+    if (error) return false
+
+    for (const row of (data || []) as Array<{ new_data?: any }>) {
+      const passportData = normalizePassportCvProfileData(row.new_data?.passport_cv_data)
+      if (!hasPassportCvProfileData(passportData)) continue
+      const updated = await persistPassportProfileData(passportData, 'Passport data restored from upload history', showToast)
+      if (updated) return true
+    }
+    return false
+  }
+
+  async function fillPassportProfileFromFile() {
+    if (!user?.id) return
+    setFillingPassportProfile(true)
+    try {
+      const restored = await fillPassportProfileFromHistory()
+      if (restored) return
+
+      const passport = personalDocs.passport
+      if (!passport?.file_url) {
+        toast.error('No Passport file found in My Certificate')
+        return
+      }
+
+      const fileResponse = await fetch(passport.file_url)
+      if (!fileResponse.ok) throw new Error('Could not open the stored Passport file')
+      const blob = await fileResponse.blob()
+      const mimeType = blob.type || (passport.file_url.toLowerCase().includes('.pdf') ? 'application/pdf' : 'image/jpeg')
+      const fileName = passport.file_url.split('/').pop() || 'passport'
+      const file = new File([blob], fileName, { type: mimeType })
+      const imageBase64 = mimeType === 'application/pdf' ? await blobToDataUrl(blob) : await compressImage(file)
+
+      let latestError = 'AI models busy'
+      for (const model of AI_MODELS) {
+        try {
+          const response = await fetch('/api/ocr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageBase64,
+              mimeType,
+              certName: passport.cert_name || 'Passport',
+              crewName: user.full_name,
+              modelId: model.id,
+              provider: model.provider,
+            }),
+          })
+          const result = await response.json()
+          if (!response.ok || result.error) {
+            latestError = result.error || latestError
+            throw new Error(latestError)
+          }
+
+          const passportData = normalizePassportCvProfileData(result.passportCvData)
+          if (!hasPassportCvProfileData(passportData)) {
+            latestError = `${model.label} did not find passport CV fields`
+            throw new Error(latestError)
+          }
+          await persistPassportProfileData(passportData, `Passport CV fields filled by ${model.label}`)
+          return
+        } catch (error: any) {
+          latestError = error.message || latestError
+        }
+      }
+      throw new Error(latestError)
+    } catch (error: any) {
+      toast.error(error.message || 'Could not read Passport data')
+    } finally {
+      setFillingPassportProfile(false)
+    }
   }
 
   async function handleCvPictureUpload(file?: File | null) {
@@ -1037,6 +1204,12 @@ export default function CvPage() {
           }
           const { error } = await supabase.from('crew_certs').update(payload).eq('id', cert.id)
           if (error) throw error
+          if (isPersonalDocumentCert(cert) && cert.cert_name.toLowerCase().includes('passport')) {
+            const passportData = normalizePassportCvProfileData(result.passportCvData)
+            if (hasPassportCvProfileData(passportData)) {
+              await persistPassportProfileData(passportData, 'Passport data added to CV profile')
+            }
+          }
           setCertRows((prev) => prev.map((item) => item.id === cert.id ? nextCert : item))
           toast.success(`Filled missing CV fields with ${model.label}`)
           return
@@ -1129,6 +1302,20 @@ export default function CvPage() {
                 <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Person&apos;s Details</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Passport upload can prefill these fields, but you can edit manually.</p>
               </div>
+            </div>
+            <div className="mb-5 flex flex-col gap-3 rounded-[28px] border border-orange-500/20 bg-orange-500/5 p-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[var(--accent-text)]">Passport Data Link</p>
+                <p className="mt-1 text-xs font-bold text-[var(--subtle)]">Restore saved Passport CV fields first. If no history exists, read the Passport file once and save it back to crew profile.</p>
+              </div>
+              <button
+                type="button"
+                onClick={fillPassportProfileFromFile}
+                disabled={fillingPassportProfile}
+                className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-blue-500 disabled:opacity-50"
+              >
+                {fillingPassportProfile ? 'Reading Passport...' : 'Fill From Passport'}
+              </button>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <FormLine label="Name" value={user?.full_name || '-'} />
