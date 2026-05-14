@@ -222,6 +222,16 @@ const cvHiddenCertsKey = (crewId: string) => `kmt_cv_hidden_certs_${crewId}`
 const cvManualCertsKey = (crewId: string) => `kmt_cv_manual_certs_${crewId}`
 const cvPairOrderKey = (crewId: string) => `kmt_cv_pair_order_${crewId}`
 
+function formatCvCertName(value?: string | null) {
+  const raw = clean(value)
+  if (!raw) return ''
+  return raw
+    .replace(/\s+/g, ' ')
+    .replace(/\s+\)/g, ')')
+    .replace(/\(\s+/g, '(')
+    .trim()
+}
+
 const buildManualCompetency = (crew?: CurrentUser | null): CrewCert => ({
   id: `manual-cv-competency-${crew?.id || 'current'}`,
   cert_name: 'Certificate of Competency ( COC )',
@@ -240,7 +250,7 @@ const buildManualCompetency = (crew?: CurrentUser | null): CrewCert => ({
 const buildManualCvCert = (section: string, linkedTraining?: CrewCert): CrewCert => ({
   id: `manual-cv-extra-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   cert_name: section === 'Certificate of Proficiency'
-    ? `${linkedTraining?.cert_name || 'Manual Certificate'} (COP)`
+    ? `${formatCvCertName(linkedTraining?.cert_name) || 'Manual Certificate'} (COP)`
     : 'Manual Certificate of Training',
   issue_date: null,
   expiry_date: null,
@@ -256,7 +266,7 @@ const buildManualCvCert = (section: string, linkedTraining?: CrewCert): CrewCert
 
 const buildRequiredProficiencyPlaceholder = (trainingCert: CrewCert): CrewCert => ({
   id: `manual-cv-required-proficiency-${trainingCert.id}`,
-  cert_name: `${trainingCert.cert_name} (COP)`,
+  cert_name: `${formatCvCertName(trainingCert.cert_name)} (COP)`,
   issue_date: null,
   expiry_date: null,
   file_url: null,
@@ -727,9 +737,21 @@ export default function CvPage() {
 
   function addManualCvCert(section: string) {
     if (!user?.id) return
-    const nextManualCerts = [...manualCvCerts, buildManualCvCert(section)]
+    const newCert = buildManualCvCert(section)
+    const nextManualCerts = [...manualCvCerts, newCert]
     setManualCvCerts(nextManualCerts)
     localStorage.setItem(cvManualCertsKey(user.id), JSON.stringify(nextManualCerts))
+    const keys = cvCertTables.paired.map(getCvPairKey)
+    const ordered = cvPairOrder.filter((key) => keys.includes(key))
+    keys.forEach((key) => {
+      if (!ordered.includes(key)) ordered.push(key)
+    })
+    if (section === 'Certificate of Training') {
+      const newPairKey = `${newCert.id}:none`
+      const nextOrder = [...ordered.filter((key) => key !== newPairKey), newPairKey]
+      setCvPairOrder(nextOrder)
+      localStorage.setItem(cvPairOrderKey(user.id), JSON.stringify(nextOrder))
+    }
     toast.success('Manual CV certificate row added')
   }
 
@@ -1582,18 +1604,39 @@ function CvTrainingPairForm({
   onSave: (certId: string) => void
 }) {
   const showProficiencySide = Boolean(row.proficiency || row.requiresProficiency)
-  const canAddOptionalProficiency = Boolean(row.training && !row.proficiency && !row.requiresProficiency)
+  const canAddOptionalProficiency = Boolean(row.training && isManualCvCert(row.training) && !row.proficiency && !row.requiresProficiency)
+  const [dragEnabled, setDragEnabled] = useState(false)
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
+      draggable={dragEnabled}
+      onDragStart={(event) => {
+        if (!dragEnabled) {
+          event.preventDefault()
+          return
+        }
+        onDragStart(event)
+      }}
+      onDragEnd={() => {
+        setDragEnabled(false)
+        onDragEnd()
+      }}
       onDragOver={(event) => event.preventDefault()}
-      onDrop={onDrop}
+      onDrop={() => {
+        setDragEnabled(false)
+        onDrop()
+      }}
       className={`rounded-[30px] border border-orange-500/20 bg-[var(--surface-strong)] p-4 shadow-sm transition-all ${dragged ? 'scale-[0.99] opacity-60' : ''}`}
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="cursor-grab text-[10px] font-black uppercase tracking-[0.28em] text-[var(--accent-text)]">CV training row {rowNumber} · hold and drag to reorder</p>
+        <button
+          type="button"
+          onMouseDown={() => setDragEnabled(true)}
+          onTouchStart={() => setDragEnabled(true)}
+          className="cursor-grab rounded-2xl border border-orange-500/20 bg-orange-500/5 px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.28em] text-[var(--accent-text)] active:cursor-grabbing"
+          title="Hold here and drag to reorder this CV row"
+        >
+          CV training row {rowNumber} - hold this handle to reorder
+        </button>
         <div className="flex flex-wrap items-center gap-2">
           {canAddOptionalProficiency && (
             <button
@@ -1743,7 +1786,7 @@ function EditableCertName({ cert, onChange, section }: { cert: CrewCert; section
 
   return (
     <div>
-      <p className="mb-2 text-sm font-black italic uppercase text-[var(--headline)]">{cert.cert_name}</p>
+      <p className="mb-2 text-sm font-black italic uppercase text-[var(--headline)]">{formatCvCertName(cert.cert_name)}</p>
     </div>
   )
 }
