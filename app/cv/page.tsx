@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type DragEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BriefcaseBusiness, CalendarDays, Download, FileBadge, Plus, Save, Ship, Trash2, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
@@ -157,6 +157,7 @@ const emptyVaccination: Omit<VaccinationRow, 'id'> = {
 const clean = (value: unknown) => String(value || '').trim()
 const normalize = (value: unknown) => clean(value).toLowerCase().replace(/[^a-z0-9]/g, '')
 const isManualCvCert = (cert?: CrewCert | null) => Boolean(cert?.id?.startsWith('manual-cv-'))
+const isManualCvCertId = (certId?: string) => Boolean(certId?.startsWith('manual-cv-'))
 
 const rankGroups = [
   {
@@ -215,6 +216,9 @@ const splitCrewName = (value?: string | null) => {
 
 const manualCompetencyKey = (crewId: string) => `kmt_cv_manual_competency_${crewId}`
 const cvPictureKey = (crewId: string) => `kmt_cv_picture_${crewId}`
+const cvHiddenCertsKey = (crewId: string) => `kmt_cv_hidden_certs_${crewId}`
+const cvManualCertsKey = (crewId: string) => `kmt_cv_manual_certs_${crewId}`
+const cvPairOrderKey = (crewId: string) => `kmt_cv_pair_order_${crewId}`
 
 const buildManualCompetency = (crew?: CurrentUser | null): CrewCert => ({
   id: `manual-cv-competency-${crew?.id || 'current'}`,
@@ -230,6 +234,32 @@ const buildManualCompetency = (crew?: CurrentUser | null): CrewCert => ({
   master_cv_section: 'Certificate of Competency',
   master_cv_order: 10,
 })
+
+const buildManualCvCert = (section: string): CrewCert => ({
+  id: `manual-cv-extra-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  cert_name: section === 'Certificate of Proficiency' ? 'Manual Certificate of Proficiency' : 'Manual Certificate of Training',
+  issue_date: null,
+  expiry_date: null,
+  file_url: null,
+  cert_number: '',
+  place_of_issue: '',
+  issue_authority: '',
+  cv_section: section,
+  master_cv_section: section,
+  master_cv_order: 999,
+})
+
+const isManualCompetencyCert = (cert?: CrewCert | null) => Boolean(cert?.id?.startsWith('manual-cv-competency-'))
+
+function readStoredArray<T>(key: string): T[] {
+  try {
+    const stored = localStorage.getItem(key)
+    const parsed = stored ? JSON.parse(stored) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
 
 const readManualCompetency = (crew: ActiveUser) => {
   const fallback = buildManualCompetency(crew)
@@ -391,6 +421,9 @@ export default function CvPage() {
   const [selectedVesselId, setSelectedVesselId] = useState('')
   const [activeTab, setActiveTab] = useState<CvTab>('form')
   const [manualCompetency, setManualCompetency] = useState<CrewCert | null>(null)
+  const [manualCvCerts, setManualCvCerts] = useState<CrewCert[]>([])
+  const [hiddenCvCertIds, setHiddenCvCertIds] = useState<string[]>([])
+  const [cvPairOrder, setCvPairOrder] = useState<string[]>([])
 
   useEffect(() => {
     const current = readCurrentUser()
@@ -414,6 +447,9 @@ export default function CvPage() {
     setServiceForm((prev) => ({ ...prev, crew_id: currentId, rank: current.position || '' }))
     setVaccinationForm((prev) => ({ ...prev, crew_id: currentId }))
     setManualCompetency(readManualCompetency(activeUser))
+    setManualCvCerts(readStoredArray<CrewCert>(cvManualCertsKey(currentId)))
+    setHiddenCvCertIds(readStoredArray<string>(cvHiddenCertsKey(currentId)))
+    setCvPairOrder(readStoredArray<string>(cvPairOrderKey(currentId)))
     loadCv(activeUser)
   }, [router])
 
@@ -431,9 +467,10 @@ export default function CvPage() {
   const personalDocs = useMemo(() => buildPersonalDocs(certRows), [certRows])
   const cvSourceRows = useMemo(() => {
     const hasRealCompetency = certRows.some((cert) => getCvCertSection(cert) === 'Certificate of Competency')
-    return !hasRealCompetency && manualCompetency ? [...certRows, manualCompetency] : certRows
-  }, [certRows, manualCompetency])
-  const cvCertTables = useMemo(() => buildCvCertTables(cvSourceRows), [cvSourceRows])
+    const baseRows = !hasRealCompetency && manualCompetency ? [...certRows, manualCompetency] : certRows
+    return [...baseRows, ...manualCvCerts].filter((cert) => !hiddenCvCertIds.includes(cert.id))
+  }, [certRows, hiddenCvCertIds, manualCompetency, manualCvCerts])
+  const cvCertTables = useMemo(() => applyCvPairOrder(buildCvCertTables(cvSourceRows), cvPairOrder), [cvPairOrder, cvSourceRows])
 
   async function loadCv(current: ActiveUser) {
     setLoading(true)
@@ -524,6 +561,11 @@ export default function CvPage() {
     }
     if (profile.picture_data_url && user?.id) {
       localStorage.setItem(cvPictureKey(user.id), profile.picture_data_url)
+    }
+    if (user?.id) {
+      localStorage.setItem(cvManualCertsKey(user.id), JSON.stringify(manualCvCerts))
+      localStorage.setItem(cvHiddenCertsKey(user.id), JSON.stringify(hiddenCvCertIds))
+      localStorage.setItem(cvPairOrderKey(user.id), JSON.stringify(cvPairOrder))
     }
     localStorage.setItem('kmt_user', JSON.stringify(nextUser))
     window.dispatchEvent(new Event('kmt-user-changed'))
@@ -645,12 +687,62 @@ export default function CvPage() {
   }
 
   function updateCvCert(nextCert: CrewCert) {
-    if (isManualCvCert(nextCert)) {
+    if (isManualCompetencyCert(nextCert)) {
       setManualCompetency(nextCert)
       if (user?.id) localStorage.setItem(manualCompetencyKey(user.id), JSON.stringify(nextCert))
       return
     }
+    if (isManualCvCert(nextCert)) {
+      const nextManualCerts = manualCvCerts.map((item) => item.id === nextCert.id ? nextCert : item)
+      setManualCvCerts(nextManualCerts)
+      if (user?.id) localStorage.setItem(cvManualCertsKey(user.id), JSON.stringify(nextManualCerts))
+      return
+    }
     setCertRows((prev) => prev.map((item) => item.id === nextCert.id ? nextCert : item))
+  }
+
+  function addManualCvCert(section: string) {
+    if (!user?.id) return
+    const nextManualCerts = [...manualCvCerts, buildManualCvCert(section)]
+    setManualCvCerts(nextManualCerts)
+    localStorage.setItem(cvManualCertsKey(user.id), JSON.stringify(nextManualCerts))
+    toast.success('Manual CV certificate row added')
+  }
+
+  function hideCvCert(certId?: string) {
+    if (!certId || !user?.id) return
+    if (isManualCvCertId(certId) && !certId.startsWith('manual-cv-competency-')) {
+      const nextManualCerts = manualCvCerts.filter((item) => item.id !== certId)
+      setManualCvCerts(nextManualCerts)
+      localStorage.setItem(cvManualCertsKey(user.id), JSON.stringify(nextManualCerts))
+      return
+    }
+    const nextHidden = Array.from(new Set([...hiddenCvCertIds, certId]))
+    setHiddenCvCertIds(nextHidden)
+    localStorage.setItem(cvHiddenCertsKey(user.id), JSON.stringify(nextHidden))
+  }
+
+  function resetHiddenCvCerts() {
+    if (!user?.id) return
+    setHiddenCvCertIds([])
+    localStorage.removeItem(cvHiddenCertsKey(user.id))
+    toast.success('Hidden CV certificates restored')
+  }
+
+  function moveCvPair(sourceKey: string, targetKey: string) {
+    if (!user?.id || sourceKey === targetKey) return
+    const keys = cvCertTables.paired.map(getCvPairKey)
+    const ordered = cvPairOrder.filter((key) => keys.includes(key))
+    keys.forEach((key) => {
+      if (!ordered.includes(key)) ordered.push(key)
+    })
+    const sourceIndex = ordered.indexOf(sourceKey)
+    const targetIndex = ordered.indexOf(targetKey)
+    if (sourceIndex < 0 || targetIndex < 0) return
+    const [moved] = ordered.splice(sourceIndex, 1)
+    ordered.splice(targetIndex, 0, moved)
+    setCvPairOrder(ordered)
+    localStorage.setItem(cvPairOrderKey(user.id), JSON.stringify(ordered))
   }
 
   async function saveVesselShortcut(source: Omit<VesselMaster, 'id'> = vesselForm) {
@@ -720,9 +812,14 @@ export default function CvPage() {
   }
 
   async function saveCertCvDetails(cert: CrewCert) {
-    if (isManualCvCert(cert)) {
+    if (isManualCompetencyCert(cert)) {
       if (user?.id) localStorage.setItem(manualCompetencyKey(user.id), JSON.stringify(cert))
       toast.success('Manual COC detail saved')
+      return
+    }
+    if (isManualCvCert(cert)) {
+      if (user?.id) localStorage.setItem(cvManualCertsKey(user.id), JSON.stringify(manualCvCerts))
+      toast.success('Manual CV certificate saved')
       return
     }
     setSavingCertId(cert.id)
@@ -879,6 +976,11 @@ export default function CvPage() {
               tables={cvCertTables}
               savingCertId={savingCertId}
               onChange={updateCvCert}
+              onAddManual={addManualCvCert}
+              onHide={hideCvCert}
+              onMovePair={moveCvPair}
+              onResetHidden={resetHiddenCvCerts}
+              hiddenCount={hiddenCvCertIds.length}
               onSave={(certId) => {
                 const currentCert = cvSourceRows.find((item) => item.id === certId)
                 if (currentCert) saveCertCvDetails(currentCert)
@@ -1239,17 +1341,46 @@ function buildCvCertTables(rows: CrewCert[]) {
   return { competency, training, proficiency, paired, medical }
 }
 
+function getCvPairKey(pair: CvTrainingProficiencyPair) {
+  return `${pair.training?.id || 'none'}:${pair.proficiency?.id || 'none'}`
+}
+
+function applyCvPairOrder(tables: ReturnType<typeof buildCvCertTables>, order: string[]) {
+  if (order.length === 0) return tables
+  const priority = new Map(order.map((key, index) => [key, index]))
+  return {
+    ...tables,
+    paired: [...tables.paired].sort((a, b) => {
+      const orderA = priority.get(getCvPairKey(a)) ?? 9999
+      const orderB = priority.get(getCvPairKey(b)) ?? 9999
+      if (orderA !== orderB) return orderA - orderB
+      return 0
+    }),
+  }
+}
+
 function CvCertificateTables({
+  hiddenCount,
+  onAddManual,
   onChange,
+  onHide,
+  onMovePair,
+  onResetHidden,
   onSave,
   savingCertId,
   tables,
 }: {
+  hiddenCount: number
   tables: ReturnType<typeof buildCvCertTables>
   savingCertId: string
+  onAddManual: (section: string) => void
   onChange: (cert: CrewCert) => void
+  onHide: (certId?: string) => void
+  onMovePair: (sourceKey: string, targetKey: string) => void
+  onResetHidden: () => void
   onSave: (certId: string) => void
 }) {
+  const [draggedPairKey, setDraggedPairKey] = useState('')
   return (
     <div className="space-y-6">
       <CvSimpleCertTable
@@ -1258,12 +1389,28 @@ function CvCertificateTables({
         section="Certificate of Competency"
         savingCertId={savingCertId}
         onChange={onChange}
+        onHide={onHide}
         onSave={onSave}
         competency
       />
 
       <div>
-        <CvTableTitle title="Certificates of Training and Certificate of Proficiency" subtitle="Training certificates can sit on the same row as the related STCW proficiency certificate." />
+        <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <CvTableTitle title="Certificates of Training and Certificate of Proficiency" subtitle="Drag rows to arrange CV order. Hide rows that should not be exported." />
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => onAddManual('Certificate of Training')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
+              <Plus size={13} className="mr-1 inline" /> Add Training
+            </button>
+            <button type="button" onClick={() => onAddManual('Certificate of Proficiency')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
+              <Plus size={13} className="mr-1 inline" /> Add Proficiency
+            </button>
+            {hiddenCount > 0 && (
+              <button type="button" onClick={onResetHidden} className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-blue-500">
+                Restore hidden ({hiddenCount})
+              </button>
+            )}
+          </div>
+        </div>
         {tables.paired.length === 0 ? (
           <div className="rounded-3xl border border-orange-500/20 bg-[var(--surface-strong)] p-5 text-xs font-black uppercase tracking-widest text-[var(--subtle)]">No training or proficiency records yet</div>
         ) : (
@@ -1274,7 +1421,18 @@ function CvCertificateTables({
                 row={row}
                 rowNumber={index + 1}
                 savingCertId={savingCertId}
+                dragged={draggedPairKey === getCvPairKey(row)}
                 onChange={onChange}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = 'move'
+                  setDraggedPairKey(getCvPairKey(row))
+                }}
+                onDragEnd={() => setDraggedPairKey('')}
+                onDrop={() => {
+                  onMovePair(draggedPairKey, getCvPairKey(row))
+                  setDraggedPairKey('')
+                }}
+                onHide={onHide}
                 onSave={onSave}
               />
             ))}
@@ -1288,6 +1446,7 @@ function CvCertificateTables({
         section="Medical"
         savingCertId={savingCertId}
         onChange={onChange}
+        onHide={onHide}
         onSave={onSave}
         medical
       />
@@ -1308,6 +1467,7 @@ function CvSimpleCertTable({
   medical,
   competency,
   onChange,
+  onHide,
   onSave,
   rows,
   savingCertId,
@@ -1319,6 +1479,7 @@ function CvSimpleCertTable({
   rows: CrewCert[]
   savingCertId: string
   onChange: (cert: CrewCert) => void
+  onHide: (certId?: string) => void
   onSave: (certId: string) => void
   medical?: boolean
   competency?: boolean
@@ -1343,6 +1504,7 @@ function CvSimpleCertTable({
             section={section}
             saving={savingCertId === cert.id}
             onChange={onChange}
+            onHide={() => onHide(cert.id)}
             onSave={() => onSave(cert.id)}
             medical={medical}
             competency={competency}
@@ -1354,23 +1516,40 @@ function CvSimpleCertTable({
 }
 
 function CvTrainingPairForm({
+  dragged,
   onChange,
+  onDragEnd,
+  onDragStart,
+  onDrop,
+  onHide,
   onSave,
   row,
   rowNumber,
   savingCertId,
 }: {
+  dragged: boolean
   row: CvTrainingProficiencyPair
   rowNumber: number
   savingCertId: string
   onChange: (cert: CrewCert) => void
+  onDragStart: (event: DragEvent<HTMLDivElement>) => void
+  onDragEnd: () => void
+  onDrop: () => void
+  onHide: (certId?: string) => void
   onSave: (certId: string) => void
 }) {
   const showProficiencySide = Boolean(row.proficiency || row.requiresProficiency)
   return (
-    <div className="rounded-[30px] border border-orange-500/20 bg-[var(--surface-strong)] p-4 shadow-sm">
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={onDrop}
+      className={`rounded-[30px] border border-orange-500/20 bg-[var(--surface-strong)] p-4 shadow-sm transition-all ${dragged ? 'scale-[0.99] opacity-60' : ''}`}
+    >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[var(--accent-text)]">CV training row {rowNumber}</p>
+        <p className="cursor-grab text-[10px] font-black uppercase tracking-[0.28em] text-[var(--accent-text)]">CV training row {rowNumber} · hold and drag to reorder</p>
         <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">
           {showProficiencySide ? 'Training certificate + related proficiency certificate' : 'Training certificate only'}
         </p>
@@ -1382,6 +1561,7 @@ function CvTrainingPairForm({
             section="Certificate of Training"
             saving={savingCertId === row.training.id}
             onChange={onChange}
+            onHide={() => onHide(row.training?.id)}
             onSave={() => onSave(row.training!.id)}
             titleOverride="Certificate of Training"
             compact
@@ -1396,6 +1576,7 @@ function CvTrainingPairForm({
               section="Certificate of Proficiency"
               saving={savingCertId === row.proficiency.id}
               onChange={onChange}
+              onHide={() => onHide(row.proficiency?.id)}
               onSave={() => onSave(row.proficiency!.id)}
               titleOverride="Certificate of Proficiency"
               proficiency
@@ -1425,6 +1606,7 @@ function CvCertFormCard({
   competency,
   medical,
   onChange,
+  onHide,
   onSave,
   proficiency,
   saving,
@@ -1440,6 +1622,7 @@ function CvCertFormCard({
   compact?: boolean
   titleOverride?: string
   onChange: (cert: CrewCert) => void
+  onHide?: () => void
   onSave: () => void
 }) {
   const nameLabel = medical ? 'Medical Check Up Program' : competency ? 'Certificate of Competency / Proficiency' : titleOverride || section
@@ -1450,11 +1633,23 @@ function CvCertFormCard({
 
   return (
     <div className={`rounded-3xl border border-orange-500/20 bg-[var(--surface-strong)] ${compact ? 'p-4' : 'p-5'}`}>
-      <div className="mb-4">
-        <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">{nameLabel}</p>
-        <div className="mt-2">
+      <div className="mb-4 flex gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">{nameLabel}</p>
+          <div className="mt-2">
           <EditableCertName cert={cert} section={section} onChange={onChange} />
+          </div>
         </div>
+        {onHide && (
+          <button
+            type="button"
+            onClick={onHide}
+            className="h-10 w-10 shrink-0 rounded-2xl border border-red-500/25 bg-red-500/10 text-sm font-black text-red-500 transition hover:bg-red-500 hover:text-white"
+            title="Remove from CV layout"
+          >
+            X
+          </button>
+        )}
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <TextField
@@ -1481,8 +1676,16 @@ function CvCertFormCard({
 }
 
 function EditableCertName({ cert, onChange, section }: { cert: CrewCert; section: string; onChange: (cert: CrewCert) => void }) {
-  void onChange
-  void section
+  if (isManualCvCert(cert)) {
+    return (
+      <TextField
+        label=""
+        value={cert.cert_name}
+        onChange={(value) => onChange({ ...cert, cert_name: value, cv_section: section, master_cv_section: section })}
+      />
+    )
+  }
+
   return (
     <div>
       <p className="mb-2 text-sm font-black italic uppercase text-[var(--headline)]">{cert.cert_name}</p>
