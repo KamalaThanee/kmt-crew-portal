@@ -67,6 +67,7 @@ type CrewCert = {
   master_requires_proficiency?: boolean | null
   master_required_proficiency_key?: string | null
   master_cv_order?: number | null
+  linked_training_id?: string | null
 }
 
 type CvTrainingProficiencyPair = {
@@ -158,6 +159,7 @@ const clean = (value: unknown) => String(value || '').trim()
 const normalize = (value: unknown) => clean(value).toLowerCase().replace(/[^a-z0-9]/g, '')
 const isManualCvCert = (cert?: CrewCert | null) => Boolean(cert?.id?.startsWith('manual-cv-'))
 const isManualCvCertId = (certId?: string) => Boolean(certId?.startsWith('manual-cv-'))
+const isRequiredProficiencyPlaceholder = (cert?: CrewCert | null) => Boolean(cert?.id?.startsWith('manual-cv-required-proficiency-'))
 
 const rankGroups = [
   {
@@ -235,9 +237,11 @@ const buildManualCompetency = (crew?: CurrentUser | null): CrewCert => ({
   master_cv_order: 10,
 })
 
-const buildManualCvCert = (section: string): CrewCert => ({
+const buildManualCvCert = (section: string, linkedTraining?: CrewCert): CrewCert => ({
   id: `manual-cv-extra-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-  cert_name: section === 'Certificate of Proficiency' ? 'Manual Certificate of Proficiency' : 'Manual Certificate of Training',
+  cert_name: section === 'Certificate of Proficiency'
+    ? `${linkedTraining?.cert_name || 'Manual Certificate'} (COP)`
+    : 'Manual Certificate of Training',
   issue_date: null,
   expiry_date: null,
   file_url: null,
@@ -246,7 +250,24 @@ const buildManualCvCert = (section: string): CrewCert => ({
   issue_authority: '',
   cv_section: section,
   master_cv_section: section,
+  linked_training_id: linkedTraining?.id || null,
   master_cv_order: 999,
+})
+
+const buildRequiredProficiencyPlaceholder = (trainingCert: CrewCert): CrewCert => ({
+  id: `manual-cv-required-proficiency-${trainingCert.id}`,
+  cert_name: `${trainingCert.cert_name} (COP)`,
+  issue_date: null,
+  expiry_date: null,
+  file_url: null,
+  cert_number: '',
+  place_of_issue: '',
+  issue_authority: '',
+  cv_section: 'Certificate of Proficiency',
+  master_cv_section: 'Certificate of Proficiency',
+  master_stcw_group_key: trainingCert.master_required_proficiency_key || trainingCert.master_stcw_group_key || null,
+  linked_training_id: trainingCert.id,
+  master_cv_order: trainingCert.master_cv_order || 999,
 })
 
 const isManualCompetencyCert = (cert?: CrewCert | null) => Boolean(cert?.id?.startsWith('manual-cv-competency-'))
@@ -693,7 +714,10 @@ export default function CvPage() {
       return
     }
     if (isManualCvCert(nextCert)) {
-      const nextManualCerts = manualCvCerts.map((item) => item.id === nextCert.id ? nextCert : item)
+      const exists = manualCvCerts.some((item) => item.id === nextCert.id)
+      const nextManualCerts = exists
+        ? manualCvCerts.map((item) => item.id === nextCert.id ? nextCert : item)
+        : [...manualCvCerts, nextCert]
       setManualCvCerts(nextManualCerts)
       if (user?.id) localStorage.setItem(cvManualCertsKey(user.id), JSON.stringify(nextManualCerts))
       return
@@ -707,6 +731,14 @@ export default function CvPage() {
     setManualCvCerts(nextManualCerts)
     localStorage.setItem(cvManualCertsKey(user.id), JSON.stringify(nextManualCerts))
     toast.success('Manual CV certificate row added')
+  }
+
+  function addManualProficiencyForTraining(trainingCert: CrewCert) {
+    if (!user?.id) return
+    const nextManualCerts = [...manualCvCerts, buildManualCvCert('Certificate of Proficiency', trainingCert)]
+    setManualCvCerts(nextManualCerts)
+    localStorage.setItem(cvManualCertsKey(user.id), JSON.stringify(nextManualCerts))
+    toast.success('Manual COP row added under this training')
   }
 
   function hideCvCert(certId?: string) {
@@ -977,6 +1009,7 @@ export default function CvPage() {
               savingCertId={savingCertId}
               onChange={updateCvCert}
               onAddManual={addManualCvCert}
+              onAddProficiency={addManualProficiencyForTraining}
               onHide={hideCvCert}
               onMovePair={moveCvPair}
               onResetHidden={resetHiddenCvCerts}
@@ -1329,7 +1362,10 @@ function buildCvCertTables(rows: CrewCert[]) {
   const remainingProficiency = [...proficiency]
   const paired: CvTrainingProficiencyPair[] = training.map((trainingCert) => {
     const requiresProficiency = certRequiresProficiency(trainingCert)
-    const explicitIndex = requiresProficiency ? remainingProficiency.findIndex((cert) => cert.cv_row_no && cert.cv_row_no === trainingCert.cv_row_no) : -1
+    const explicitIndex = remainingProficiency.findIndex((cert) => (
+      (cert.linked_training_id && cert.linked_training_id === trainingCert.id)
+      || (cert.cv_row_no && cert.cv_row_no === trainingCert.cv_row_no)
+    ))
     const requiredKey = clean(trainingCert.master_required_proficiency_key)
     const group = requiredKey || getStcwGroup(trainingCert)
     const groupIndex = requiresProficiency && group !== 'other' ? remainingProficiency.findIndex((cert) => getStcwGroup(cert) === group) : -1
@@ -1337,8 +1373,11 @@ function buildCvCertTables(rows: CrewCert[]) {
     const matched = index >= 0 ? remainingProficiency.splice(index, 1)[0] : undefined
     return { training: trainingCert, proficiency: matched, requiresProficiency }
   })
-  remainingProficiency.forEach((cert) => paired.push({ training: undefined, proficiency: cert, requiresProficiency: true }))
-  return { competency, training, proficiency, paired, medical }
+  const normalizedPairs = paired.map((pair) => ({
+    ...pair,
+    proficiency: pair.proficiency || (pair.requiresProficiency && pair.training ? buildRequiredProficiencyPlaceholder(pair.training) : undefined),
+  }))
+  return { competency, training, proficiency, paired: normalizedPairs, medical }
 }
 
 function getCvPairKey(pair: CvTrainingProficiencyPair) {
@@ -1362,6 +1401,7 @@ function applyCvPairOrder(tables: ReturnType<typeof buildCvCertTables>, order: s
 function CvCertificateTables({
   hiddenCount,
   onAddManual,
+  onAddProficiency,
   onChange,
   onHide,
   onMovePair,
@@ -1374,6 +1414,7 @@ function CvCertificateTables({
   tables: ReturnType<typeof buildCvCertTables>
   savingCertId: string
   onAddManual: (section: string) => void
+  onAddProficiency: (trainingCert: CrewCert) => void
   onChange: (cert: CrewCert) => void
   onHide: (certId?: string) => void
   onMovePair: (sourceKey: string, targetKey: string) => void
@@ -1396,14 +1437,8 @@ function CvCertificateTables({
 
       <div>
         <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <CvTableTitle title="Certificates of Training and Certificate of Proficiency" subtitle="Drag rows to arrange CV order. Hide rows that should not be exported." />
+          <CvTableTitle title="Certificates of Training and Certificate of Proficiency" subtitle="Drag rows to arrange CV order. Required COP fields stay beside their training certificate." />
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => onAddManual('Certificate of Training')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
-              <Plus size={13} className="mr-1 inline" /> Add Training
-            </button>
-            <button type="button" onClick={() => onAddManual('Certificate of Proficiency')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
-              <Plus size={13} className="mr-1 inline" /> Add Proficiency
-            </button>
             {hiddenCount > 0 && (
               <button type="button" onClick={onResetHidden} className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-blue-500">
                 Restore hidden ({hiddenCount})
@@ -1432,12 +1467,18 @@ function CvCertificateTables({
                   onMovePair(draggedPairKey, getCvPairKey(row))
                   setDraggedPairKey('')
                 }}
+                onAddProficiency={onAddProficiency}
                 onHide={onHide}
                 onSave={onSave}
               />
             ))}
           </div>
         )}
+        <div className="mt-4 flex justify-end">
+          <button type="button" onClick={() => onAddManual('Certificate of Training')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
+            <Plus size={13} className="mr-1 inline" /> Add Manual Training Certificate
+          </button>
+        </div>
       </div>
 
       <CvSimpleCertTable
@@ -1517,6 +1558,7 @@ function CvSimpleCertTable({
 
 function CvTrainingPairForm({
   dragged,
+  onAddProficiency,
   onChange,
   onDragEnd,
   onDragStart,
@@ -1531,6 +1573,7 @@ function CvTrainingPairForm({
   row: CvTrainingProficiencyPair
   rowNumber: number
   savingCertId: string
+  onAddProficiency: (trainingCert: CrewCert) => void
   onChange: (cert: CrewCert) => void
   onDragStart: (event: DragEvent<HTMLDivElement>) => void
   onDragEnd: () => void
@@ -1539,6 +1582,7 @@ function CvTrainingPairForm({
   onSave: (certId: string) => void
 }) {
   const showProficiencySide = Boolean(row.proficiency || row.requiresProficiency)
+  const canAddOptionalProficiency = Boolean(row.training && !row.proficiency && !row.requiresProficiency)
   return (
     <div
       draggable
@@ -1550,9 +1594,20 @@ function CvTrainingPairForm({
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="cursor-grab text-[10px] font-black uppercase tracking-[0.28em] text-[var(--accent-text)]">CV training row {rowNumber} · hold and drag to reorder</p>
-        <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">
-          {showProficiencySide ? 'Training certificate + related proficiency certificate' : 'Training certificate only'}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {canAddOptionalProficiency && (
+            <button
+              type="button"
+              onClick={() => row.training && onAddProficiency(row.training)}
+              className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]"
+            >
+              <Plus size={13} className="mr-1 inline" /> Add COP
+            </button>
+          )}
+          <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">
+            {showProficiencySide ? 'Training certificate + related proficiency certificate' : 'Training certificate only'}
+          </p>
+        </div>
       </div>
       <div className={`grid gap-4 ${showProficiencySide ? 'lg:grid-cols-2' : ''}`}>
         {row.training ? (
@@ -1576,7 +1631,7 @@ function CvTrainingPairForm({
               section="Certificate of Proficiency"
               saving={savingCertId === row.proficiency.id}
               onChange={onChange}
-              onHide={() => onHide(row.proficiency?.id)}
+              onHide={isRequiredProficiencyPlaceholder(row.proficiency) ? undefined : () => onHide(row.proficiency?.id)}
               onSave={() => onSave(row.proficiency!.id)}
               titleOverride="Certificate of Proficiency"
               proficiency
