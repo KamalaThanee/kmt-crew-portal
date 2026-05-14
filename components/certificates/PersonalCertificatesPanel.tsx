@@ -92,17 +92,32 @@ function isCopCertificateName(value: unknown) {
   return normalized.includes('cop') || normalized.includes('certificateofproficiency')
 }
 
+function isStcwCert(item: any) {
+  return normalizeCertName(item?.cert_family || item?.category) === 'stcw'
+}
+
+function isStcwProficiencyCert(item: any) {
+  const section = normalizeCertName(item?.cv_section || item?.master_cv_section)
+  return isStcwCert(item) && (section.includes('certificateofproficiency') || isCopCertificateName(item?.cert_name))
+}
+
 function buildPersonalCertRows(items: any[]) {
   const itemByName = new Map(items.map((item) => [normalizeCertName(item.cert_name), item]))
   const childNames = new Set<string>()
 
   const rows = items.map((item) => {
     const children: any[] = []
+    const relatedRequirements: string[] = []
+    const relatedProficiencies: string[] = []
     const requiredCerts = Array.isArray(item.requiredCerts) ? item.requiredCerts : item.requiredCert ? [item.requiredCert] : []
     requiredCerts.forEach((requiredCert: string) => {
       const child = itemByName.get(normalizeCertName(requiredCert))
+      const isProficiency = child ? isStcwProficiencyCert(child) : isStcwCert(item) && isCopCertificateName(requiredCert)
+      if (isProficiency) relatedProficiencies.push(requiredCert)
+      else relatedRequirements.push(requiredCert)
+
       if (child) {
-        children.push(child)
+        children.push({ ...child, triggerCert: item.cert_name, relationKind: isProficiency ? 'proficiency' : 'requirement' })
         childNames.add(normalizeCertName(child.cert_name))
       } else {
         children.push({
@@ -111,11 +126,12 @@ function buildPersonalCertRows(items: any[]) {
           is_mandatory: false,
           triggerCert: item.cert_name,
           cert_family: item.cert_family || item.category,
+          relationKind: isProficiency ? 'proficiency' : 'requirement',
           virtualRelated: true,
         })
       }
     })
-    return { item, children }
+    return { item: { ...item, relatedRequirements, relatedProficiencies }, children }
   })
 
   return rows.filter((row) => !childNames.has(normalizeCertName(row.item.cert_name)))
@@ -144,12 +160,12 @@ function CertMetaGrid({ item }: { item: any }) {
 }
 
 function PersonalCertCard({ child, item, onUploadCertificate }: { child?: boolean; item: any; onUploadCertificate: (certName: string) => void }) {
-  const requiredCerts = Array.isArray(item.requiredCerts) ? item.requiredCerts : item.requiredCert ? [item.requiredCert] : []
-  const hasCopChild = requiredCerts.some(isCopCertificateName)
-  const isCopChild = item.triggerCert && isCopCertificateName(item.cert_name)
-  const relatedRequirements = requiredCerts.filter((cert: string) => !isCopCertificateName(cert))
+  const relatedProficiencies = Array.isArray(item.relatedProficiencies) ? item.relatedProficiencies : []
+  const hasCopChild = relatedProficiencies.length > 0
+  const isCopChild = item.relationKind === 'proficiency' && isStcwProficiencyCert(item)
+  const relatedRequirements = Array.isArray(item.relatedRequirements) ? item.relatedRequirements : []
   const hasRelatedRequirement = relatedRequirements.length > 0
-  const isRelatedRequirement = item.triggerCert && !isCopCertificateName(item.cert_name)
+  const isRelatedRequirement = item.triggerCert && !isCopChild
   const categoryLabel = item.cert_family || item.category
 
   return (

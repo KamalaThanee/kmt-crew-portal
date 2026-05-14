@@ -6,6 +6,7 @@ import { CrewCertificatesPanel } from '@/components/certificates/CrewCertificate
 import { PersonalCertificatesPanel } from '@/components/certificates/PersonalCertificatesPanel'
 import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { createZipBlob, getFileExtension, safeFileName, triggerDownload } from '@/lib/certificateDownloads'
+import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
 import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { ExternalLink, Loader2, Mail, Save, Search, ShieldCheck } from 'lucide-react'
@@ -107,6 +108,37 @@ const certLogColumns = 'id, action, old_data, new_data, actor_name, created_at'
 const crewCertLogColumns = 'id, action, old_data, new_data, actor_name, created_at, crew_id, cert_name'
 const certEmailSettingsColumns = 'id, ship_alert_enabled, my_cert_alert_enabled, ship_to_emails, ship_cc_emails'
 const certEmailLogColumns = 'id, alert_type, scope, trigger_label, recipient, cc, subject, status, error_message, crew_name, related_cert_count, sent_at, created_at'
+const FREE_AI_MODELS = AI_MODELS.filter((model) => model.provider === 'google').slice(0, 3)
+
+const blobToDataUrl = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('Unable to read certificate file'))
+    reader.readAsDataURL(blob)
+  })
+
+const needsCrewCertAiBackfill = (cert: any) =>
+  Boolean(cert?.file_url) &&
+  (!cert?.cert_number || !cert?.place_of_issue || !cert?.issue_authority || !cert?.issue_date || !cert?.expiry_date)
+
+const buildCrewCertBackfillPayload = (cert: any, result: any) => {
+  const payload: Record<string, string> = {}
+  const fields = [
+    ['cert_number', result?.certNumber],
+    ['place_of_issue', result?.placeOfIssue],
+    ['issue_authority', result?.issueAuthority],
+    ['issue_date', result?.issueDate],
+    ['expiry_date', result?.expiryDate],
+  ] as const
+
+  fields.forEach(([column, value]) => {
+    const cleaned = String(value || '').trim()
+    if (!cert?.[column] && cleaned) payload[column] = cleaned
+  })
+
+  return payload
+}
 
 function CertificatesContent() {
   const router = useRouter()
@@ -134,6 +166,8 @@ function CertificatesContent() {
   const [personalFilter, setPersonalFilter] = useState('all') 
   const [expandedCrews, setExpandedCrews] = useState<string[]>([])
   const [isDownloadingCerts, setIsDownloadingCerts] = useState(false)
+  const [aiBackfillRunning, setAiBackfillRunning] = useState(false)
+  const [aiBackfillProgress, setAiBackfillProgress] = useState('')
 
   const canManageCertificates = useMemo(() => isAdminRole(currentUser?.position) || canViewShipCertificates(currentUser?.position), [currentUser]);
   const canOpenShipCertificates = useMemo(() => canViewShipCertificates(currentUser?.position), [currentUser]);
@@ -290,6 +324,97 @@ function CertificatesContent() {
     }
   }
 
+  const handleAiBackfillSelectedPosition = async () => {
+    if (filterPos === 'All') {
+      toast.error('Select one position first')
+      return
+    }
+
+    const selectedCrewIds = new Set(crews.filter((crew) => crew.position === filterPos).map((crew) => crew.id))
+    const candidates = allCerts
+      .filter((cert) => selectedCrewIds.has(cert.crew_id) && needsCrewCertAiBackfill(cert))
+      .slice(0, 5)
+
+    if (candidates.length === 0) {
+      toast.success('No missing certificate details for this position')
+      return
+    }
+
+    setAiBackfillRunning(true)
+    let updated = 0
+    let failed = 0
+
+    try {
+      for (let index = 0; index < candidates.length; index++) {
+        const cert = candidates[index]
+        const crew = crews.find((item) => item.id === cert.crew_id)
+        setAiBackfillProgress(`${index + 1}/${candidates.length} ${crew?.full_name || 'Crew'} - ${cert.cert_name}`)
+
+        try {
+          const response = await fetch(cert.file_url)
+          if (!response.ok) throw new Error(`Unable to fetch ${cert.cert_name}`)
+
+          const blob = await response.blob()
+          const fileName = cert.file_url.split('/').pop() || 'certificate'
+          const lowerName = fileName.toLowerCase()
+          const mimeType =
+            blob.type ||
+            (lowerName.endsWith('.pdf') ? 'application/pdf' : lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg')
+          const file = new File([blob], fileName, { type: mimeType })
+          const imageBase64 = mimeType === 'application/pdf' ? await blobToDataUrl(blob) : await compressImage(file)
+
+          let aiResult: any = null
+          let lastError = ''
+
+          for (const model of FREE_AI_MODELS) {
+            const aiResponse = await fetch('/api/ocr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                imageBase64,
+                mimeType,
+                certName: cert.cert_name,
+                crewName: crew?.full_name || '',
+                modelId: model.id,
+                provider: model.provider,
+              }),
+            })
+            const data = await aiResponse.json()
+            if (aiResponse.ok && !data.error) {
+              aiResult = data
+              break
+            }
+            lastError = data.error || model.label
+          }
+
+          if (!aiResult) throw new Error(lastError || 'AI read failed')
+
+          const payload = buildCrewCertBackfillPayload(cert, aiResult)
+          if (Object.keys(payload).length === 0) continue
+
+          const { error } = await supabase
+            .from('crew_certs')
+            .update({ ...payload, updated_at: new Date().toISOString() })
+            .eq('id', cert.id)
+
+          if (error) throw error
+          updated++
+        } catch (error) {
+          console.error('Crew cert AI backfill failed', error)
+          failed++
+        }
+      }
+
+      await fetchData()
+      if (updated > 0) toast.success(`AI filled ${updated} certificate record${updated === 1 ? '' : 's'}`)
+      if (failed > 0) toast.error(`${failed} certificate${failed === 1 ? '' : 's'} need manual review or retry later`)
+      if (updated === 0 && failed === 0) toast.info('AI found no new missing fields to save')
+    } finally {
+      setAiBackfillRunning(false)
+      setAiBackfillProgress('')
+    }
+  }
+
   if (loading || !currentUser) return <div className="min-h-screen bg-black flex items-center justify-center text-orange-500 font-black animate-pulse">VAULT ACCESSING...</div>
 
   const headerCopy = certificateTabCopy[activeTab] || certificateTabCopy.personal
@@ -333,8 +458,11 @@ function CertificatesContent() {
           filterSpecificCert={filterSpecificCert}
           filteredCertificateDownloads={filteredCertificateDownloads}
           finalDisplayCrews={finalDisplayCrews}
+          aiBackfillProgress={aiBackfillProgress}
+          aiBackfillRunning={aiBackfillRunning}
           isDownloadingCerts={isDownloadingCerts}
           searchTerm={searchTerm}
+          onAiBackfillSelectedPosition={handleAiBackfillSelectedPosition}
           onDownloadFilteredCertificates={handleDownloadFilteredCertificates}
           onEditCrewProfile={(crewId) => router.push(`/admin/settings?tab=crews&id=${crewId}`)}
           onExpandedCrewsChange={setExpandedCrews}

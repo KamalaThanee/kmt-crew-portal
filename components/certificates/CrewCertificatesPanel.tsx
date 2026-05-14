@@ -25,8 +25,11 @@ type CrewCertificatesPanelProps = {
   filterSpecificCert: string
   filteredCertificateDownloads: Array<{ crewName: string; certName: string; url: string; expiryDate?: string }>
   finalDisplayCrews: any[]
+  aiBackfillProgress?: string
+  aiBackfillRunning?: boolean
   isDownloadingCerts: boolean
   searchTerm: string
+  onAiBackfillSelectedPosition?: () => void
   onDownloadFilteredCertificates: () => void
   onEditCrewProfile: (crewId: string) => void
   onExpandedCrewsChange: (updater: (previous: string[]) => string[]) => void
@@ -47,8 +50,11 @@ export function CrewCertificatesPanel({
   filterSpecificCert,
   filteredCertificateDownloads,
   finalDisplayCrews,
+  aiBackfillProgress,
+  aiBackfillRunning,
   isDownloadingCerts,
   searchTerm,
+  onAiBackfillSelectedPosition,
   onDownloadFilteredCertificates,
   onEditCrewProfile,
   onExpandedCrewsChange,
@@ -95,6 +101,26 @@ export function CrewCertificatesPanel({
           {filterSpecificCert === 'All' ? 'Download ZIP' : `ZIP ${filteredCertificateDownloads.length}`}
         </button>
       </div>
+
+      {onAiBackfillSelectedPosition && (
+        <div className="grid gap-4 rounded-[28px] border border-blue-500/20 bg-blue-500/5 p-4 shadow-xl md:grid-cols-[1fr_auto] md:items-center">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.35em] text-blue-500">AI missing detail backfill</p>
+            <p className="mt-2 text-xs font-bold normal-case text-[var(--subtle)]">
+              Select one position first. Reads max 5 uploaded certificates per click, using free AI Studio models only, then saves missing number/date/place fields.
+            </p>
+            {aiBackfillProgress && <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-[var(--headline)]">{aiBackfillProgress}</p>}
+          </div>
+          <button
+            onClick={onAiBackfillSelectedPosition}
+            disabled={filterPos === 'All' || aiBackfillRunning}
+            className="flex items-center justify-center gap-3 rounded-2xl border border-blue-500/25 bg-blue-500/10 px-6 py-4 text-[10px] font-black uppercase tracking-widest text-blue-500 transition-all hover:bg-blue-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            {aiBackfillRunning ? <Loader2 className="animate-spin" size={16}/> : <RefreshCcw size={16}/>}
+            AI Read 5 Missing Details
+          </button>
+        </div>
+      )}
 
       <div className="space-y-4">
         {finalDisplayCrews.map((crew) => {
