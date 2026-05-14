@@ -1204,7 +1204,7 @@ export default function CvPage() {
           }
           const { error } = await supabase.from('crew_certs').update(payload).eq('id', cert.id)
           if (error) throw error
-          if (isPersonalDocumentCert(cert) && cert.cert_name.toLowerCase().includes('passport')) {
+          if (isPersonalDocument(cert) && cert.cert_name.toLowerCase().includes('passport')) {
             const passportData = normalizePassportCvProfileData(result.passportCvData)
             if (hasPassportCvProfileData(passportData)) {
               await persistPassportProfileData(passportData, 'Passport data added to CV profile')
