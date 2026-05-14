@@ -382,6 +382,72 @@ function xmlEscape(value: string) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+const cvSpreadsheetNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+
+function encodeCvCol(index: number) {
+  let col = ''
+  let current = index + 1
+  while (current > 0) {
+    const mod = (current - 1) % 26
+    col = String.fromCharCode(65 + mod) + col
+    current = Math.floor((current - mod) / 26)
+  }
+  return col
+}
+
+function decodeCvCol(cellRef: string) {
+  const letters = cellRef.match(/^[A-Z]+/i)?.[0] || ''
+  return letters.split('').reduce((sum, char) => sum * 26 + char.toUpperCase().charCodeAt(0) - 64, 0) - 1
+}
+
+function getCvRow(doc: Document, rowNumber: number) {
+  const sheetData = doc.getElementsByTagNameNS(cvSpreadsheetNs, 'sheetData')[0]
+  const rows = Array.from(doc.getElementsByTagNameNS(cvSpreadsheetNs, 'row'))
+  let row = rows.find((item) => item.getAttribute('r') === String(rowNumber))
+  if (row || !sheetData) return row || null
+
+  row = doc.createElementNS(cvSpreadsheetNs, 'row')
+  row.setAttribute('r', String(rowNumber))
+  const nextRow = rows.find((item) => Number(item.getAttribute('r') || 0) > rowNumber)
+  if (nextRow) sheetData.insertBefore(row, nextRow)
+  else sheetData.appendChild(row)
+  return row
+}
+
+function getCvCell(doc: Document, row: Element, colIndex: number, rowNumber: number) {
+  const ref = `${encodeCvCol(colIndex)}${rowNumber}`
+  const cells = Array.from(row.getElementsByTagNameNS(cvSpreadsheetNs, 'c'))
+  let cell = cells.find((item) => item.getAttribute('r') === ref)
+  if (cell) return cell
+
+  cell = doc.createElementNS(cvSpreadsheetNs, 'c')
+  cell.setAttribute('r', ref)
+  const nextCell = cells.find((item) => decodeCvCol(item.getAttribute('r') || '') > colIndex)
+  if (nextCell) row.insertBefore(cell, nextCell)
+  else row.appendChild(cell)
+  return cell
+}
+
+function setCvCellValue(doc: Document, address: string, value: unknown) {
+  const match = address.match(/^([A-Z]+)(\d+)$/i)
+  if (!match) return
+  const rowNumber = Number(match[2])
+  const row = getCvRow(doc, rowNumber)
+  if (!row) return
+
+  const cell = getCvCell(doc, row, decodeCvCol(address), rowNumber)
+  const nextValue = value == null ? '' : String(value)
+  cell.setAttribute('t', 'inlineStr')
+  Array.from(cell.childNodes).forEach((node) => cell.removeChild(node))
+
+  const is = doc.createElementNS(cvSpreadsheetNs, 'is')
+  const t = doc.createElementNS(cvSpreadsheetNs, 't')
+  t.textContent = nextValue
+  t.setAttribute('xml:space', 'preserve')
+  is.appendChild(t)
+  cell.appendChild(is)
+}
+
 function ensureContentType(contentTypes: string, extension: string, mime: string, drawingPath: string) {
   let next = contentTypes
   if (!next.includes(`Extension="${extension}"`)) {
@@ -423,8 +489,8 @@ async function embedCvPictureInWorkbook(workbookArray: ArrayBuffer, pictureDataU
 
   const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-  <xdr:twoCellAnchor editAs="oneCell">
-    <xdr:from><xdr:col>9</xdr:col><xdr:colOff>80000</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>80000</xdr:rowOff></xdr:from>
+  <xdr:twoCellAnchor editAs="twoCell">
+    <xdr:from><xdr:col>9</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
     <xdr:to><xdr:col>13</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>9</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
     <xdr:pic>
       <xdr:nvPicPr><xdr:cNvPr id="1" name="${xmlEscape('CV Picture')}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>
@@ -633,22 +699,23 @@ export default function CvPage() {
 
   async function exportCvExcel() {
     if (!user) return
-    const XLSX = await import('xlsx')
     const template = await fetch('/templates/cv-form-new-ver.xlsx')
     if (!template.ok) {
       toast.error('CV template file not found')
       return
     }
-    const workbook = XLSX.read(await template.arrayBuffer(), { type: 'array', cellStyles: true } as any) as any
-    const worksheet = workbook.Sheets.CV || workbook.Sheets[workbook.SheetNames[0]]
-    const setCell = (address: string, value: unknown) => {
-      const nextValue = value == null ? '' : value
-      worksheet[address] = {
-        ...(worksheet[address] || {}),
-        t: typeof nextValue === 'number' ? 'n' : 's',
-        v: nextValue,
-      }
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(await template.arrayBuffer())
+    const sheetPath = 'xl/worksheets/sheet1.xml'
+    const sheetXml = await zip.file(sheetPath)?.async('string')
+    if (!sheetXml) {
+      toast.error('CV template sheet not found')
+      return
     }
+    const parser = new DOMParser()
+    const serializer = new XMLSerializer()
+    const sheetDoc = parser.parseFromString(sheetXml, 'application/xml')
+    const setCell = (address: string, value: unknown) => setCvCellValue(sheetDoc, address, value)
 
     const crewName = splitCrewName(user.full_name)
     setCell('C3', crewName.name)
@@ -723,11 +790,15 @@ export default function CvPage() {
       setCell(`M${row}`, Math.ceil(dayDiffInclusive(service.joining_date, service.sign_off_date) / 30) || '')
     })
 
-    applyCvTemplateBorders(XLSX, worksheet)
+    zip.file(sheetPath, serializer.serializeToString(sheetDoc))
 
     const stamp = new Date().toISOString().slice(0, 10)
     const fileName = `KMT-CV-${clean(user.full_name).replace(/[^a-z0-9]+/gi, '-') || 'Crew'}-${stamp}.xlsx`
-    const xlsxArray = XLSX.write(workbook, { bookType: 'xlsx', type: 'array', cellStyles: true } as any) as ArrayBuffer
+    const xlsxArray = await zip.generateAsync({
+      type: 'arraybuffer',
+      compression: 'DEFLATE',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
     const finalWorkbook = profile.picture_data_url ? await embedCvPictureInWorkbook(xlsxArray, profile.picture_data_url) : xlsxArray
     downloadWorkbook(finalWorkbook, fileName)
   }

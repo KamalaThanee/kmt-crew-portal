@@ -45,8 +45,8 @@ export default function Navbar() {
   });
 
   const menuItems = useMemo(
-    () => getNavbarMenuItems(isAdmin),
-    [isAdmin],
+    () => getNavbarMenuItems(isAdmin, user?.position),
+    [isAdmin, user?.position],
   );
 
   const isNavItemActive = (href: string) => (

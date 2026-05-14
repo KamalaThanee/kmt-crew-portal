@@ -212,6 +212,11 @@ export default function MonthlyReportsPage() {
       router.push('/login')
       return
     }
+    if (!canManageMonthlyReports(current.position)) {
+      toast.error('Monthly Reports is restricted to Admin, Radio Operator, and Chief Engineer.')
+      router.replace('/')
+      return
+    }
     setUser(current)
   }, [router])
 
@@ -267,8 +272,8 @@ export default function MonthlyReportsPage() {
 
   const accessibleRows = useMemo(() => {
     if (canManage) return rows
-    return rows.filter((row) => roleMatchesPic(user?.position, row.pic))
-  }, [canManage, rows, user?.position])
+    return []
+  }, [canManage, rows])
 
   const visibleRows = useMemo(() => {
     const q = search.toLowerCase().trim()
