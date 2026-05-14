@@ -6,6 +6,7 @@ import { BriefcaseBusiness, CalendarDays, Download, FileBadge, Plus, Save, Ship,
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageShell } from '@/components/layout/PageShell'
+import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import { isAdminRole } from '@/lib/roles'
 import { supabase } from '@/lib/supabase'
@@ -208,6 +209,14 @@ const formatTemplateDate = (value?: string | null) => {
   const date = formatDate(value)
   return date === '-' ? '' : date
 }
+
+const blobToDataUrl = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('Could not read certificate file'))
+    reader.readAsDataURL(blob)
+  })
 
 const splitCrewName = (value?: string | null) => {
   const stripped = clean(value).replace(/^(mr|mrs|ms|miss)\.?\s+/i, '')
@@ -448,6 +457,7 @@ export default function CvPage() {
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingService, setSavingService] = useState(false)
   const [savingCertId, setSavingCertId] = useState('')
+  const [fillingCertId, setFillingCertId] = useState('')
   const [savingVaccination, setSavingVaccination] = useState(false)
   const [selectedVesselId, setSelectedVesselId] = useState('')
   const [activeTab, setActiveTab] = useState<CvTab>('form')
@@ -897,6 +907,73 @@ export default function CvPage() {
     toast.success('CV certificate detail saved')
   }
 
+  async function fillMissingCertFromFile(cert: CrewCert) {
+    if (!user?.id || !cert.file_url || isManualCvCert(cert)) return
+    setFillingCertId(cert.id)
+    try {
+      const fileResponse = await fetch(cert.file_url)
+      if (!fileResponse.ok) throw new Error('Could not open the stored certificate file')
+      const blob = await fileResponse.blob()
+      const mimeType = blob.type || (cert.file_url.toLowerCase().includes('.pdf') ? 'application/pdf' : 'image/jpeg')
+      const fileName = cert.file_url.split('/').pop() || 'certificate'
+      const file = new File([blob], fileName, { type: mimeType })
+      const imageBase64 = mimeType === 'application/pdf' ? await blobToDataUrl(blob) : await compressImage(file)
+
+      let latestError = 'AI models busy'
+      for (const model of AI_MODELS) {
+        try {
+          const response = await fetch('/api/ocr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageBase64,
+              mimeType,
+              certName: cert.cert_name,
+              crewName: user.full_name,
+              modelId: model.id,
+              provider: model.provider,
+            }),
+          })
+          const result = await response.json()
+          if (!response.ok || result.error) {
+            latestError = result.error || latestError
+            throw new Error(latestError)
+          }
+
+          const nextCert: CrewCert = {
+            ...cert,
+            issue_date: cert.issue_date || result.issueDate || null,
+            expiry_date: cert.expiry_date || result.expiryDate || null,
+            cert_number: cert.cert_number || String(result.certNumber || '').trim() || null,
+            place_of_issue: cert.place_of_issue || String(result.placeOfIssue || '').trim() || null,
+            issue_authority: cert.issue_authority || String(result.issueAuthority || '').trim() || null,
+          }
+
+          const payload = {
+            issue_date: nextCert.issue_date,
+            expiry_date: nextCert.expiry_date,
+            cert_number: nextCert.cert_number || null,
+            place_of_issue: nextCert.place_of_issue || null,
+            issue_authority: nextCert.issue_authority || null,
+            updated_at: new Date().toISOString(),
+          }
+          const { error } = await supabase.from('crew_certs').update(payload).eq('id', cert.id)
+          if (error) throw error
+          setCertRows((prev) => prev.map((item) => item.id === cert.id ? nextCert : item))
+          toast.success(`Filled missing CV fields with ${model.label}`)
+          return
+        } catch (error: any) {
+          latestError = error.message || latestError
+        }
+      }
+      throw new Error(latestError)
+    } catch (error: any) {
+      toast.error(error.message || 'Could not fill from existing file')
+    } finally {
+      setFillingCertId('')
+    }
+  }
+
   async function saveVaccination() {
     if (!user?.id) return
     const activeUser = user as ActiveUser
@@ -1027,9 +1104,11 @@ export default function CvPage() {
               </div>
             </div>
             <CvCertificateTables
+              fillingCertId={fillingCertId}
               tables={cvCertTables}
               savingCertId={savingCertId}
               onChange={updateCvCert}
+              onFillMissing={fillMissingCertFromFile}
               onAddManual={addManualCvCert}
               onAddProficiency={addManualProficiencyForTraining}
               onHide={hideCvCert}
@@ -1421,10 +1500,12 @@ function applyCvPairOrder(tables: ReturnType<typeof buildCvCertTables>, order: s
 }
 
 function CvCertificateTables({
+  fillingCertId,
   hiddenCount,
   onAddManual,
   onAddProficiency,
   onChange,
+  onFillMissing,
   onHide,
   onMovePair,
   onResetHidden,
@@ -1432,12 +1513,14 @@ function CvCertificateTables({
   savingCertId,
   tables,
 }: {
+  fillingCertId: string
   hiddenCount: number
   tables: ReturnType<typeof buildCvCertTables>
   savingCertId: string
   onAddManual: (section: string) => void
   onAddProficiency: (trainingCert: CrewCert) => void
   onChange: (cert: CrewCert) => void
+  onFillMissing: (cert: CrewCert) => void
   onHide: (certId?: string) => void
   onMovePair: (sourceKey: string, targetKey: string) => void
   onResetHidden: () => void
@@ -1452,8 +1535,10 @@ function CvCertificateTables({
         section="Certificate of Competency"
         savingCertId={savingCertId}
         onChange={onChange}
+        onFillMissing={onFillMissing}
         onHide={onHide}
         onSave={onSave}
+        fillingCertId={fillingCertId}
         competency
       />
 
@@ -1478,8 +1563,10 @@ function CvCertificateTables({
                 row={row}
                 rowNumber={index + 1}
                 savingCertId={savingCertId}
+                fillingCertId={fillingCertId}
                 dragged={draggedPairKey === getCvPairKey(row)}
                 onChange={onChange}
+                onFillMissing={onFillMissing}
                 onDragStart={(event) => {
                   event.dataTransfer.effectAllowed = 'move'
                   setDraggedPairKey(getCvPairKey(row))
@@ -1509,8 +1596,10 @@ function CvCertificateTables({
         section="Medical"
         savingCertId={savingCertId}
         onChange={onChange}
+        onFillMissing={onFillMissing}
         onHide={onHide}
         onSave={onSave}
+        fillingCertId={fillingCertId}
         medical
       />
     </div>
@@ -1527,9 +1616,11 @@ function CvTableTitle({ subtitle, title }: { subtitle?: string; title: string })
 }
 
 function CvSimpleCertTable({
+  fillingCertId,
   medical,
   competency,
   onChange,
+  onFillMissing,
   onHide,
   onSave,
   rows,
@@ -1540,8 +1631,10 @@ function CvSimpleCertTable({
   title: string
   section: string
   rows: CrewCert[]
+  fillingCertId: string
   savingCertId: string
   onChange: (cert: CrewCert) => void
+  onFillMissing: (cert: CrewCert) => void
   onHide: (certId?: string) => void
   onSave: (certId: string) => void
   medical?: boolean
@@ -1565,8 +1658,10 @@ function CvSimpleCertTable({
             key={cert.id}
             cert={cert}
             section={section}
+            filling={fillingCertId === cert.id}
             saving={savingCertId === cert.id}
             onChange={onChange}
+            onFillMissing={() => onFillMissing(cert)}
             onHide={() => onHide(cert.id)}
             onSave={() => onSave(cert.id)}
             medical={medical}
@@ -1580,11 +1675,13 @@ function CvSimpleCertTable({
 
 function CvTrainingPairForm({
   dragged,
+  fillingCertId,
   onAddProficiency,
   onChange,
   onDragEnd,
   onDragStart,
   onDrop,
+  onFillMissing,
   onHide,
   onSave,
   row,
@@ -1594,9 +1691,11 @@ function CvTrainingPairForm({
   dragged: boolean
   row: CvTrainingProficiencyPair
   rowNumber: number
+  fillingCertId: string
   savingCertId: string
   onAddProficiency: (trainingCert: CrewCert) => void
   onChange: (cert: CrewCert) => void
+  onFillMissing: (cert: CrewCert) => void
   onDragStart: (event: DragEvent<HTMLDivElement>) => void
   onDragEnd: () => void
   onDrop: () => void
@@ -1657,8 +1756,10 @@ function CvTrainingPairForm({
           <CvCertFormCard
             cert={row.training}
             section="Certificate of Training"
+            filling={fillingCertId === row.training.id}
             saving={savingCertId === row.training.id}
             onChange={onChange}
+            onFillMissing={() => row.training && onFillMissing(row.training)}
             onHide={() => onHide(row.training?.id)}
             onSave={() => onSave(row.training!.id)}
             titleOverride="Certificate of Training"
@@ -1672,8 +1773,10 @@ function CvTrainingPairForm({
             <CvCertFormCard
               cert={row.proficiency}
               section="Certificate of Proficiency"
+              filling={fillingCertId === row.proficiency.id}
               saving={savingCertId === row.proficiency.id}
               onChange={onChange}
+              onFillMissing={() => row.proficiency && onFillMissing(row.proficiency)}
               onHide={isRequiredProficiencyPlaceholder(row.proficiency) ? undefined : () => onHide(row.proficiency?.id)}
               onSave={() => onSave(row.proficiency!.id)}
               titleOverride="Certificate of Proficiency"
@@ -1702,8 +1805,10 @@ function CvCertFormCard({
   cert,
   compact,
   competency,
+  filling,
   medical,
   onChange,
+  onFillMissing,
   onHide,
   onSave,
   proficiency,
@@ -1714,12 +1819,14 @@ function CvCertFormCard({
   cert: CrewCert
   section: string
   saving: boolean
+  filling?: boolean
   competency?: boolean
   medical?: boolean
   proficiency?: boolean
   compact?: boolean
   titleOverride?: string
   onChange: (cert: CrewCert) => void
+  onFillMissing?: () => void
   onHide?: () => void
   onSave: () => void
 }) {
@@ -1767,7 +1874,7 @@ function CvCertFormCard({
         />
       </div>
       <div className="mt-4 flex justify-end">
-        <CertActions cert={cert} saving={saving} onSave={onSave} />
+        <CertActions cert={cert} filling={filling} saving={saving} onFillMissing={onFillMissing} onSave={onSave} />
       </div>
     </div>
   )
@@ -1776,10 +1883,10 @@ function CvCertFormCard({
 function EditableCertName({ cert, onChange, section }: { cert: CrewCert; section: string; onChange: (cert: CrewCert) => void }) {
   if (isManualCvCert(cert)) {
     return (
-      <TextField
-        label=""
+      <input
         value={cert.cert_name}
-        onChange={(value) => onChange({ ...cert, cert_name: value, cv_section: section, master_cv_section: section })}
+        onChange={(event) => onChange({ ...cert, cert_name: event.target.value, cv_section: section, master_cv_section: section })}
+        className="w-full rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] px-4 py-3 text-sm font-black italic uppercase text-[var(--headline)] outline-none transition-all focus:border-orange-500"
       />
     )
   }
@@ -1791,13 +1898,27 @@ function EditableCertName({ cert, onChange, section }: { cert: CrewCert; section
   )
 }
 
-function CertActions({ cert, onSave, saving }: { cert: CrewCert; onSave: () => void; saving: boolean }) {
+function hasMissingCvCertFields(cert: CrewCert) {
+  return !cert.cert_number || !cert.place_of_issue || !cert.issue_authority || !cert.issue_date || !cert.expiry_date
+}
+
+function CertActions({ cert, filling, onFillMissing, onSave, saving }: { cert: CrewCert; filling?: boolean; onFillMissing?: () => void; onSave: () => void; saving: boolean }) {
   return (
     <div className="flex flex-wrap gap-2">
       {cert.file_url && (
         <a href={cert.file_url} target="_blank" rel="noreferrer" className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
           File
         </a>
+      )}
+      {cert.file_url && onFillMissing && !isManualCvCert(cert) && hasMissingCvCertFields(cert) && (
+        <button
+          type="button"
+          onClick={onFillMissing}
+          disabled={filling}
+          className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-blue-500 disabled:opacity-50"
+        >
+          {filling ? 'Reading...' : 'Fill missing from file'}
+        </button>
       )}
       <button onClick={onSave} disabled={saving} className="rounded-2xl bg-orange-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
         {saving ? 'Saving...' : 'Save'}
