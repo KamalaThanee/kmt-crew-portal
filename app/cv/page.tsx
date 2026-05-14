@@ -506,6 +506,16 @@ function setCvCellValue(doc: Document, address: string, value: unknown) {
   cell.appendChild(is)
 }
 
+function setCvCellStyle(doc: Document, address: string, styleId: string) {
+  const match = address.match(/^([A-Z]+)(\d+)$/i)
+  if (!match) return
+  const rowNumber = Number(match[2])
+  const row = getCvRow(doc, rowNumber)
+  if (!row) return
+  const cell = getCvCell(doc, row, decodeCvCol(address), rowNumber)
+  cell.setAttribute('s', styleId)
+}
+
 function ensureContentType(contentTypes: string, extension: string, mime: string, drawingPath: string) {
   let next = contentTypes
   if (!next.includes(`Extension="${extension}"`)) {
@@ -523,6 +533,16 @@ async function embedCvPictureInWorkbook(workbookArray: ArrayBuffer, pictureDataU
   const zip = await JSZip.loadAsync(workbookArray)
   const templatePicturePath = 'xl/media/image1.png'
   if (!zip.file(templatePicturePath)) return workbookArray
+  const drawingPath = 'xl/drawings/drawing1.xml'
+  const drawingXml = await zip.file(drawingPath)?.async('string')
+  if (drawingXml) {
+    const widthEmu = 1800000
+    const heightEmu = 2340000
+    const tunedDrawingXml = drawingXml
+      .replace(/<a:ext cx="[^"]+" cy="[^"]+"\/>/, `<a:ext cx="${widthEmu}" cy="${heightEmu}"/>`)
+      .replace(/<xdr:to><xdr:col>[^<]+<\/xdr:col><xdr:colOff>[^<]+<\/xdr:colOff><xdr:row>[^<]+<\/xdr:row><xdr:rowOff>[^<]+<\/xdr:rowOff><\/xdr:to>/, '<xdr:to><xdr:col>12</xdr:col><xdr:colOff>746694</xdr:colOff><xdr:row>8</xdr:row><xdr:rowOff>282857</xdr:rowOff></xdr:to>')
+    zip.file(drawingPath, tunedDrawingXml)
+  }
   zip.file(templatePicturePath, await imageDataUrlToPngBytes(pictureDataUrl))
   return zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' })
 }
@@ -908,6 +928,7 @@ export default function CvPage() {
     cvCertTables.competency.slice(0, 2).forEach((cert, index) => {
       const row = 15 + index
       setCell(`A${row}`, cert.cert_name)
+      setCvCellStyle(sheetDoc, `A${row}`, '42')
       setCell(`E${row}`, cert.cv_capacity || user.position || '')
       setCell(`G${row}`, cert.cert_number || '')
       setCell(`I${row}`, formatTemplateDate(cert.issue_date))
@@ -918,6 +939,7 @@ export default function CvPage() {
     cvCertTables.paired.slice(0, 16).forEach((pair, index) => {
       const row = 22 + index
       setCell(`A${row}`, pair.training?.cert_name || pair.proficiency?.cert_name || '')
+      setCvCellStyle(sheetDoc, `A${row}`, '42')
       setCell(`D${row}`, pair.training?.cert_number || '')
       setCell(`E${row}`, formatTemplateDate(pair.training?.issue_date))
       setCell(`F${row}`, formatTemplateDate(pair.training?.expiry_date))
@@ -946,6 +968,7 @@ export default function CvPage() {
 
     services.slice(0, 18).forEach((service, index) => {
       const row = 52 + index
+      const monthsOnBoard = dayDiffInclusive(service.joining_date, service.sign_off_date) / 30
       setCell(`A${row}`, service.rank || '')
       setCell(`B${row}`, service.vessel_name || '')
       setCell(`D${row}`, service.vessel_type || '')
@@ -955,7 +978,7 @@ export default function CvPage() {
       setCell(`H${row}`, formatTemplateDate(service.joining_date))
       setCell(`J${row}`, formatTemplateDate(service.sign_off_date))
       setCell(`L${row}`, service.company || defaultCvCompany)
-      setCell(`M${row}`, Math.ceil(dayDiffInclusive(service.joining_date, service.sign_off_date) / 30) || '')
+      setCell(`M${row}`, monthsOnBoard > 0 ? monthsOnBoard.toFixed(1) : '')
     })
 
     zip.file(sheetPath, serializer.serializeToString(sheetDoc))
@@ -967,7 +990,7 @@ export default function CvPage() {
       compression: 'DEFLATE',
       mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     })
-    const finalWorkbook = profile.picture_data_url ? await embedCvPictureInWorkbook(xlsxArray, profile.picture_data_url) : xlsxArray
+    const finalWorkbook = await embedCvPictureInWorkbook(xlsxArray, profile.picture_data_url || null)
     downloadWorkbook(finalWorkbook, fileName)
   }
 
