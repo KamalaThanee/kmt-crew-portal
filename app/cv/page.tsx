@@ -1751,7 +1751,7 @@ function CvTrainingPairForm({
           </p>
         </div>
       </div>
-      <div className={`grid gap-4 ${showProficiencySide ? 'lg:grid-cols-2' : ''}`}>
+      <div className="grid gap-4">
         {row.training ? (
           <CvCertFormCard
             cert={row.training}
@@ -1833,7 +1833,7 @@ function CvCertFormCard({
   const nameLabel = medical ? 'Medical Check Up Program' : competency ? 'Certificate of Competency / Proficiency' : titleOverride || section
   const secondLabel = competency ? 'Capacity' : medical ? 'Name of Hospital' : 'Number'
   const secondValue = competency ? cert.cv_capacity || '' : medical ? cert.place_of_issue || '' : cert.cert_number || ''
-  const authorityLabel = competency ? 'Issue Authority' : medical ? 'Certificate No.' : proficiency ? 'Issue Authority' : 'Place of Issue'
+  const authorityLabel = competency ? 'Issue Authority' : medical ? 'Certificate No.' : proficiency ? 'Issue Authority' : 'Training Institute'
   const authorityValue = competency ? cert.issue_authority || '' : medical ? cert.cert_number || '' : proficiency ? cert.issue_authority || '' : cert.place_of_issue || ''
 
   return (
@@ -1907,7 +1907,7 @@ function CertActions({ cert, filling, onFillMissing, onSave, saving }: { cert: C
     <div className="flex flex-wrap gap-2">
       {cert.file_url && (
         <a href={cert.file_url} target="_blank" rel="noreferrer" className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
-          File
+          View Cert
         </a>
       )}
       {cert.file_url && onFillMissing && !isManualCvCert(cert) && hasMissingCvCertFields(cert) && (

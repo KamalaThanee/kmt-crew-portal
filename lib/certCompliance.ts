@@ -33,6 +33,21 @@ export function calculateCrewCertificateCompliance({
     }
   })
 
+  const relationshipByCert = new Map<string, { requiredCert?: string; triggerCert?: string; relationKey: string }>()
+  ;(rules || []).forEach((rule) => {
+    const triggerKey = normalize(rule.trigger_cert)
+    const requiredKey = normalize(rule.required_cert)
+    if (!triggerKey || !requiredKey) return
+    relationshipByCert.set(triggerKey, {
+      requiredCert: rule.required_cert,
+      relationKey: `${triggerKey}:${requiredKey}`,
+    })
+    relationshipByCert.set(requiredKey, {
+      triggerCert: rule.trigger_cert,
+      relationKey: `${triggerKey}:${requiredKey}`,
+    })
+  })
+
   const today = new Date()
   let ok = 0
   let expired = 0
@@ -71,10 +86,16 @@ export function calculateCrewCertificateCompliance({
       missing += 1
     }
 
-    return { ...req, uploaded, status, daysLeft }
+    const relationship = relationshipByCert.get(normalize(req.cert_name))
+
+    return { ...req, ...relationship, uploaded, status, daysLeft }
   }).sort((a, b) => {
     const weight: Record<string, number> = { expired: 1, missing: 2, warning: 3, ok: 4, optional: 5 }
-    return (weight[a.status] || 99) - (weight[b.status] || 99)
+    const statusSort = (weight[a.status] || 99) - (weight[b.status] || 99)
+    if (statusSort !== 0) return statusSort
+    const relationSort = String(a.relationKey || a.cert_name || '').localeCompare(String(b.relationKey || b.cert_name || ''))
+    if (relationSort !== 0) return relationSort
+    return String(a.cert_name || '').localeCompare(String(b.cert_name || ''))
   })
 
   return {

@@ -76,6 +76,20 @@ export function PersonalCertificatesPanel({
               <div className="min-w-0">
                 <p className={`mb-1 text-[8px] font-black uppercase tracking-widest ${item.is_mandatory ? 'text-orange-500' : 'text-[var(--muted-text)]'}`}>{item.is_mandatory ? 'Mandatory' : 'Optional'}</p>
                 <h3 className="text-sm font-black leading-tight text-[var(--headline)] md:text-base">{item.cert_name}</h3>
+                {(item.requiredCert || item.triggerCert) && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {item.requiredCert && (
+                      <span className="rounded-full border border-orange-500/25 bg-orange-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-orange-500">
+                        Requires COP: {item.requiredCert}
+                      </span>
+                    )}
+                    {item.triggerCert && (
+                      <span className="rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-blue-500">
+                        COP for: {item.triggerCert}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {item.uploaded && <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">Exp: {formatExpiryLabel(item.uploaded.expiry_date)}</p>}
               </div>
             </div>

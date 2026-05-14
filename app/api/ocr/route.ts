@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     3. DATE: Convert Thai years to CE. If the document does not clearly show an expiry date, return expiryDate as an empty string. Only use "2099-12-31" when the certificate explicitly states it never expires.
     4. CV CERTIFICATE FIELDS: Extract these fields when visible:
        - certNumber: certificate number / document number / license number.
-       - placeOfIssue: place of issue or issuing place. If only a country/city is shown, use that.
+       - placeOfIssue: for training certificates, prefer the training institute / training center / school / provider name. For licenses, passports, medicals, and authority documents use place of issue or issuing place. If only a country/city is shown, use that.
        - issueAuthority: issuing authority / administration / training center / school / hospital / class society.
        If a field is not clearly visible, return an empty string.
     5. PASSPORT CV FIELDS: If the selected requirement or uploaded document is a passport, extract CV profile fields from the passport page:
