@@ -540,6 +540,7 @@ async function embedCvPictureInWorkbook(workbookArray: ArrayBuffer, pictureDataU
     const heightEmu = 2340000
     const tunedDrawingXml = drawingXml
       .replace(/<a:ext cx="[^"]+" cy="[^"]+"\/>/, `<a:ext cx="${widthEmu}" cy="${heightEmu}"/>`)
+      .replace(/<a:srcRect[^>]*\/>/, '')
       .replace(/<xdr:to><xdr:col>[^<]+<\/xdr:col><xdr:colOff>[^<]+<\/xdr:colOff><xdr:row>[^<]+<\/xdr:row><xdr:rowOff>[^<]+<\/xdr:rowOff><\/xdr:to>/, '<xdr:to><xdr:col>12</xdr:col><xdr:colOff>746694</xdr:colOff><xdr:row>8</xdr:row><xdr:rowOff>282857</xdr:rowOff></xdr:to>')
     zip.file(drawingPath, tunedDrawingXml)
   }
