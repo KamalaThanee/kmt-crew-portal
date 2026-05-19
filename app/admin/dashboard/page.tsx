@@ -6,7 +6,7 @@ import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { getShipCertificateStatus, getShipSurveyStatus } from '@/lib/shipCertificates'
 import { 
-  User, AlertTriangle, ChevronRight, ShieldCheck, RefreshCw, Clock, Archive, Package
+  User, AlertTriangle, ChevronRight, ShieldCheck, RefreshCw, Clock, Archive
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -17,7 +17,7 @@ export default function AdminDashboard() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [personal, setPersonal] = useState<any>({ progress: 0, okCount: 0, reqCount: 0, expired: 0, warning: 0, missing: 0, suit: 0, boot: 0, lastStatus: 'None' })
-  const [vessel, setVessel] = useState<any>({ issueTotal: 0, lowStock: 0, vesselExpired: 0, compliance: 0, totalItems: 0, vesselWarning: 0, lastRestockDate: 'No data', shipExpired: 0, shipDue90: 0, shipSurveyDue: 0 })
+  const [vessel, setVessel] = useState<any>({ issueTotal: 0, lowStock: 0, vesselExpired: 0, compliance: 0, vesselWarning: 0, lastRestockDate: 'No data', shipExpired: 0, shipDue90: 0, shipSurveyDue: 0 })
 
   useEffect(() => {
     const uStr = localStorage.getItem('kmt_user')
@@ -73,7 +73,6 @@ export default function AdminDashboard() {
     setVessel({ 
       issueTotal: issueRows.length,
       lowStock: inventory.filter(i => (i.quantity||0) <= (i.threshold||0)).length, 
-      totalItems: inventory.reduce((a, b) => a + (b.quantity || 0), 0), 
       compliance: vesselCompliance,
       lastRestockDate: lastRestock.length > 0 ? new Date(lastRestock[0].created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A',
       shipExpired: shipCerts.filter((cert: any) => getShipCertificateStatus(cert) === 'expired').length,
@@ -120,10 +119,6 @@ export default function AdminDashboard() {
               <Link href="/ppe?view=history" className="bg-zinc-900/40 border border-amber-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-amber-500 transition-all group">
                  <div className="flex justify-between items-start"><div className="bg-amber-500/20 p-2.5 rounded-xl text-amber-500 w-fit"><Clock size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-amber-500"/></div>
                  <div><p className="text-2xl font-black">{vessel.issueTotal}</p><p className="text-amber-500 uppercase text-[8px]">Total Issues</p></div>
-              </Link>
-              <Link href="/admin/inventory" className="bg-zinc-900/40 border border-red-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-red-500 transition-all group">
-                 <div className="flex justify-between items-start"><div className="bg-red-500/20 p-2.5 rounded-xl text-red-500 w-fit"><Package size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-red-500"/></div>
-                 <div><p className="text-2xl font-black">{vessel.totalItems}</p><p className="text-red-500 uppercase text-[8px]">Total Stock</p></div>
               </Link>
               <Link href="/admin/inventory?filter=low" className="bg-zinc-900/40 border border-blue-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-blue-500 transition-all group">
                  <div className="flex justify-between items-start"><div className="bg-blue-500/20 p-2.5 rounded-xl text-blue-500 w-fit"><AlertTriangle size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-blue-500"/></div>

@@ -71,10 +71,10 @@ export function HistoryFilterBar({
           className="rounded-2xl border border-rose-500/25 bg-zinc-950/70 px-4 py-3 text-sm font-semibold text-white outline-none transition focus:border-rose-400"
         >
           <option value="all">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-          <option value="received">Received</option>
+          <option value="pending">Open Record</option>
+          <option value="approved">Ready to Issue</option>
+          <option value="rejected">Cancelled</option>
+          <option value="received">Issued</option>
         </select>
 
         <select

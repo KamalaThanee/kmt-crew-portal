@@ -2,7 +2,14 @@
 
 import { CheckCircle2, Clock, XCircle } from 'lucide-react'
 import type { HistoryRow } from '@/lib/history'
-import { formatDateTime, getCrewName, getItemSummary, getStatusTimelineMeta, normalize } from '@/lib/history'
+import {
+  formatDateTime,
+  getCrewName,
+  getItemSummary,
+  getStatusDisplayLabel,
+  getStatusTimelineMeta,
+  normalize,
+} from '@/lib/history'
 import { StatusPill } from '@/components/history/StatusPill'
 
 type HistoryMobileCardsProps = {
@@ -29,7 +36,7 @@ export function HistoryMobileCards({ adminNameMap, rows }: HistoryMobileCardsPro
               <div>
                 <p className="text-sm font-black text-white normal-case">{getCrewName(row)}</p>
                 <p className="mt-1 text-[10px] uppercase tracking-widest text-zinc-500">
-                  Requested on {formatDateTime(row.created_at)}
+                  Logged on {formatDateTime(row.created_at)}
                 </p>
               </div>
               <StatusPill status={row.status} className="w-fit px-4 py-2" />
@@ -42,7 +49,7 @@ export function HistoryMobileCards({ adminNameMap, rows }: HistoryMobileCardsPro
 
             <div className="grid gap-3">
               <div className="rounded-2xl border border-emerald-500/10 bg-emerald-500/[0.05] p-4">
-                <p className="mb-2 text-[9px] uppercase tracking-widest text-emerald-200/80">Status Detail</p>
+                <p className="mb-2 text-[9px] uppercase tracking-widest text-emerald-200/80">Issue Detail</p>
                 <p className="text-sm font-semibold text-white normal-case">{getStatusTimelineMeta(row, adminNameMap)}</p>
                 {(row.admin_remark || row.rejection_reason) && (
                   <p className="mt-2 text-[11px] font-semibold text-zinc-400 normal-case">
@@ -53,16 +60,16 @@ export function HistoryMobileCards({ adminNameMap, rows }: HistoryMobileCardsPro
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-2xl border border-amber-500/10 bg-amber-500/[0.05] px-4 py-3">
-                  <p className="text-[9px] uppercase tracking-widest text-amber-200/80">Reason</p>
-                  <p className="mt-2 text-[11px] font-semibold text-white normal-case">{row.reason || 'Standard Request'}</p>
+                  <p className="text-[9px] uppercase tracking-widest text-amber-200/80">Issue Note</p>
+                  <p className="mt-2 text-[11px] font-semibold text-white normal-case">{row.reason || 'Direct issue record'}</p>
                 </div>
                 <div className="rounded-2xl border border-violet-500/10 bg-violet-500/[0.05] px-4 py-3">
-                  <p className="text-[9px] uppercase tracking-widest text-violet-200/80">State</p>
+                  <p className="text-[9px] uppercase tracking-widest text-violet-200/80">Stage</p>
                   <div className="mt-2 flex items-center gap-2">
                     {status === 'approved' && <CheckCircle2 size={14} className="text-emerald-400" />}
                     {status === 'rejected' && <XCircle size={14} className="text-rose-400" />}
                     {(status === 'pending' || status === 'received') && <Clock size={14} className="text-amber-400" />}
-                    <span className="text-[11px] font-bold uppercase text-white">{status}</span>
+                    <span className="text-[11px] font-bold uppercase text-white">{getStatusDisplayLabel(row.status)}</span>
                   </div>
                 </div>
               </div>
