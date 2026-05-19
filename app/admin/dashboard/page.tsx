@@ -6,7 +6,7 @@ import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { getShipCertificateStatus, getShipSurveyStatus } from '@/lib/shipCertificates'
 import { 
-  User, AlertTriangle, ChevronRight, ShieldCheck, Package, RefreshCw, Clock, Archive
+  User, AlertTriangle, ChevronRight, ShieldCheck, RefreshCw, Clock, Archive
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -17,7 +17,7 @@ export default function AdminDashboard() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [personal, setPersonal] = useState<any>({ progress: 0, okCount: 0, reqCount: 0, expired: 0, warning: 0, missing: 0, suit: 0, boot: 0, lastStatus: 'None' })
-  const [vessel, setVessel] = useState<any>({ pending: 0, lowStock: 0, vesselExpired: 0, compliance: 0, totalItems: 0, vesselWarning: 0, lastRestockDate: 'No data', shipExpired: 0, shipDue90: 0, shipSurveyDue: 0 })
+  const [vessel, setVessel] = useState<any>({ issueTotal: 0, openQueue: 0, lowStock: 0, vesselExpired: 0, compliance: 0, totalItems: 0, vesselWarning: 0, lastRestockDate: 'No data', shipExpired: 0, shipDue90: 0, shipSurveyDue: 0 })
 
   useEffect(() => {
     const uStr = localStorage.getItem('kmt_user')
@@ -34,7 +34,7 @@ export default function AdminDashboard() {
       u,
     )
 
-    const [matrixRes, crewsRes, allCertsRes, invRes, restockRes, myReqsRes, shipCertsRes, rulesRes] = await Promise.all([
+    const [matrixRes, crewsRes, allCertsRes, invRes, restockRes, myReqsRes, shipCertsRes, rulesRes, issueRowsRes] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
       supabase.from('crews').select('*'),
       supabase.from('crew_certs').select('*'),
@@ -43,6 +43,7 @@ export default function AdminDashboard() {
       myReqsQuery,
       supabase.from('ship_certificates').select('*'),
       supabase.from('cert_rules').select('*'),
+      supabase.from('ppe_requests').select('status'),
     ]);
 
     const matrix = matrixRes.data || []; const allCerts = allCertsRes.data || [];
@@ -55,7 +56,8 @@ export default function AdminDashboard() {
     const myCerts = allCerts.filter(cc => cc.crew_id === u.id);
     const myCertData = calculateCrewCertificateCompliance({ crew: u, crewCerts: myCerts, matrix, rules });
 
-    const { count: totalPending } = await supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+    const issueRows = issueRowsRes.data || [];
+    const openQueue = issueRows.filter((row: any) => ['pending', 'approved'].includes(String(row.status || '').toLowerCase())).length;
 
     const vesselProgress = activeCrews.map((crew: any) => {
       const crewCerts = allCerts.filter((cert: any) => cert.crew_id === crew.id)
@@ -70,7 +72,8 @@ export default function AdminDashboard() {
     setPersonal({ progress: myCertData.progress, okCount: myCertData.ok, reqCount: myCertData.mandatoryTotal, expired: myCertData.expired, warning: myCertData.warning, missing: myCertData.missing, suit, boot, lastStatus: myReqsRes.data?.[0]?.status || 'None' });
     
     setVessel({ 
-      pending: totalPending || 0, 
+      issueTotal: issueRows.length,
+      openQueue,
       lowStock: inventory.filter(i => (i.quantity||0) <= (i.threshold||0)).length, 
       totalItems: inventory.reduce((a, b) => a + (b.quantity || 0), 0), 
       compliance: vesselCompliance,
@@ -116,17 +119,17 @@ export default function AdminDashboard() {
         <div className="lg:col-span-3 space-y-6">
            <h2 className="text-purple-500 tracking-widest flex items-center gap-2 mb-2"><ShieldCheck size={16}/> Vessel Oversight</h2>
            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Link href="/ppe" className="bg-zinc-900/40 border border-amber-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-amber-500 transition-all group">
+              <Link href="/ppe?view=history" className="bg-zinc-900/40 border border-amber-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-amber-500 transition-all group">
                  <div className="flex justify-between items-start"><div className="bg-amber-500/20 p-2.5 rounded-xl text-amber-500 w-fit"><Clock size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-amber-500"/></div>
-                 <div><p className="text-2xl font-black">{vessel.pending}</p><p className="text-amber-500 uppercase text-[8px]">Legacy Pending</p></div>
+                 <div><p className="text-2xl font-black">{vessel.issueTotal}</p><p className="text-amber-500 uppercase text-[8px]">Total Issues</p></div>
               </Link>
-              <Link href="/admin/inventory?filter=low" className="bg-zinc-900/40 border border-red-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-red-500 transition-all group">
-                 <div className="flex justify-between items-start"><div className="bg-red-500/20 p-2.5 rounded-xl text-red-500 w-fit"><AlertTriangle size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-red-500"/></div>
-                 <div><p className="text-2xl font-black">{vessel.lowStock}</p><p className="text-red-500 uppercase text-[8px]">Low Stock Alert</p></div>
+              <Link href="/ppe?view=history" className="bg-zinc-900/40 border border-red-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-red-500 transition-all group">
+                 <div className="flex justify-between items-start"><div className="bg-red-500/20 p-2.5 rounded-xl text-red-500 w-fit"><Clock size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-red-500"/></div>
+                 <div><p className="text-2xl font-black">{vessel.openQueue}</p><p className="text-red-500 uppercase text-[8px]">Open Queue</p></div>
               </Link>
-              <Link href="/admin/inventory" className="bg-zinc-900/40 border border-blue-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-blue-500 transition-all group">
-                 <div className="flex justify-between items-start"><div className="bg-blue-500/20 p-2.5 rounded-xl text-blue-500 w-fit"><Package size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-blue-500"/></div>
-                 <div><p className="text-2xl font-black">{vessel.totalItems}</p><p className="text-blue-500 uppercase text-[8px]">Total Stock</p></div>
+              <Link href="/admin/inventory?filter=low" className="bg-zinc-900/40 border border-blue-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-blue-500 transition-all group">
+                 <div className="flex justify-between items-start"><div className="bg-blue-500/20 p-2.5 rounded-xl text-blue-500 w-fit"><AlertTriangle size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-blue-500"/></div>
+                 <div><p className="text-2xl font-black">{vessel.lowStock}</p><p className="text-blue-500 uppercase text-[8px]">Low Stock Alert</p></div>
               </Link>
               {/* 🎯 แก้ไขลิงก์: ให้ไปที่แท็บ History ในหน้า Inventory */}
               <Link href="/admin/inventory?action=restock&tab=history" className="bg-zinc-900/40 border border-emerald-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-emerald-500 transition-all group">

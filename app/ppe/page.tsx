@@ -312,6 +312,11 @@ function PPEContent() {
     () => getHistorySummary(summaryContextRows, summaryRowCount, searchItem),
     [summaryContextRows, summaryRowCount, searchItem],
   )
+  const openQueueCount = historySummary.pendingCount + historySummary.approvedCount
+  const activeCrewCount = useMemo(
+    () => new Set(summaryContextRows.map((row) => String(row.crew_id || row.crew_name || '')).filter(Boolean)).size,
+    [summaryContextRows],
+  )
   const exportRows = useMemo(() => getHistoryExportRows(filteredHistoryRows, adminNameMap), [filteredHistoryRows, adminNameMap])
 
   const handleExportExcel = async () => {
@@ -341,7 +346,7 @@ function PPEContent() {
             </h1>
             <p className="text-zinc-500 mt-1 tracking-widest flex items-center gap-2">
               <ShieldAlert size={12} />
-              Storekeeper direct issue mode
+              Storekeeper direct issue and issue tracking
             </p>
           </div>
 
@@ -433,42 +438,40 @@ function PPEContent() {
               <HistoryMetricCard
                 label="Issues"
                 value={historySummary.requestCount}
-                description="Total rows in the current view"
+                description="All issue records in this view"
                 tone="amber"
                 active={statusFilter === 'all'}
                 onClick={() => setStatusFilter('all')}
               />
               <HistoryMetricCard
-                label="Pending"
-                value={historySummary.pendingCount}
-                description="Waiting for approval"
+                label="Completed"
+                value={historySummary.receivedCount}
+                description="Stock already issued and closed"
+                tone="sky"
+                active={statusFilter === 'received'}
+                onClick={() => setStatusFilter('received')}
+              />
+              <HistoryMetricCard
+                label="Open Queue"
+                value={openQueueCount}
+                description="Older rows still waiting to close"
                 tone="orange"
-                active={statusFilter === 'pending'}
+                active={statusFilter === 'pending' || statusFilter === 'approved'}
                 onClick={() => setStatusFilter('pending')}
               />
               <HistoryMetricCard
-                label="Approved"
-                value={historySummary.approvedCount}
-                description="Approved and waiting to receive"
-                tone="emerald"
-                active={statusFilter === 'approved'}
-                onClick={() => setStatusFilter('approved')}
-              />
-              <HistoryMetricCard
-                label="Rejected"
+                label="Cancelled"
                 value={historySummary.rejectedCount}
-                description="Rejected issues in this view"
+                description="Rejected or cancelled issue rows"
                 tone="rose"
                 active={statusFilter === 'rejected'}
                 onClick={() => setStatusFilter('rejected')}
               />
               <HistoryMetricCard
-                label="Received"
-                value={historySummary.receivedCount}
-                description="Completed and received"
-                tone="sky"
-                active={statusFilter === 'received'}
-                onClick={() => setStatusFilter('received')}
+                label="Active Crew"
+                value={activeCrewCount}
+                description="Crew included in the selected period"
+                tone="cyan"
               />
             </div>
 
