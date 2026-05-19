@@ -157,7 +157,7 @@ export function useNavbarNotifications({
           const moreLabel = itemCount > 1 ? ` +${itemCount - 1} more` : ''
           return {
             id: `pending-${req.id}`,
-            href: `/admin/approvals?request=${req.id}`,
+            href: `/ppe?view=history`,
             title: `${crewName} needs PPE review`,
             description: `${firstItem}${moreLabel}`,
             meta: new Date(req.created_at).toLocaleString('en-GB'),

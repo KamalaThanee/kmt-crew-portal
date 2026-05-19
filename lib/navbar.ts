@@ -12,7 +12,6 @@ export const getNavbarMenuItems = (isAdmin: boolean, position?: unknown): Navbar
   const canOpenMonthlyReports = canManageMonthlyReports(position)
   if (isAdmin) {
     const adminItems = [
-      { name: 'ISSUE HISTORY', href: '/admin/history', icon: History },
       { name: 'INVENTORY', href: '/admin/inventory', icon: Package },
       { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
       { name: 'CV', href: '/cv', icon: FileUser },
@@ -44,6 +43,5 @@ export const getNavbarMenuItems = (isAdmin: boolean, position?: unknown): Navbar
 export const getMobileNavLabel = (label: string) =>
   label
     .replace('ISSUE PPE', 'ISSUE')
-    .replace('ISSUE HISTORY', 'HISTORY')
     .replace('CERTIFICATE', 'CERT')
     .replace('MONTHLY REPORTS', 'REPORTS')

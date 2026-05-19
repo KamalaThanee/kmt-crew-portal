@@ -57,7 +57,7 @@ export default function Navbar() {
 
   const isNavItemActive = (href: string) => (
     pathname === href ||
-    (href === '/admin/history' && pathname.startsWith('/admin/approvals')) ||
+    (href === '/ppe' && (pathname.startsWith('/admin/history') || pathname.startsWith('/admin/approvals'))) ||
     (href === '/certificates' && pathname.startsWith('/admin/ship-certificates'))
   );
 

@@ -134,10 +134,10 @@ export async function POST(request: Request) {
         : `${payload.crewName || "A crew member"} requested ${payload.itemName || "PPE"}.`;
       const url = payload.requestId
         ? isReceived
-          ? `${baseUrl}/admin/history?request=${payload.requestId}`
+          ? `${baseUrl}/ppe?view=history`
           : `${baseUrl}/ppe`
         : isReceived
-          ? `${baseUrl}/admin/history`
+          ? `${baseUrl}/ppe?view=history`
           : `${baseUrl}/ppe`;
 
       const data = await sendOneSignal(externalIds, title, body, url);

@@ -82,7 +82,7 @@ export default function MyRequests() {
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div><h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><PackageCheck className="text-orange-500" size={36}/> My PPE Issue History</h1><p className="text-zinc-500 mt-1 tracking-widest">Issued items and legacy approval status</p></div>
+        <div><h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><PackageCheck className="text-orange-500" size={36}/> My PPE Issue History</h1><p className="text-zinc-500 mt-1 tracking-widest">Issued items and received status</p></div>
       </div>
 
       {readyToReceiveCount > 0 && (
