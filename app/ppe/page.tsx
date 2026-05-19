@@ -312,11 +312,6 @@ function PPEContent() {
     () => getHistorySummary(summaryContextRows, summaryRowCount, searchItem),
     [summaryContextRows, summaryRowCount, searchItem],
   )
-  const openQueueCount = historySummary.pendingCount + historySummary.approvedCount
-  const activeCrewCount = useMemo(
-    () => new Set(summaryContextRows.map((row) => String(row.crew_id || row.crew_name || '')).filter(Boolean)).size,
-    [summaryContextRows],
-  )
   const exportRows = useMemo(() => getHistoryExportRows(filteredHistoryRows, adminNameMap), [filteredHistoryRows, adminNameMap])
 
   const handleExportExcel = async () => {
@@ -434,7 +429,7 @@ function PPEContent() {
           </>
         ) : (
           <>
-            <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
               <HistoryMetricCard
                 label="Issues"
                 value={historySummary.requestCount}
@@ -443,39 +438,6 @@ function PPEContent() {
                 active={statusFilter === 'all'}
                 onClick={() => setStatusFilter('all')}
               />
-              <HistoryMetricCard
-                label="Completed"
-                value={historySummary.receivedCount}
-                description="Stock already issued and closed"
-                tone="sky"
-                active={statusFilter === 'received'}
-                onClick={() => setStatusFilter('received')}
-              />
-              <HistoryMetricCard
-                label="Open Queue"
-                value={openQueueCount}
-                description="Older rows still waiting to close"
-                tone="orange"
-                active={statusFilter === 'pending' || statusFilter === 'approved'}
-                onClick={() => setStatusFilter('pending')}
-              />
-              <HistoryMetricCard
-                label="Cancelled"
-                value={historySummary.rejectedCount}
-                description="Rejected or cancelled issue rows"
-                tone="rose"
-                active={statusFilter === 'rejected'}
-                onClick={() => setStatusFilter('rejected')}
-              />
-              <HistoryMetricCard
-                label="Active Crew"
-                value={activeCrewCount}
-                description="Crew included in the selected period"
-                tone="cyan"
-              />
-            </div>
-
-            <div className="mb-8 grid grid-cols-1 gap-4 xl:grid-cols-2">
               <HistoryMetricCard
                 label="Top Item"
                 value={historySummary.topItem}
