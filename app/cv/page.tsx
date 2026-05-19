@@ -565,7 +565,6 @@ export default function CvPage() {
   const [savingService, setSavingService] = useState(false)
   const [savingCertId, setSavingCertId] = useState('')
   const [fillingCertId, setFillingCertId] = useState('')
-  const [fillingPassportProfile, setFillingPassportProfile] = useState(false)
   const [checkedPassportHistory, setCheckedPassportHistory] = useState(false)
   const [savingVaccination, setSavingVaccination] = useState(false)
   const [refreshingCvData, setRefreshingCvData] = useState(false)
@@ -811,67 +810,6 @@ export default function CvPage() {
       if (updated) return true
     }
     return false
-  }
-
-  async function fillPassportProfileFromFile() {
-    if (!user?.id) return
-    setFillingPassportProfile(true)
-    try {
-      const restored = await fillPassportProfileFromHistory()
-      if (restored) return
-
-      const passport = personalDocs.passport
-      if (!passport?.file_url) {
-        toast.error('No Passport file found in My Certificate')
-        return
-      }
-
-      const fileResponse = await fetch(passport.file_url)
-      if (!fileResponse.ok) throw new Error('Could not open the stored Passport file')
-      const blob = await fileResponse.blob()
-      const mimeType = blob.type || (passport.file_url.toLowerCase().includes('.pdf') ? 'application/pdf' : 'image/jpeg')
-      const fileName = passport.file_url.split('/').pop() || 'passport'
-      const file = new File([blob], fileName, { type: mimeType })
-      const imageBase64 = mimeType === 'application/pdf' ? await blobToDataUrl(blob) : await compressImage(file)
-
-      let latestError = 'AI models busy'
-      for (const model of AI_MODELS) {
-        try {
-          const response = await fetch('/api/ocr', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              imageBase64,
-              mimeType,
-              certName: passport.cert_name || 'Passport',
-              crewName: user.full_name,
-              modelId: model.id,
-              provider: model.provider,
-            }),
-          })
-          const result = await response.json()
-          if (!response.ok || result.error) {
-            latestError = result.error || latestError
-            throw new Error(latestError)
-          }
-
-          const passportData = normalizePassportCvProfileData(result.passportCvData)
-          if (!hasPassportCvProfileData(passportData)) {
-            latestError = `${model.label} did not find passport CV fields`
-            throw new Error(latestError)
-          }
-          await persistPassportProfileData(passportData, `Passport CV fields filled by ${model.label}`)
-          return
-        } catch (error: any) {
-          latestError = error.message || latestError
-        }
-      }
-      throw new Error(latestError)
-    } catch (error: any) {
-      toast.error(error.message || 'Could not read Passport data')
-    } finally {
-      setFillingPassportProfile(false)
-    }
   }
 
   async function handleCvPictureUpload(file?: File | null) {
@@ -1330,9 +1268,11 @@ export default function CvPage() {
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[var(--accent-text)]">CV Data Status</p>
           <p className="mt-1 text-sm font-black text-[var(--headline)]">
-            {cvRefreshTargets.length === 0 ? 'Data up to date' : `${cvRefreshTargets.length} certificate file(s) still need AI fill`}
+            {cvRefreshTargets.length === 0 ? 'Data up to date' : `${cvRefreshTargets.length} certificate file(s) still need AI fill back`}
           </p>
-          <p className="mt-1 text-xs text-[var(--subtle)]">Uses saved crew certificate files only. Missing CV fields will be backfilled and stored in the database.</p>
+          <p className="mt-1 text-xs text-[var(--subtle)]">
+            Uses saved crew certificate files only. If any CV field is still incomplete, use fill back once and the result will be stored in the database.
+          </p>
         </div>
         <button
           type="button"
@@ -1340,7 +1280,7 @@ export default function CvPage() {
           disabled={refreshingCvData || cvRefreshTargets.length === 0}
           className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-blue-500 disabled:opacity-50"
         >
-          {cvRefreshTargets.length === 0 ? 'Data up to date' : refreshingCvData ? 'Refreshing...' : 'Refresh data'}
+          {cvRefreshTargets.length === 0 ? 'Data up to date' : refreshingCvData ? 'Filling back...' : 'Fill Back With AI'}
         </button>
       </div>
 
@@ -1361,20 +1301,6 @@ export default function CvPage() {
                 <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Person&apos;s Details</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Passport upload can prefill these fields, but you can edit manually.</p>
               </div>
-            </div>
-            <div className="mb-5 flex flex-col gap-3 rounded-[28px] border border-orange-500/20 bg-orange-500/5 p-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[var(--accent-text)]">Passport Data Link</p>
-                <p className="mt-1 text-xs font-bold text-[var(--subtle)]">Restore saved Passport CV fields first. If no history exists, read the Passport file once and save it back to crew profile.</p>
-              </div>
-              <button
-                type="button"
-                onClick={fillPassportProfileFromFile}
-                disabled={fillingPassportProfile}
-                className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-blue-500 disabled:opacity-50"
-              >
-                {fillingPassportProfile ? 'Reading Passport...' : 'Fill From Passport'}
-              </button>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <FormLine label="Name" value={user?.full_name || '-'} />
