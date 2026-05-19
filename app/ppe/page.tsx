@@ -7,7 +7,7 @@ import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { isAdminRole } from '@/lib/roles'
 import { 
   HardHat, Headphones, Eye, Wind, Hand, Footprints, MoreHorizontal, 
-  Plus, AlertTriangle, Lock, Shirt, ShoppingBag, User, ShieldAlert, ChevronDown, Package
+  Plus, AlertTriangle, Lock, Shirt, ShoppingBag, ShieldAlert, ChevronDown, Package
 } from 'lucide-react'
 
 function PPEContent() {
@@ -32,7 +32,13 @@ function PPEContent() {
     if (!uStr) { router.push('/login'); return; }
     const u = JSON.parse(uStr)
     setUser(u)
-    setIsAdmin(isAdminRole(u.position))
+    const nextIsAdmin = isAdminRole(u.position)
+    setIsAdmin(nextIsAdmin)
+    if (!nextIsAdmin) {
+      toast.error('PPE issue is now managed by admin only')
+      router.replace('/my-requests')
+      return
+    }
     loadCart()
 
     supabase.from('ppe_inventory').select('*').order('item_name').then(({data}) => data && setInventory(data))
@@ -181,12 +187,12 @@ function PPEContent() {
         <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
            <div>
               <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3">
-                {isAdmin ? <ShieldAlert className="text-orange-500" size={36}/> : <User className="text-orange-500" size={36}/>}
-                Request PPE
+                <ShieldAlert className="text-orange-500" size={36}/>
+                Issue PPE
               </h1>
               <p className="text-zinc-500 mt-1 tracking-widest flex items-center gap-2">
-                {isAdmin ? <ShieldAlert size={12}/> : <User size={12}/>}
-                {isAdmin ? 'Storekeeper Administrative Mode' : `Personnel: ${user.full_name}`}
+                <ShieldAlert size={12}/>
+                Storekeeper direct issue mode
               </p>
            </div>
            <div className="bg-zinc-900 border border-orange-500/20 px-5 py-2.5 rounded-2xl flex items-center gap-4 shadow-xl">

@@ -202,8 +202,8 @@ export default function ApprovalsPage() {
       if (!pushResult?.ok || pushResult?.data?.skipped) {
         toast.warning(`Push not sent: ${pushResult?.error || pushResult?.data?.reason || 'check OneSignal logs'}`)
       }
-      setActionMessage(`Approved request ${String(req.id).slice(0, 8)} successfully`)
-      toast.success('Request Approved!')
+      setActionMessage(`Approved legacy item ${String(req.id).slice(0, 8)} successfully`)
+      toast.success('Legacy item approved')
       setApprovingReq(null)
       fetchData()
     } catch (error) {
@@ -257,7 +257,7 @@ export default function ApprovalsPage() {
         toast.warning(`Push not sent: ${pushResult?.error || pushResult?.data?.reason || 'check OneSignal logs'}`)
       }
       setActionMessage(`Rejected request ${String(rejectingReq.id).slice(0, 8)} successfully`)
-      toast.success('Request Rejected')
+      toast.success('Legacy item rejected')
       setRejectingReq(null)
       setRejectReason('')
       fetchData()
@@ -276,17 +276,17 @@ export default function ApprovalsPage() {
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div><h1 className="text-3xl md:text-4xl font-black italic text-white flex items-center gap-3"><ShieldCheck className="text-orange-500" size={36}/> Approvals</h1><p className="text-zinc-500 mt-1 tracking-widest">Pending Crew Requests</p></div>
+        <div><h1 className="text-3xl md:text-4xl font-black italic text-white flex items-center gap-3"><ShieldCheck className="text-orange-500" size={36}/> Legacy Approvals</h1><p className="text-zinc-500 mt-1 tracking-widest">Older pending requests only. New PPE goes through direct issue.</p></div>
         <div className="grid w-full max-w-md grid-cols-2 rounded-[26px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[420px]">
           <button type="button" className="rounded-[20px] bg-orange-600 px-4 py-3 text-white shadow-lg shadow-orange-600/25">
-            Pending Requests
+            Legacy Queue
           </button>
           <button
             type="button"
             onClick={() => router.push('/admin/history')}
             className="flex items-center justify-center gap-2 rounded-[20px] px-4 py-3 transition-all hover:bg-white/5 hover:text-white"
           >
-            <History size={14} /> Request History
+            <History size={14} /> Issue History
           </button>
         </div>
       </div>

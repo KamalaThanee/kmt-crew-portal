@@ -116,9 +116,9 @@ export default function AdminDashboard() {
         <div className="lg:col-span-3 space-y-6">
            <h2 className="text-purple-500 tracking-widest flex items-center gap-2 mb-2"><ShieldCheck size={16}/> Vessel Oversight</h2>
            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Link href="/admin/approvals" className="bg-zinc-900/40 border border-amber-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-amber-500 transition-all group">
+              <Link href="/ppe" className="bg-zinc-900/40 border border-amber-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-amber-500 transition-all group">
                  <div className="flex justify-between items-start"><div className="bg-amber-500/20 p-2.5 rounded-xl text-amber-500 w-fit"><Clock size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-amber-500"/></div>
-                 <div><p className="text-2xl font-black">{vessel.pending}</p><p className="text-amber-500 uppercase text-[8px]">Pending Requests</p></div>
+                 <div><p className="text-2xl font-black">{vessel.pending}</p><p className="text-amber-500 uppercase text-[8px]">Legacy Pending</p></div>
               </Link>
               <Link href="/admin/inventory?filter=low" className="bg-zinc-900/40 border border-red-500/20 p-5 rounded-[32px] flex flex-col justify-between h-40 shadow-lg hover:border-red-500 transition-all group">
                  <div className="flex justify-between items-start"><div className="bg-red-500/20 p-2.5 rounded-xl text-red-500 w-fit"><AlertTriangle size={20}/></div><ChevronRight size={16} className="text-zinc-700 group-hover:text-red-500"/></div>

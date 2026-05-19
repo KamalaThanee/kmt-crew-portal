@@ -6,6 +6,7 @@ import type { CrewMember } from '@/lib/crewTypes'
 type DirectIssuePanelProps = {
   crews: CrewMember[]
   enabled: boolean
+  locked?: boolean
   targetCrewId: string
   userId?: string
   onEnabledChange: (enabled: boolean) => void
@@ -15,6 +16,7 @@ type DirectIssuePanelProps = {
 export function DirectIssuePanel({
   crews,
   enabled,
+  locked = false,
   targetCrewId,
   userId,
   onEnabledChange,
@@ -25,14 +27,16 @@ export function DirectIssuePanel({
       <div className="flex items-center justify-between">
         <div className={`flex items-center gap-2 font-black text-[10px] uppercase tracking-widest ${enabled ? 'text-black' : 'text-orange-500'}`}>
           <Users size={16} />
-          Direct Issue Mode
+          {locked ? 'Issue To Crew' : 'Direct Issue Mode'}
         </div>
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(event) => onEnabledChange(event.target.checked)}
-          className="w-6 h-6 accent-black rounded-lg cursor-pointer"
-        />
+        {!locked && (
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(event) => onEnabledChange(event.target.checked)}
+            className="w-6 h-6 accent-black rounded-lg cursor-pointer"
+          />
+        )}
       </div>
       {enabled && (
         <div className="animate-in slide-in-from-top-2 mt-4 space-y-3">

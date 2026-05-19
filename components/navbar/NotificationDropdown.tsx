@@ -31,7 +31,7 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
           <>
             <div className="px-1 pt-2">
               <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-amber-300">
-                PPE Request Feed
+                Legacy Request Feed
               </p>
               {(notifData.pendingActions || []).length > 0 ? (
                 <div className="space-y-2">
@@ -54,7 +54,7 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
                 </div>
               ) : (
                 <div className="rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                  No new PPE requests right now
+                  No pending legacy requests right now
                 </div>
               )}
             </div>
@@ -62,7 +62,7 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
             {totalPersonalAdminUpdates > 0 && (
               <div className="px-1 pt-3">
                 <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-emerald-300">
-                  Your Request Updates
+                  Your PPE Updates
                 </p>
                 <div className="space-y-2">
                   {(notifData.personalUpdates || []).map((item: CrewActionItem) => {
@@ -187,7 +187,7 @@ function ReadyToReceiveLink({
       <div>
         <p className="text-[10px] font-black uppercase text-emerald-300">Ready to receive</p>
         <p className="text-[9px] text-emerald-100/80 mt-1 normal-case">
-          {count} approved request{count > 1 ? 's are' : ' is'} waiting for your confirmation
+          {count} approved legacy item{count > 1 ? 's are' : ' is'} waiting for your confirmation
         </p>
       </div>
       <span className="bg-emerald-400 text-black px-2 py-1 rounded-md text-[9px] font-black">

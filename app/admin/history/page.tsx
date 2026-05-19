@@ -124,7 +124,7 @@ export default function AdminHistoryPage() {
       if (!active) return
       if (result.error) {
         console.error('History load failed:', result.error)
-        toast.error(result.error.message || 'Unable to load request history')
+        toast.error(result.error.message || 'Unable to load issue history')
         setRows([])
         setRowCount(0)
       } else {
@@ -198,9 +198,9 @@ export default function AdminHistoryPage() {
     const XLSX = await import('xlsx')
     const worksheet = XLSX.utils.json_to_sheet(exportRows)
     const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Request History')
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Issue History')
     const stamp = new Date().toISOString().slice(0, 10)
-    XLSX.writeFile(workbook, `kmt-request-history-${stamp}.xlsx`)
+    XLSX.writeFile(workbook, `kmt-issue-history-${stamp}.xlsx`)
   }
 
   if (loading) {
@@ -214,8 +214,8 @@ export default function AdminHistoryPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Request History"
-        subtitle="Request workflow log"
+        title="Issue History"
+        subtitle="Issued PPE workflow log"
         icon={<History className="text-orange-500" size={36} />}
         controls={(
           <div className="flex flex-col gap-3 md:items-end">
@@ -225,10 +225,10 @@ export default function AdminHistoryPage() {
                 onClick={() => router.push('/admin/approvals')}
                 className="flex items-center justify-center gap-2 rounded-[20px] px-4 py-3 transition-all hover:bg-white/5 hover:text-white"
               >
-                <ClipboardCheck size={14} /> Pending Requests
+                <ClipboardCheck size={14} /> Legacy Approvals
               </button>
               <button type="button" className="rounded-[20px] bg-orange-600 px-4 py-3 text-white shadow-lg shadow-orange-600/25">
-                Request History
+                Issue History
               </button>
             </div>
             <button
@@ -244,7 +244,7 @@ export default function AdminHistoryPage() {
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <HistoryMetricCard
-          label="Requests"
+          label="Issues"
           value={summary.requestCount}
           description="Total rows in the current view"
           tone="amber"
@@ -298,7 +298,7 @@ export default function AdminHistoryPage() {
         <HistoryMetricCard
           label="Top Crew"
           value={summary.topCrew}
-          description={summary.topCrewCount > 0 ? `${summary.topCrewCount} requests in the selected period` : 'No crew activity in this view'}
+          description={summary.topCrewCount > 0 ? `${summary.topCrewCount} issues in the selected period` : 'No crew activity in this view'}
           tone="cyan"
           icon={<Users size={16} />}
           valueClassName="text-lg"

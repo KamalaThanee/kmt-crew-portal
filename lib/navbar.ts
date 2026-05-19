@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { CalendarCheck, ClipboardCheck, FileBadge, FileText, FileUser, History, Package, PlusCircle } from 'lucide-react'
+import { CalendarCheck, FileBadge, FileText, FileUser, History, Package, PlusCircle } from 'lucide-react'
 import { canManageMonthlyReports } from '@/lib/roles'
 
 export type NavbarMenuItem = {
@@ -12,12 +12,12 @@ export const getNavbarMenuItems = (isAdmin: boolean, position?: unknown): Navbar
   const canOpenMonthlyReports = canManageMonthlyReports(position)
   if (isAdmin) {
     const adminItems = [
-      { name: 'APPROVALS', href: '/admin/approvals', icon: ClipboardCheck },
+      { name: 'ISSUE HISTORY', href: '/admin/history', icon: History },
       { name: 'INVENTORY', href: '/admin/inventory', icon: Package },
       { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
       { name: 'CV', href: '/cv', icon: FileUser },
       { name: 'SMS', href: '/sms-library', icon: FileText },
-      { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
+      { name: 'ISSUE PPE', href: '/ppe', icon: PlusCircle },
     ]
 
     if (canOpenMonthlyReports) {
@@ -31,7 +31,6 @@ export const getNavbarMenuItems = (isAdmin: boolean, position?: unknown): Navbar
     { name: 'CERTIFICATE', href: '/certificates', icon: FileBadge },
     { name: 'CV', href: '/cv', icon: FileUser },
     { name: 'SMS', href: '/sms-library', icon: FileText },
-    { name: 'REQUEST PPE', href: '/ppe', icon: PlusCircle },
     { name: 'MY HISTORY', href: '/my-requests', icon: History },
   ]
 
@@ -44,7 +43,7 @@ export const getNavbarMenuItems = (isAdmin: boolean, position?: unknown): Navbar
 
 export const getMobileNavLabel = (label: string) =>
   label
-    .replace('REQUEST PPE', 'REQUEST')
+    .replace('ISSUE PPE', 'ISSUE')
+    .replace('ISSUE HISTORY', 'HISTORY')
     .replace('CERTIFICATE', 'CERT')
     .replace('MONTHLY REPORTS', 'REPORTS')
-    .replace('APPROVALS', 'APPROVE')

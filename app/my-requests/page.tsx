@@ -22,7 +22,7 @@ export default function MyRequests() {
     )
     const { data, error } = await query
     if (error) {
-      toast.error(error.message || 'Unable to load your request history')
+      toast.error(error.message || 'Unable to load your PPE history')
     }
     if (data) {
       setRequests(data)
@@ -63,7 +63,7 @@ export default function MyRequests() {
         requestId: req.id,
         crewId: req.crew_id,
         crewName: req.crew_name || req.requester_name || req.full_name,
-        itemName: req.items?.[0]?.item_name || 'PPE request',
+        itemName: req.items?.[0]?.item_name || 'PPE item',
       })
       if (!pushResult?.ok || pushResult?.data?.skipped) {
         toast.warning(`Push not sent: ${pushResult?.error || pushResult?.data?.reason || 'check OneSignal logs'}`)
@@ -82,14 +82,14 @@ export default function MyRequests() {
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div><h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><PackageCheck className="text-orange-500" size={36}/> My PPE History</h1><p className="text-zinc-500 mt-1 tracking-widest">Request status and received items</p></div>
+        <div><h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><PackageCheck className="text-orange-500" size={36}/> My PPE Issue History</h1><p className="text-zinc-500 mt-1 tracking-widest">Issued items and legacy approval status</p></div>
       </div>
 
       {readyToReceiveCount > 0 && (
         <div className="mb-6 rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-5 text-left">
           <p className="text-[9px] text-emerald-300 tracking-[0.24em] uppercase">Action Needed</p>
           <p className="mt-2 text-sm text-white normal-case font-black">
-            {readyToReceiveCount} approved request{readyToReceiveCount > 1 ? 's are' : ' is'} waiting for you to confirm receipt.
+            {readyToReceiveCount} approved legacy item{readyToReceiveCount > 1 ? 's are' : ' is'} waiting for you to confirm receipt.
           </p>
           <p className="mt-1 text-[11px] text-emerald-100/80 normal-case">
             Open an approved card below, then tap <span className="font-black">Confirm Received</span>.
@@ -130,7 +130,7 @@ export default function MyRequests() {
 
                 {req.status === 'approved' && (
                    <button onClick={() => handleReceive(req)} disabled={isProcessing} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all">
-                     {isProcessing ? <Loader2 className="animate-spin" size={16}/> : <CheckCircle2 size={16}/>} Confirm Received & Cut Stock
+                     {isProcessing ? <Loader2 className="animate-spin" size={16}/> : <CheckCircle2 size={16}/>} Confirm Received (Legacy)
                    </button>
                 )}
               </div>

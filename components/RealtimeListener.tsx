@@ -63,16 +63,16 @@ export function RealtimeListener() {
 
         toast('New Request Arrived!', {
           icon: <BellRing className="text-amber-500" />,
-          description: 'Check Pending Approvals',
+          description: 'Open direct issue flow',
           duration: 8000,
           action: {
             label: 'Open',
-            onClick: () => goTo('/admin/approvals'),
+            onClick: () => goTo('/ppe'),
           },
         })
         playNotificationSound()
         bumpTitleBadge()
-        showBrowserNotification('New PPE Request', 'A new request is waiting for approval.')
+        showBrowserNotification('New PPE Request', 'Open Issue PPE to handle this request.')
         window.dispatchEvent(new Event('new-notification'))
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ppe_requests' }, async (payload) => {
@@ -82,7 +82,7 @@ export function RealtimeListener() {
         const newStatus = payload.new.status
         const oldStatus = payload.old.status
         if (newStatus === 'approved' && oldStatus !== 'approved') {
-          toast.success('Request Approved!', {
+          toast.success('PPE Ready to Receive', {
             icon: <CheckCircle2 className="text-emerald-500"/>,
             description: 'Please confirm receiving in My Requests',
             duration: 10000,
@@ -93,10 +93,10 @@ export function RealtimeListener() {
           })
           playNotificationSound()
           bumpTitleBadge()
-          showBrowserNotification('Request Approved', 'Please confirm receiving in My Requests.')
+          showBrowserNotification('PPE Ready to Receive', 'Please confirm receiving in My Requests.')
           window.dispatchEvent(new Event('new-notification'))
         } else if (newStatus === 'rejected' && oldStatus !== 'rejected') {
-          toast.error('Request Rejected', {
+          toast.error('PPE Issue Rejected', {
             icon: <XCircle className="text-red-500"/>,
             description: 'Please contact admin',
             action: {
@@ -106,7 +106,7 @@ export function RealtimeListener() {
           })
           playNotificationSound()
           bumpTitleBadge()
-          showBrowserNotification('Request Rejected', 'Please contact admin for details.')
+          showBrowserNotification('PPE Issue Rejected', 'Please contact admin for details.')
           window.dispatchEvent(new Event('new-notification'))
         }
       }).subscribe()

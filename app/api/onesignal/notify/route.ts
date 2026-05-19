@@ -135,10 +135,10 @@ export async function POST(request: Request) {
       const url = payload.requestId
         ? isReceived
           ? `${baseUrl}/admin/history?request=${payload.requestId}`
-          : `${baseUrl}/admin/approvals?request=${payload.requestId}`
+          : `${baseUrl}/ppe`
         : isReceived
           ? `${baseUrl}/admin/history`
-          : `${baseUrl}/admin/approvals`;
+          : `${baseUrl}/ppe`;
 
       const data = await sendOneSignal(externalIds, title, body, url);
       return NextResponse.json({ ok: true, target: "admins", targetCount: externalIds.length, data });
@@ -200,7 +200,7 @@ export async function POST(request: Request) {
       }
 
       const approved = payload.type === "approved";
-      const title = approved ? "PPE request approved" : "PPE request rejected";
+      const title = approved ? "PPE item approved" : "PPE item rejected";
       const body = approved
         ? `${payload.itemName || "Your PPE request"} is ready for pickup.`
         : `${payload.itemName || "Your PPE request"} was rejected${payload.reason ? `: ${payload.reason}` : "."}`;
