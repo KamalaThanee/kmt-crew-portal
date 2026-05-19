@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
+import { getStatusDisplayLabel } from '@/lib/history'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { getShipCertificateStatus, getShipSurveyStatus } from '@/lib/shipCertificates'
 import { canViewShipCertificates } from '@/lib/roles'
@@ -21,6 +22,7 @@ export default function CrewDashboard() {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<any>({ progress: 0, ok: 0, warn: 0, exp: 0, miss: 0, total: 0, suit: 0, boot: 0, lastStatus: 'None' })
   const [shipStats, setShipStats] = useState({ expired: 0, due90: 0, surveyDue: 0 })
+  const [vesselStats, setVesselStats] = useState({ totalIssues: 0, lowStock: 0, lastIntakeLabel: 'No intake yet' })
   const [activePpeSizeWindow, setActivePpeSizeWindow] = useState<any>(null)
   const [ppeInventory, setPpeInventory] = useState<any[]>([])
   const [ppeSizeForm, setPpeSizeForm] = useState({ suit_color: '', suit_size: '', boot_size: '' })
@@ -66,6 +68,15 @@ export default function CrewDashboard() {
       u,
     )
     const { data: myReqs } = await reqQuery
+    const [
+      globalIssueRes,
+      inventoryStatsRes,
+      restockRes,
+    ] = await Promise.all([
+      supabase.from('ppe_requests').select('id', { count: 'exact', head: true }).neq('status', 'rejected'),
+      supabase.from('ppe_inventory').select('quantity, threshold'),
+      supabase.from('restock_history').select('created_at').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    ])
     const { data: shipCerts } = canViewShipCertificates(u.position)
       ? await supabase.from('ship_certificates').select(shipCertColumns)
       : { data: [] as any[] }
@@ -104,14 +115,26 @@ export default function CrewDashboard() {
         exp: certData.expired,
         miss: certData.missing,
         progress: certData.progress,
-        suit: sCount, boot: bCount, lastStatus: myReqs?.[0]?.status || 'No Request'
+        suit: sCount,
+        boot: bCount,
+        lastStatus: myReqs?.[0]?.status ? getStatusDisplayLabel(myReqs[0].status) : 'No issue yet',
       })
     }
     const shipRows = shipCerts || []
+    const inventoryStatsRows = inventoryStatsRes.data || []
+    const lowStockCount = inventoryStatsRows.filter((item: any) => Number(item.quantity || 0) <= Number(item.threshold || 0)).length
+    const lastIntakeLabel = restockRes.data?.created_at
+      ? new Date(restockRes.data.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).replace(' ', ' ')
+      : 'No intake yet'
     setShipStats({
       expired: shipRows.filter((cert: any) => getShipCertificateStatus(cert) === 'expired').length,
       due90: shipRows.filter((cert: any) => ['due-30', 'due-60', 'due-90'].includes(getShipCertificateStatus(cert))).length,
       surveyDue: shipRows.filter((cert: any) => ['survey-overdue', 'survey-due-30', 'survey-due-60', 'survey-due-90'].includes(getShipSurveyStatus(cert))).length,
+    })
+    setVesselStats({
+      totalIssues: globalIssueRes.count || 0,
+      lowStock: lowStockCount,
+      lastIntakeLabel,
     })
     setLoading(false)
   }
@@ -172,104 +195,211 @@ export default function CrewDashboard() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse">LOADING...</div>
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
-      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6"><div><h1 className="text-3xl md:text-4xl font-black italic">My Dashboard</h1><p className="text-zinc-500 mt-1 tracking-widest">Personal readiness and PPE status</p></div></div>
-      
-      <div className="space-y-6">
-        <Link href="/certificates" className="block bg-slate-900 border border-blue-500/20 p-8 rounded-[40px] shadow-2xl hover:border-blue-500 transition-all group">
-          <div className="flex flex-col md:flex-row items-center gap-8 mb-8">
-            <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
-              <svg className="w-full h-full transform -rotate-90"><circle cx="48" cy="48" r="44" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/5"/><circle cx="48" cy="48" r="44" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray="276" strokeDashoffset={276 - (stats.progress/100)*276} className="text-blue-500 transition-all duration-1000"/></svg>
-              <span className="absolute text-xl font-black">{stats.progress}%</span>
+    <div className="mx-auto max-w-[1380px] px-4 pb-32 pt-28 font-sans text-[10px] font-bold uppercase text-[#17120f] md:px-8">
+      <div className="mb-8">
+        <h1 className="text-4xl font-black italic tracking-tight text-[#14100d] md:text-5xl">Command Center</h1>
+        <p className="mt-2 tracking-[0.24em] text-[#5f5147]">Vessel oversight</p>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="space-y-6">
+          <div>
+            <p className="mb-3 flex items-center gap-2 tracking-[0.24em] text-[#2a63e0]">
+              <ShieldCheck size={14} />
+              My Personal
+            </p>
+            <Link href="/certificates" className="block rounded-[36px] border border-[#efd7c2] bg-white/95 p-6 shadow-[0_20px_55px_rgba(80,52,16,0.08)] transition hover:-translate-y-0.5 hover:border-[#bfd4ff]">
+              <div className="flex items-center gap-5">
+                <div className="relative h-24 w-24 shrink-0">
+                  <svg className="h-full w-full -rotate-90 transform">
+                    <circle cx="48" cy="48" r="44" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-[#ece7e2]" />
+                    <circle
+                      cx="48"
+                      cy="48"
+                      r="44"
+                      stroke="currentColor"
+                      strokeWidth="6"
+                      fill="transparent"
+                      strokeDasharray="276"
+                      strokeDashoffset={276 - (stats.progress / 100) * 276}
+                      className="text-[#2862cf] transition-all duration-1000"
+                    />
+                  </svg>
+                  <span className="absolute inset-0 flex items-center justify-center text-xl font-black text-[#14100d]">{stats.progress}%</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-end justify-between gap-3">
+                    <h2 className="text-2xl font-black italic text-[#14100d]">My Certificates</h2>
+                    <p className="text-3xl font-black text-[#2862cf]">
+                      {stats.ok + stats.warn}
+                      <span className="ml-1 text-base text-[#5f5147]">/ {stats.total}</span>
+                    </p>
+                  </div>
+                  <p className="mt-2 tracking-[0.18em] text-[#5f5147]">Certificate readiness snapshot</p>
+                </div>
+              </div>
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <div className="rounded-[22px] border border-[#f0cfcf] bg-[#fff1f1] px-4 py-3 text-center">
+                  <p className="text-2xl font-black text-[#db3d3d]">{stats.exp}</p>
+                  <p className="mt-1 tracking-[0.18em] text-[#8a5d5d]">Exp</p>
+                </div>
+                <div className="rounded-[22px] border border-[#f3df9e] bg-[#fff6d6] px-4 py-3 text-center">
+                  <p className="text-2xl font-black text-[#b88700]">{stats.warn}</p>
+                  <p className="mt-1 tracking-[0.18em] text-[#886d12]">90D</p>
+                </div>
+              </div>
+            </Link>
+          </div>
+
+          <Link href="/my-requests" className="block rounded-[32px] border border-[#efd7c2] bg-white/92 p-6 shadow-[0_18px_45px_rgba(80,52,16,0.07)] transition hover:-translate-y-0.5 hover:border-[#cce7d8]">
+            <div className="flex items-center justify-between">
+              <p className="tracking-[0.22em] text-[#5f5147]">My PPE</p>
+              <p className="text-sm font-black text-[#2862cf]">{stats.lastStatus}</p>
             </div>
-            <div className="text-center md:text-left flex-1">
-              <h3 className="text-xl font-black italic">My Certificates</h3>
-              <p className="text-blue-400 mt-1 mb-4">{stats.ok + stats.warn} / {stats.total} Valid Documents</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                 <div className="bg-emerald-500/10 border border-emerald-500/20 p-2 rounded-xl text-center"><p className="text-emerald-500 text-sm">{stats.ok}</p><p className="text-[7px]">READY</p></div>
-                 <div className="bg-amber-500/10 border border-amber-500/20 p-2 rounded-xl text-center"><p className="text-amber-500 text-sm">{stats.warn}</p><p className="text-[7px]">90 DAYS</p></div>
-                 <div className="bg-red-500/10 border border-red-500/20 p-2 rounded-xl text-center"><p className="text-red-500 text-sm">{stats.exp}</p><p className="text-[7px]">EXPIRED</p></div>
-                 <div className="bg-white/5 p-2 rounded-xl text-center text-slate-500"><p className="text-sm">{stats.miss}</p><p className="text-[7px]">MISSING</p></div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="rounded-[22px] bg-[#f7f0ea] px-4 py-4 text-center">
+                <p className="tracking-[0.18em] text-[#8a7669]">Suit</p>
+                <p className="mt-2 text-3xl font-black text-[#14100d]">{stats.suit}/2</p>
+              </div>
+              <div className="rounded-[22px] bg-[#f7f0ea] px-4 py-4 text-center">
+                <p className="tracking-[0.18em] text-[#8a7669]">Boots</p>
+                <p className="mt-2 text-3xl font-black text-[#14100d]">{stats.boot}/1</p>
               </div>
             </div>
-          </div>
-          <p className="text-right text-blue-400">Manage Certificates <ChevronRight size={14} className="inline"/></p>
-        </Link>
+          </Link>
+        </div>
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="space-y-6">
+          <div>
+            <p className="mb-3 flex items-center gap-2 tracking-[0.24em] text-[#9b49ff]">
+              <ShieldCheck size={14} />
+              Vessel Oversight
+            </p>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Link href="/ppe?view=history" className="rounded-[32px] border border-[#efd7c2] bg-white/92 p-6 shadow-[0_18px_55px_rgba(80,52,16,0.08)] transition hover:-translate-y-0.5 hover:border-[#f2c76f]">
+                <div className="mb-8 flex items-start justify-between">
+                  <div className="rounded-[22px] bg-[#fff2d9] p-4 text-[#bc7b00]">
+                    <Clock size={26} />
+                  </div>
+                  <ChevronRight className="text-[#8a7669]" size={18} />
+                </div>
+                <p className="text-5xl font-black text-[#14100d]">{vesselStats.totalIssues}</p>
+                <p className="mt-2 tracking-[0.18em] text-[#bc7b00]">Total Issues</p>
+              </Link>
+
+              <Link href="/inventory?lowStock=1" className="rounded-[32px] border border-[#d9e6ff] bg-white/92 p-6 shadow-[0_18px_55px_rgba(80,52,16,0.08)] transition hover:-translate-y-0.5 hover:border-[#8db3ff]">
+                <div className="mb-8 flex items-start justify-between">
+                  <div className="rounded-[22px] bg-[#eaf2ff] p-4 text-[#2e63d1]">
+                    <ShipWheel size={26} />
+                  </div>
+                  <ChevronRight className="text-[#8a7669]" size={18} />
+                </div>
+                <p className="text-5xl font-black text-[#14100d]">{vesselStats.lowStock}</p>
+                <p className="mt-2 tracking-[0.18em] text-[#2e63d1]">Low Stock Alert</p>
+              </Link>
+
+              <Link href="/inventory?restock=history" className="rounded-[32px] border border-[#cfead8] bg-white/92 p-6 shadow-[0_18px_55px_rgba(80,52,16,0.08)] transition hover:-translate-y-0.5 hover:border-[#75c798]">
+                <div className="mb-8 flex items-start justify-between">
+                  <div className="rounded-[22px] bg-[#e8f8ee] p-4 text-[#168e58]">
+                    <ShipWheel size={26} />
+                  </div>
+                  <ChevronRight className="text-[#8a7669]" size={18} />
+                </div>
+                <p className="text-4xl font-black text-[#14100d]">{vesselStats.lastIntakeLabel}</p>
+                <p className="mt-2 tracking-[0.18em] text-[#168e58]">Last Intake History</p>
+              </Link>
+            </div>
+          </div>
+
           {activePpeSizeWindow && (
-            <div id="ppe-size-update" className="col-span-2 scroll-mt-28 bg-amber-500/10 border border-amber-500/30 p-6 rounded-[36px] shadow-xl">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="bg-amber-500/15 border border-amber-500/20 p-4 rounded-[24px] text-amber-300"><Ruler size={24}/></div>
+            <div id="ppe-size-update" className="scroll-mt-28 rounded-[36px] border border-[#f0d59a] bg-[#fff7e6] p-6 shadow-[0_18px_50px_rgba(80,52,16,0.08)]">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="rounded-[22px] bg-[#fff0c8] p-4 text-[#bc7b00]"><Ruler size={24} /></div>
                   <div>
-                    <h3 className="text-lg font-black italic">PPE Size Update</h3>
-                    <p className="mt-1 text-amber-100/70 normal-case">
-                      {activePpeSizeWindow.title || 'Confirm boiler suit and safety boots sizes'}
-                    </p>
+                    <h3 className="text-xl font-black italic text-[#14100d]">PPE Size Update</h3>
+                    <p className="mt-1 normal-case text-[#6b584c]">{activePpeSizeWindow.title || 'Confirm boiler suit and safety boots sizes'}</p>
                     {activePpeSizeWindow.deadline_at && (
-                      <p className="mt-1 text-[9px] text-amber-300">Deadline: {new Date(activePpeSizeWindow.deadline_at).toLocaleString()}</p>
+                      <p className="mt-1 text-[9px] tracking-[0.18em] text-[#b88700]">Deadline: {new Date(activePpeSizeWindow.deadline_at).toLocaleString()}</p>
                     )}
                   </div>
                 </div>
-                <span className={`rounded-full px-4 py-2 text-[9px] font-black ${sizeWindowConfirmed ? 'bg-emerald-500/20 text-emerald-300' : 'bg-orange-600 text-white'}`}>
-                  {sizeWindowConfirmed ? 'CONFIRMED' : 'ACTION REQUIRED'}
+                <span className={`rounded-full px-4 py-2 text-[9px] font-black ${sizeWindowConfirmed ? 'bg-[#dff6e9] text-[#168e58]' : 'bg-orange-600 text-white'}`}>
+                  {sizeWindowConfirmed ? 'Confirmed' : 'Action Required'}
                 </span>
               </div>
-
-              <div className="mt-5 grid gap-3 md:grid-cols-4">
-                <select value={ppeSizeForm.suit_color} onChange={(event) => setPpeSizeForm((prev) => ({ ...prev, suit_color: event.target.value }))} className="rounded-2xl border border-white/10 bg-black px-4 py-3 text-xs font-black text-white outline-none focus:border-amber-500">
+              <div className="mt-5 grid gap-3 xl:grid-cols-4">
+                <select value={ppeSizeForm.suit_color} onChange={(event) => setPpeSizeForm((prev) => ({ ...prev, suit_color: event.target.value }))} className="rounded-2xl border border-[#ecd7b0] bg-white px-4 py-3 text-xs font-black text-[#14100d] outline-none focus:border-[#d89d2b]">
                   <option value="">Boiler suit color</option>
                   {suitColorOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
-                <select value={ppeSizeForm.suit_size} onChange={(event) => setPpeSizeForm((prev) => ({ ...prev, suit_size: event.target.value }))} className="rounded-2xl border border-white/10 bg-black px-4 py-3 text-xs font-black text-white outline-none focus:border-amber-500">
+                <select value={ppeSizeForm.suit_size} onChange={(event) => setPpeSizeForm((prev) => ({ ...prev, suit_size: event.target.value }))} className="rounded-2xl border border-[#ecd7b0] bg-white px-4 py-3 text-xs font-black text-[#14100d] outline-none focus:border-[#d89d2b]">
                   <option value="">Boiler suit size</option>
                   {suitSizeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
-                <select value={ppeSizeForm.boot_size} onChange={(event) => setPpeSizeForm((prev) => ({ ...prev, boot_size: event.target.value }))} className="rounded-2xl border border-white/10 bg-black px-4 py-3 text-xs font-black text-white outline-none focus:border-amber-500">
+                <select value={ppeSizeForm.boot_size} onChange={(event) => setPpeSizeForm((prev) => ({ ...prev, boot_size: event.target.value }))} className="rounded-2xl border border-[#ecd7b0] bg-white px-4 py-3 text-xs font-black text-[#14100d] outline-none focus:border-[#d89d2b]">
                   <option value="">Safety boots size</option>
                   {bootSizeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
                 <button onClick={handleConfirmPpeSizes} disabled={isSavingPpeSizes} className="rounded-2xl bg-orange-600 px-4 py-3 text-xs font-black text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
-                  <Save size={14} className="mr-2 inline"/> {isSavingPpeSizes ? 'SAVING...' : 'CONFIRM SIZE'}
+                  <Save size={14} className="mr-2 inline" /> {isSavingPpeSizes ? 'Saving...' : 'Confirm Size'}
                 </button>
               </div>
             </div>
           )}
 
-          <Link href="/my-requests" className="bg-slate-900 border border-white/5 p-8 rounded-[40px] flex flex-col justify-between shadow-xl h-44 hover:border-emerald-500 transition-all">
-             <div className="flex justify-between items-center"><p className="text-slate-500">PPE Usage</p><ShieldCheck className="text-emerald-500" size={20}/></div>
-             <div className="grid grid-cols-2 gap-2 my-2">
-                <div className="text-center"><p className="text-[7px] text-slate-600">SUIT</p><p className="text-sm font-black">{stats.suit}/2</p></div>
-                <div className="text-center"><p className="text-[7px] text-slate-600">BOOTS</p><p className="text-sm font-black">{stats.boot}/1</p></div>
-             </div>
-             <p className="text-emerald-400">History & Status <ChevronRight size={12} className="inline"/></p>
-          </Link>
-          <div className="bg-slate-900 border border-white/5 p-8 rounded-[40px] flex flex-col justify-between shadow-xl h-44">
-            <Clock className="text-blue-500" size={32}/>
-            <div><p className="text-xs uppercase text-slate-500">Last Req. Status</p><p className="text-lg font-black text-blue-400">{stats.lastStatus}</p></div>
-          </div>
-        </div>
-
-        {canViewShipCertificates(user?.position) && (
-          <Link href="/certificates?tab=ship" className="block bg-slate-900 border border-cyan-500/20 p-8 rounded-[40px] shadow-2xl hover:border-cyan-400 transition-all group">
-            <div className="flex items-center justify-between gap-6">
-              <div className="flex items-center gap-4">
-                <div className="bg-cyan-500/10 border border-cyan-500/20 p-4 rounded-[28px] text-cyan-300"><ShipWheel size={28}/></div>
-                <div>
-                  <h3 className="text-xl font-black italic">Ship Certificates</h3>
-                  <p className="text-cyan-300 mt-1">Vessel compliance watch</p>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Link href="/certificates?tab=crew" className="group rounded-[38px] border border-[#e3d5ff] bg-[#f7f1ff] p-7 shadow-[0_18px_55px_rgba(80,52,16,0.08)] transition hover:-translate-y-0.5 hover:border-[#bf9cff]">
+              <div className="flex items-center gap-6">
+                <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-[30px] border border-[#dcc9ff] bg-[#efe6ff] text-[#9b49ff]">
+                  <p className="text-5xl font-black">{stats.progress}%</p>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-2xl font-black italic text-[#14100d]">Crew Certificates</h3>
+                      <p className="mt-2 tracking-[0.18em] text-[#6b5b82]">Fleet readiness by crew matrix</p>
+                    </div>
+                    <ChevronRight className="text-[#8a7669] transition-transform group-hover:translate-x-1" size={20} />
+                  </div>
                 </div>
               </div>
-              <ChevronRight className="text-cyan-400 group-hover:translate-x-1 transition-transform" size={20}/>
-            </div>
-            <div className="grid grid-cols-3 gap-2 mt-6">
-              <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl text-center"><p className="text-red-400 text-sm">{shipStats.expired}</p><p className="text-[7px]">EXP</p></div>
-              <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl text-center"><p className="text-amber-300 text-sm">{shipStats.due90}</p><p className="text-[7px]">90D</p></div>
-              <div className="bg-cyan-500/10 border border-cyan-500/20 p-3 rounded-xl text-center"><p className="text-cyan-300 text-sm">{shipStats.surveyDue}</p><p className="text-[7px]">SURVEY</p></div>
-            </div>
-          </Link>
-        )}
+            </Link>
+
+            {canViewShipCertificates(user?.position) && (
+              <Link href="/certificates?tab=ship" className="group rounded-[38px] border border-[#caeef5] bg-[#f0fbfd] p-7 shadow-[0_18px_55px_rgba(80,52,16,0.08)] transition hover:-translate-y-0.5 hover:border-[#74d5ea]">
+                <div className="flex items-center gap-6">
+                  <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-[30px] border border-[#bcebf5] bg-[#dff8fd] text-[#17b4db]">
+                    <p className="text-5xl font-black">{shipStats.expired + shipStats.due90 + shipStats.surveyDue}</p>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <h3 className="text-2xl font-black italic text-[#14100d]">Ship Certificate Watch</h3>
+                        <p className="mt-2 tracking-[0.18em] text-[#5f5147]">Expired, due 90 days, and survey due</p>
+                      </div>
+                      <ChevronRight className="text-[#8a7669] transition-transform group-hover:translate-x-1" size={20} />
+                    </div>
+                    <div className="mt-4 grid grid-cols-3 gap-3">
+                      <div className="rounded-[20px] border border-[#f2cfd2] bg-[#fff2f2] px-4 py-3 text-center">
+                        <p className="text-2xl font-black text-[#db3d3d]">{shipStats.expired}</p>
+                        <p className="mt-1 tracking-[0.16em] text-[#8a5d5d]">Exp</p>
+                      </div>
+                      <div className="rounded-[20px] border border-[#f3df9e] bg-[#fff8de] px-4 py-3 text-center">
+                        <p className="text-2xl font-black text-[#c28c00]">{shipStats.due90}</p>
+                        <p className="mt-1 tracking-[0.16em] text-[#886d12]">90D</p>
+                      </div>
+                      <div className="rounded-[20px] border border-[#bee9f3] bg-[#e8fbff] px-4 py-3 text-center">
+                        <p className="text-2xl font-black text-[#17b4db]">{shipStats.surveyDue}</p>
+                        <p className="mt-1 tracking-[0.16em] text-[#3f7480]">Survey</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

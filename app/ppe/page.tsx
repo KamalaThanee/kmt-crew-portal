@@ -331,33 +331,33 @@ function PPEContent() {
   if (!mounted || !user) return null
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+    <div className="mx-auto max-w-[1380px] px-4 pb-32 pt-28 font-sans text-[10px] font-bold uppercase text-[#17120f] md:px-8">
       <div className="space-y-8 animate-in fade-in duration-500">
-        <div className="mb-8 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+        <div className="mb-8 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3">
               <ShieldAlert className="text-orange-500" size={36} />
               Issue PPE
             </h1>
-            <p className="text-zinc-500 mt-1 tracking-widest flex items-center gap-2">
+            <p className="mt-2 flex items-center gap-2 tracking-[0.22em] text-[#5f5147]">
               <ShieldAlert size={12} />
               Storekeeper direct issue and issue tracking
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 md:items-end">
-            <div className="grid w-full max-w-md grid-cols-2 rounded-[26px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[360px]">
+          <div className="flex flex-col gap-3 xl:items-end">
+            <div className="grid w-full grid-cols-2 rounded-[28px] border border-[#efd7c2] bg-white/95 p-1.5 text-[10px] font-black uppercase tracking-tight text-[#6f6259] shadow-[0_18px_50px_rgba(80,52,16,0.08)] xl:w-[420px]">
               <button
                 type="button"
                 onClick={() => syncView('issue')}
-                className={`rounded-[20px] px-4 py-3 transition-all ${activeView === 'issue' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}
+                className={`rounded-[22px] px-4 py-3 transition-all ${activeView === 'issue' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-[#fff4ea] hover:text-[#14100d]'}`}
               >
                 Issue Catalog
               </button>
               <button
                 type="button"
                 onClick={() => syncView('history')}
-                className={`flex items-center justify-center gap-2 rounded-[20px] px-4 py-3 transition-all ${activeView === 'history' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-white/5 hover:text-white'}`}
+                className={`flex items-center justify-center gap-2 rounded-[22px] px-4 py-3 transition-all ${activeView === 'history' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25' : 'hover:bg-[#fff4ea] hover:text-[#14100d]'}`}
               >
                 <HistoryIcon size={14} />
                 Issue History
@@ -367,7 +367,7 @@ function PPEContent() {
             {activeView === 'history' && (
               <button
                 onClick={handleExportExcel}
-                className="flex items-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-5 py-3 text-xs font-black uppercase text-orange-300"
+                className="flex items-center justify-center gap-2 rounded-2xl border border-[#f0c9a1] bg-[#fff1e6] px-5 py-3 text-xs font-black uppercase text-[#d16b0f] xl:min-w-[190px]"
               >
                 <FileSpreadsheet size={16} />
                 Export Excel
@@ -378,29 +378,29 @@ function PPEContent() {
 
         {activeView === 'issue' ? (
           <>
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2">
-              <button onClick={() => setActiveCat('All')} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase transition-all border ${activeCat === 'All' ? 'bg-orange-600 text-white shadow-lg' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>All</button>
+            <div className="flex flex-wrap items-center gap-2 py-2">
+              <button onClick={() => setActiveCat('All')} className={`rounded-2xl border px-5 py-3 font-black text-[10px] uppercase transition-all ${activeCat === 'All' ? 'border-orange-600 bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'border-[#efd7c2] bg-white text-[#6f6259] hover:border-[#efbf8e] hover:text-[#14100d]'}`}>All</button>
               {categoryConfig.map((cat) => (
-                <button key={cat.name} onClick={() => setActiveCat(cat.name)} className={`flex items-center gap-3 px-6 py-3 rounded-2xl font-black text-[10px] uppercase transition-all border whitespace-nowrap ${activeCat === cat.name ? 'bg-orange-600 text-white' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300'}`}>
+                <button key={cat.name} onClick={() => setActiveCat(cat.name)} className={`flex items-center gap-3 whitespace-nowrap rounded-2xl border px-5 py-3 font-black text-[10px] uppercase transition-all ${activeCat === cat.name ? 'border-orange-600 bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'border-[#efd7c2] bg-white text-[#6f6259] hover:border-[#efbf8e] hover:text-[#14100d]'}`}>
                   <cat.icon size={16} /> {cat.label}
                 </button>
               ))}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {groupedInventory.map((group) => {
                 const isExpanded = expandedItemName === group.name
                 return (
-                  <div key={group.name} className={`bg-zinc-900/50 border transition-all rounded-[32px] overflow-hidden ${isExpanded ? 'border-orange-500/50 bg-zinc-900 shadow-2xl' : 'border-white/5 hover:border-white/10'}`}>
+                  <div key={group.name} className={`overflow-hidden rounded-[32px] border bg-white/95 transition-all shadow-[0_18px_50px_rgba(80,52,16,0.06)] ${isExpanded ? 'border-orange-400 bg-[#fffaf6] shadow-[0_22px_55px_rgba(80,52,16,0.1)]' : 'border-[#efd7c2] hover:-translate-y-0.5 hover:border-[#efbf8e]'}`}>
                     <button onClick={() => setExpandedItemName(isExpanded ? null : group.name)} className="w-full p-6 flex items-center justify-between outline-none">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center text-orange-500 border border-white/5"><Package size={24} /></div>
+                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#f5dcc5] bg-[#fff4ea] text-orange-500"><Package size={24} /></div>
                         <div className="text-left">
-                          <h3 className="text-white font-black text-sm uppercase italic leading-tight">{group.name}</h3>
-                          <p className="text-[9px] text-zinc-500 font-bold uppercase mt-1">{group.variants.length} Options Available</p>
+                          <h3 className="text-sm font-black uppercase italic leading-tight text-[#14100d]">{group.name}</h3>
+                          <p className="mt-1 text-[9px] font-bold uppercase text-[#7b6d63]">{group.variants.length} Options Available</p>
                         </div>
                       </div>
-                      <ChevronDown className={`text-zinc-600 transition-transform ${isExpanded ? 'rotate-180 text-orange-500' : ''}`} />
+                      <ChevronDown className={`transition-transform ${isExpanded ? 'rotate-180 text-orange-500' : 'text-[#8a7669]'}`} />
                     </button>
                     {isExpanded && (
                       <div className="px-4 pb-6 space-y-2 animate-in slide-in-from-top-2">
@@ -409,10 +409,10 @@ function PPEContent() {
                           const inCart = currentCart.filter((i: any) => i.id === v.id).length
                           const currentStock = v.quantity - inCart
                           return (
-                            <div key={vIdx} className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-white/5">
+                            <div key={vIdx} className="flex items-center justify-between rounded-2xl border border-[#f0ddd0] bg-white px-4 py-4 shadow-[0_10px_24px_rgba(80,52,16,0.04)]">
                               <div>
-                                <p className="text-white text-[10px] font-black uppercase">{v.color} | {v.size}</p>
-                                <p className={`text-[8px] font-bold mt-1 ${currentStock > 0 ? 'text-emerald-500' : 'text-red-500'}`}>{currentStock > 0 ? `• ${currentStock} Available` : 'Out of Stock'}</p>
+                                <p className="text-[10px] font-black uppercase text-[#14100d]">{v.color} | {v.size}</p>
+                                <p className={`mt-1 text-[8px] font-bold ${currentStock > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{currentStock > 0 ? `${currentStock} available` : 'Out of stock'}</p>
                               </div>
                               <button onClick={() => addToCart(v)} disabled={currentStock <= 0} className="w-9 h-9 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 text-white rounded-xl flex items-center justify-center transition-all active:scale-90">
                                 {currentStock > 0 ? <Plus size={18} /> : <Lock size={14} />}
@@ -477,11 +477,11 @@ function PPEContent() {
             />
 
             <div className="mb-4 flex items-center justify-between gap-3">
-              <div className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+              <div className="text-[11px] font-bold uppercase tracking-widest text-[#7c6b60]">
                 {filteredHistoryRows.length} shown {searchItem ? 'after item filter' : ''} / {rowCount} matching records
               </div>
               {historyLoading && (
-                <div className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-200">
+                <div className="rounded-full border border-[#bfd4ff] bg-[#eff5ff] px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#2862cf]">
                   Loading page...
                 </div>
               )}
@@ -490,8 +490,8 @@ function PPEContent() {
             <HistoryDesktopTable rows={filteredHistoryRows} adminNameMap={adminNameMap} />
             <HistoryMobileCards rows={filteredHistoryRows} adminNameMap={adminNameMap} />
 
-            <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-[28px] border border-white/6 bg-zinc-950/45 p-4 md:flex-row">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+            <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-[28px] border border-[#efd7c2] bg-white/92 p-4 shadow-[0_18px_45px_rgba(80,52,16,0.06)] md:flex-row">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[#7c6b60]">
                 Page {page + 1} of {Math.max(1, Math.ceil(rowCount / PAGE_SIZE))}
               </p>
               <div className="flex gap-3">
@@ -499,7 +499,7 @@ function PPEContent() {
                   type="button"
                   disabled={page === 0 || historyLoading}
                   onClick={() => setPage((prev) => Math.max(0, prev - 1))}
-                  className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-xs font-black uppercase text-white transition disabled:cursor-not-allowed disabled:opacity-30"
+                  className="rounded-2xl border border-[#efd7c2] bg-[#fff6ee] px-5 py-3 text-xs font-black uppercase text-[#6f6259] transition hover:border-[#efbf8e] hover:text-[#14100d] disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   Previous
                 </button>
@@ -507,7 +507,7 @@ function PPEContent() {
                   type="button"
                   disabled={(page + 1) * PAGE_SIZE >= rowCount || historyLoading}
                   onClick={() => setPage((prev) => prev + 1)}
-                  className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-5 py-3 text-xs font-black uppercase text-orange-200 transition disabled:cursor-not-allowed disabled:opacity-30"
+                  className="rounded-2xl border border-[#f0c9a1] bg-[#fff1e6] px-5 py-3 text-xs font-black uppercase text-[#d16b0f] transition hover:border-[#e8ab64] disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   Next
                 </button>
@@ -527,3 +527,4 @@ export default function PPEPage() {
     </Suspense>
   )
 }
+
