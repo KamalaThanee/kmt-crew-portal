@@ -1,4 +1,4 @@
-import { normalize } from '@/lib/history'
+import { getStatusDisplayLabel, normalize } from '@/lib/history'
 
 type StatusPillProps = {
   status?: string | null
@@ -19,7 +19,7 @@ export function StatusPill({ status: rawStatus, className = '' }: StatusPillProp
     <span
       className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest ${getStatusTone(status)} ${className}`}
     >
-      {status}
+      {getStatusDisplayLabel(status)}
     </span>
   )
 }

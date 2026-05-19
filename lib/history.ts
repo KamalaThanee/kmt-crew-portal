@@ -177,31 +177,34 @@ export const getYearOptions = () => {
 export const getCrewName = (row: HistoryRow) =>
   row.crew_name || row.requester_name || row.full_name || 'Unknown Crew'
 
+export const getStatusDisplayLabel = (rawStatus?: string | null) => {
+  const status = normalize(rawStatus || 'pending')
+  if (status === 'received') return 'Issued'
+  if (status === 'approved') return 'Ready to Issue'
+  if (status === 'rejected') return 'Cancelled'
+  return 'Open Record'
+}
+
 export const getStatusTimelineMeta = (row: HistoryRow, adminNameMap: Record<string, string>) => {
   const status = normalize(row.status || 'pending')
   const actorName =
     row.approved_by_name ||
     (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : 'Unknown approver')
 
-  const timeline: string[] = []
-
-  if (row.approved_at || status === 'approved' || status === 'received') {
-    timeline.push(`Approved by ${actorName}${row.approved_at ? ` on ${formatDateTime(row.approved_at)}` : ''}`)
-  }
-
-  if (row.rejected_at || status === 'rejected') {
-    timeline.push(`Rejected by ${actorName}${row.rejected_at ? ` on ${formatDateTime(row.rejected_at)}` : ''}`)
-  }
-
   if (status === 'received') {
-    timeline.push(`Received${row.received_at ? ` on ${formatDateTime(row.received_at)}` : ''}`)
+    const issuedAt = row.received_at || row.approved_at || row.created_at
+    return `Issued by ${actorName}${issuedAt ? ` on ${formatDateTime(issuedAt)}` : ''}`
   }
 
-  if (status === 'pending') {
-    return 'Waiting for approval'
+  if (status === 'approved') {
+    return `Ready to issue${row.approved_at ? ` on ${formatDateTime(row.approved_at)}` : ''}`
   }
 
-  return timeline.length > 0 ? timeline.join(' | ') : '-'
+  if (status === 'rejected') {
+    return `Cancelled by ${actorName}${row.rejected_at ? ` on ${formatDateTime(row.rejected_at)}` : ''}`
+  }
+
+  return 'Open issue record'
 }
 
 export const getItemSummary = (row: HistoryRow) =>
@@ -281,7 +284,7 @@ export const getHistoryExportRows = (rows: HistoryRow[], adminNameMap: Record<st
       (row.approved_by ? adminNameMap[String(row.approved_by)] || 'Unknown approver' : ''),
     Crew: getCrewName(row),
     Items: getItemSummary(row),
-    Status: row.status || 'pending',
+    Status: getStatusDisplayLabel(row.status),
     Detail: getStatusTimelineMeta(row, adminNameMap),
     RequestReason: row.reason || '',
     AdminRemark: row.admin_remark || row.rejection_reason || '',

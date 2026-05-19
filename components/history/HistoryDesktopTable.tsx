@@ -15,11 +15,11 @@ export function HistoryDesktopTable({ adminNameMap, rows }: HistoryDesktopTableP
       <table className="w-full text-left text-sm">
         <thead className="border-b border-white/6 bg-white/[0.02] text-[10px] uppercase tracking-widest text-zinc-500">
           <tr>
-            <th className="px-6 py-4">Requested</th>
+            <th className="px-6 py-4">Logged</th>
             <th className="px-6 py-4">Crew</th>
             <th className="px-6 py-4">Items</th>
             <th className="px-6 py-4">Status</th>
-            <th className="px-6 py-4">Detail</th>
+            <th className="px-6 py-4">Issue Detail</th>
           </tr>
         </thead>
         <tbody>

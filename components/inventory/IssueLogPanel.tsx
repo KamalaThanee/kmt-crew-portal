@@ -128,7 +128,7 @@ export function IssueLogPanel({
           <div>
             <p className="text-blue-300 text-[10px] tracking-[0.25em] uppercase">Stock Movement Audit</p>
             <p className="mt-2 text-sm normal-case text-zinc-300">Latest {stockTransactions.length} stock movements from received requests and direct issue.</p>
-            <p className="mt-1 text-[11px] normal-case text-zinc-500">Pending or approved requests are not shown here until stock is actually deducted. If this is empty after deploy, rerun sql/ppe_stock_transactions.sql once to backfill old received requests.</p>
+            <p className="mt-1 text-[11px] normal-case text-zinc-500">Only completed stock deductions are shown here. Legacy pending approvals stay out of this log until stock is actually deducted. If this is empty after deploy, rerun sql/ppe_stock_transactions.sql once to backfill old received issues.</p>
           </div>
           <button onClick={onRefreshTransactions} disabled={isRefreshingTransactions} className="rounded-2xl border border-blue-400/30 bg-blue-500/10 px-5 py-3 text-[10px] font-black text-blue-200 transition-all hover:bg-blue-500 hover:text-white disabled:cursor-wait disabled:opacity-60">
             {isRefreshingTransactions ? 'Refreshing...' : 'Refresh Log'}

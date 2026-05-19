@@ -152,13 +152,13 @@ export function useNavbarNotifications({
 
         const pendingActions: AdminActionItem[] = pendingRows.map((req: any) => {
           const crewName = req.crew_name || req.requester_name || req.full_name || 'Unknown crew'
-          const firstItem = req.items?.[0]?.item_name || 'PPE request'
+          const firstItem = req.items?.[0]?.item_name || 'PPE item'
           const itemCount = req.items?.length || 0
           const moreLabel = itemCount > 1 ? ` +${itemCount - 1} more` : ''
           return {
             id: `pending-${req.id}`,
-            href: `/admin/approvals?request=${req.id}`,
-            title: `${crewName} sent a PPE request`,
+            href: `/ppe?view=history`,
+            title: `${crewName} needs PPE review`,
             description: `${firstItem}${moreLabel}`,
             meta: new Date(req.created_at).toLocaleString('en-GB'),
             countLabel: 'NEW',
@@ -168,12 +168,12 @@ export function useNavbarNotifications({
         })
 
         const personalUpdates: CrewActionItem[] = personalRows.map((req: any) => {
-          const itemName = req.items?.[0]?.item_name || 'PPE request'
+          const itemName = req.items?.[0]?.item_name || 'PPE item'
           const approved = req.status === 'approved'
           return {
             id: req.id,
             status: req.status,
-            title: approved ? 'Approved and ready to receive' : 'Request rejected',
+            title: approved ? 'PPE ready to receive' : 'PPE issue rejected',
             description: approved
               ? `${itemName} is waiting for your confirmation`
               : req.admin_remark || req.rejection_reason || `${itemName} needs your attention`,
@@ -232,13 +232,13 @@ export function useNavbarNotifications({
         const nextStatuses: SeenCrewRequestStatuses = {}
         let hasNewCrewAction = false
         const actionItems: CrewActionItem[] = rows.map((req: any) => {
-          const itemName = req.items?.[0]?.item_name || 'PPE request'
+          const itemName = req.items?.[0]?.item_name || 'PPE item'
           const approved = req.status === 'approved'
           nextStatuses[String(req.id)] = String(req.status || '')
           return {
             id: req.id,
             status: req.status,
-            title: approved ? 'Approved and ready to receive' : 'Request rejected',
+            title: approved ? 'PPE ready to receive' : 'PPE issue rejected',
             description: approved
               ? `${itemName} is waiting for your confirmation`
               : req.admin_remark || req.rejection_reason || `${itemName} needs your attention`,
@@ -259,9 +259,9 @@ export function useNavbarNotifications({
 
           if (newlyApproved.length > 0) {
             hasNewCrewAction = true
-            const firstItem = newlyApproved[0]?.items?.[0]?.item_name || 'PPE request'
+            const firstItem = newlyApproved[0]?.items?.[0]?.item_name || 'PPE item'
             const moreLabel = newlyApproved.length > 1 ? ` and ${newlyApproved.length - 1} more` : ''
-            toast.success('Request Approved!', {
+            toast.success('PPE Ready to Receive', {
               icon: <CheckCircle2 className="text-emerald-500" />,
               description: `${firstItem}${moreLabel} is ready for you to receive in My Requests.`,
               duration: 10000,
@@ -272,15 +272,15 @@ export function useNavbarNotifications({
             })
             playNotificationSound()
             showBrowserNotification(
-              'Request Approved',
+              'PPE Ready to Receive',
               `${firstItem}${moreLabel} is ready for you to confirm receipt in My Requests.`,
             )
           }
 
           if (newlyRejected.length > 0) {
             hasNewCrewAction = true
-            const firstItem = newlyRejected[0]?.items?.[0]?.item_name || 'PPE request'
-            toast.error('Request Rejected', {
+            const firstItem = newlyRejected[0]?.items?.[0]?.item_name || 'PPE item'
+            toast.error('PPE Issue Rejected', {
               icon: <XCircle className="text-red-500" />,
               description: `${firstItem} needs your attention. Check My Requests for details.`,
               duration: 10000,
@@ -290,7 +290,7 @@ export function useNavbarNotifications({
               },
             })
             playNotificationSound()
-            showBrowserNotification('Request Rejected', `${firstItem} needs your attention in My Requests.`)
+            showBrowserNotification('PPE Issue Rejected', `${firstItem} needs your attention in My Requests.`)
           }
         }
 

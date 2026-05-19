@@ -48,10 +48,16 @@ export default function Navbar() {
     () => getNavbarMenuItems(isAdmin, user?.position),
     [isAdmin, user?.position],
   );
+  const mobileMenuItems = useMemo(() => {
+    if (isAdmin) {
+      return menuItems.filter((item) => item.href !== '/sms-library').slice(0, 5);
+    }
+    return menuItems.slice(0, 4);
+  }, [isAdmin, menuItems]);
 
   const isNavItemActive = (href: string) => (
     pathname === href ||
-    (href === '/admin/approvals' && pathname.startsWith('/admin/history')) ||
+    (href === '/ppe' && (pathname.startsWith('/admin/history') || pathname.startsWith('/admin/approvals'))) ||
     (href === '/certificates' && pathname.startsWith('/admin/ship-certificates'))
   );
 
@@ -184,14 +190,16 @@ export default function Navbar() {
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </button>
 
-          <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="p-2.5 text-[var(--icon-muted)] hover:text-orange-500 relative transition-colors">
-            <ShoppingCart size={18} />
-            {cartCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-orange-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black">
-                {cartCount}
-              </span>
-            )}
-          </button>
+          {isAdmin && (
+            <button onClick={() => window.dispatchEvent(new CustomEvent('open-cart'))} className="p-2.5 text-[var(--icon-muted)] hover:text-orange-500 relative transition-colors">
+              <ShoppingCart size={18} />
+              {cartCount > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 bg-orange-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border border-black">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+          )}
 
           <div className="relative" ref={notifRef}>
             <button onClick={handleOpenNotif} className="p-2.5 text-[var(--icon-muted)] hover:text-orange-500 relative transition-colors">
@@ -250,7 +258,7 @@ export default function Navbar() {
       </nav>
 
       <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] h-16 bg-[var(--nav-bg)] backdrop-blur-2xl border border-[var(--nav-border)] rounded-3xl z-[100] px-2 shadow-2xl flex items-center justify-around transition-colors duration-300">
-        {menuItems.slice(0, isAdmin ? 5 : 4).map((item) => {
+        {mobileMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive = isNavItemActive(item.href);
           return (

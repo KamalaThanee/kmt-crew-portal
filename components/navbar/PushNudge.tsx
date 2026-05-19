@@ -16,7 +16,7 @@ export function PushNudge({ userId, onEnable, onDismiss }: PushNudgeProps) {
         <div className="min-w-0 flex-1">
           <p className="text-xs font-black uppercase tracking-widest text-white">Enable push notifications</p>
           <p className="mt-1 text-[10px] leading-relaxed text-zinc-400 normal-case">
-            Get alerts when PPE requests need action or your request is updated.
+            Get alerts when PPE needs action or your PPE status changes.
           </p>
           <div className="mt-3 flex gap-2">
             <button
