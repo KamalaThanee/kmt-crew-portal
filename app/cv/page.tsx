@@ -646,6 +646,11 @@ export default function CvPage() {
     return getSeaServiceMetrics(services, user?.position as string | undefined)
   }, [services, user?.position])
 
+  const cvRefreshTargets = useMemo(
+    () => certRows.filter((cert) => certNeedsCvRefresh(cert)),
+    [certRows],
+  )
+
   const completionStatus = useMemo(() => {
     const personalComplete = Boolean(profile.national_id_no && profile.nationality && profile.date_of_birth && profile.place_of_birth)
     const certificatesComplete = cvRefreshTargets.length === 0
@@ -657,11 +662,6 @@ export default function CvPage() {
       allComplete: personalComplete && certificatesComplete && serviceComplete,
     }
   }, [cvRefreshTargets.length, profile.date_of_birth, profile.national_id_no, profile.nationality, profile.place_of_birth, services.length])
-
-  const cvRefreshTargets = useMemo(
-    () => certRows.filter((cert) => certNeedsCvRefresh(cert)),
-    [certRows],
-  )
 
   const personalDocs = useMemo(() => buildPersonalDocs(certRows), [certRows])
   const cvSourceRows = useMemo(() => {
