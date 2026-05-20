@@ -442,10 +442,12 @@ function hasPassportCvProfileData(value: PassportCvProfileData) {
 function normalizeCompetencyAiTitle(value?: string | null) {
   const title = clean(value)
   if (!title) return ''
-  return title
+  const stripped = title
     .replace(/^certificate of competency\s*/i, '')
     .replace(/\s+/g, ' ')
     .trim()
+  const splitMatch = stripped.match(/^(.*?)(?:\s+on\s+ships?\s+of\s+.+|\s+near\s+coastal\s+voyage.*|\s+\d[\d,]*(?:\.\d+)?\s*(?:gross tonnage|gt|kw|kW|propulsion power).*)$/i)
+  return clean(splitMatch?.[1] || stripped)
 }
 
 function normalizeCompetencyAiCapacity(value?: string | null, fallbackTitle?: string | null) {
@@ -458,6 +460,8 @@ function normalizeCompetencyAiCapacity(value?: string | null, fallbackTitle?: st
   }
   const title = clean(fallbackTitle)
   if (!title) return ''
+  const splitMatch = title.match(/(?:on\s+ships?\s+of\s+.+|near\s+coastal\s+voyage.*|\d[\d,]*(?:\.\d+)?\s*(?:gross tonnage|gt|kw|kW|propulsion power).*)$/i)
+  if (splitMatch?.[0]) return clean(splitMatch[0]).replace(/^on\s+/i, '').trim()
   const match = title.match(/\b(\d[\d,]*(?:\.\d+)?)\s*(gross tonnage|gt|kw|kW|propulsion power)\b[\s\S]*/i)
   if (!match) return ''
   return clean(match[0]).replace(/^on\s+/i, '').trim()
@@ -1209,7 +1213,10 @@ function CvPageContent() {
 
       let latestError = 'AI models busy'
       const section = getCvCertSection(cert)
-      for (const model of AI_MODELS) {
+      const candidateModels = mimeType === 'application/pdf'
+        ? AI_MODELS.filter((model) => model.provider === 'google')
+        : AI_MODELS
+      for (const model of candidateModels) {
         try {
           const response = await fetch('/api/ocr', {
             method: 'POST',
