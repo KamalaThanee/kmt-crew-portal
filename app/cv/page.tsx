@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { type DragEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { Suspense, type DragEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { BriefcaseBusiness, CalendarDays, Download, FileBadge, Plus, Save, Ship, Trash2, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
@@ -547,7 +547,7 @@ async function embedCvPictureInWorkbook(workbookArray: ArrayBuffer, pictureDataU
   return zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' })
 }
 
-export default function CvPage() {
+function CvPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const crewIdParam = searchParams.get('crewId') || ''
@@ -1739,6 +1739,14 @@ function TabButton({ active, label, onClick, status }: { active: boolean; label:
       <span className="block">{label}</span>
       {status && <span className={`mt-1 block text-[9px] tracking-[0.18em] ${active ? 'text-white/80' : 'text-[var(--subtle)]'}`}>{status}</span>}
     </button>
+  )
+}
+
+export default function CvPage() {
+  return (
+    <Suspense fallback={<PageShell><div className="animate-pulse text-[var(--accent-text)]">LOADING CV...</div></PageShell>}>
+      <CvPageContent />
+    </Suspense>
   )
 }
 
