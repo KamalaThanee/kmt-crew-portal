@@ -2,6 +2,7 @@ const ADMIN_ROLES = ['safety officer', 'chief officer', 'barge master']
 const SHIP_CERTIFICATE_VIEWER_ROLES = [...ADMIN_ROLES, 'radio operator', 'chief engineer']
 const SMS_LIBRARY_MANAGER_ROLES = [...ADMIN_ROLES, 'radio operator', 'chief engineer']
 const MONTHLY_REPORT_MANAGER_ROLES = [...ADMIN_ROLES, 'radio operator', 'chief engineer']
+const CV_DASHBOARD_ROLES = [...ADMIN_ROLES, 'radio operator']
 
 export function normalizeRole(value: unknown) {
   return String(value || '')
@@ -26,4 +27,8 @@ export function canManageMonthlyReports(value: unknown) {
   return MONTHLY_REPORT_MANAGER_ROLES.includes(normalizeRole(value))
 }
 
-export { ADMIN_ROLES, SHIP_CERTIFICATE_VIEWER_ROLES, SMS_LIBRARY_MANAGER_ROLES, MONTHLY_REPORT_MANAGER_ROLES }
+export function canManageCvDashboard(value: unknown) {
+  return CV_DASHBOARD_ROLES.includes(normalizeRole(value))
+}
+
+export { ADMIN_ROLES, SHIP_CERTIFICATE_VIEWER_ROLES, SMS_LIBRARY_MANAGER_ROLES, MONTHLY_REPORT_MANAGER_ROLES, CV_DASHBOARD_ROLES }

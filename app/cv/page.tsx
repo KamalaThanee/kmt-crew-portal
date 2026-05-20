@@ -1,14 +1,16 @@
 'use client'
 
+import Link from 'next/link'
 import { type DragEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { BriefcaseBusiness, CalendarDays, Download, FileBadge, Plus, Save, Ship, Trash2, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageShell } from '@/components/layout/PageShell'
 import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
-import { isAdminRole } from '@/lib/roles'
+import { dayDiffInclusive, formatServiceDuration, formatYearsOneDecimal, getSeaServiceMetrics } from '@/lib/cvMetrics'
+import { canManageCvDashboard, isAdminRole } from '@/lib/roles'
 import { supabase } from '@/lib/supabase'
 
 type VesselMaster = {
@@ -105,7 +107,7 @@ type VaccinationRow = {
   remarks: string | null
 }
 
-type CvTab = 'form' | 'service' | 'vessels'
+type CvTab = 'personal' | 'certificates' | 'service' | 'review' | 'vessels'
 type ActiveUser = CurrentUser & { id: string }
 const defaultCvCompany = 'Truth Maritime Services'
 
@@ -185,22 +187,6 @@ const toDateValue = (value?: string | null) => {
   return String(value).slice(0, 10)
 }
 
-const dayDiffInclusive = (start?: string | null, end?: string | null) => {
-  if (!start || !end) return 0
-  const startDate = new Date(`${start}T00:00:00`)
-  const endDate = new Date(`${end}T00:00:00`)
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0
-  const diff = Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1
-  return Math.max(diff, 0)
-}
-
-const formatServiceDuration = (days: number) => {
-  const months = Math.floor(days / 30)
-  const remainder = days % 30
-  if (!days) return '0 months 0 days'
-  return `${months} months ${remainder} days`
-}
-
 const formatDate = (value?: string | null) => {
   if (!value) return '-'
   const date = new Date(`${value}T00:00:00`)
@@ -211,6 +197,19 @@ const formatDate = (value?: string | null) => {
 const formatTemplateDate = (value?: string | null) => {
   const date = formatDate(value)
   return date === '-' ? '' : date
+}
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return 'Never updated'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 const blobToDataUrl = (blob: Blob): Promise<string> =>
@@ -550,9 +549,14 @@ async function embedCvPictureInWorkbook(workbookArray: ArrayBuffer, pictureDataU
 
 export default function CvPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const crewIdParam = searchParams.get('crewId') || ''
+  const stepParam = searchParams.get('step') || ''
+  const [sessionUser, setSessionUser] = useState<ActiveUser | null>(null)
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [sqlMissing, setSqlMissing] = useState(false)
+  const [lastUpdatedAt, setLastUpdatedAt] = useState('')
   const [profile, setProfile] = useState<CvProfile>(emptyProfile)
   const [vessels, setVessels] = useState<VesselMaster[]>([])
   const [services, setServices] = useState<SeaServiceRow[]>([])
@@ -569,21 +573,16 @@ export default function CvPage() {
   const [savingVaccination, setSavingVaccination] = useState(false)
   const [refreshingCvData, setRefreshingCvData] = useState(false)
   const [selectedVesselId, setSelectedVesselId] = useState('')
-  const [activeTab, setActiveTab] = useState<CvTab>('form')
+  const [activeTab, setActiveTab] = useState<CvTab>('personal')
   const [manualCompetency, setManualCompetency] = useState<CrewCert | null>(null)
   const [manualCvCerts, setManualCvCerts] = useState<CrewCert[]>([])
   const [hiddenCvCertIds, setHiddenCvCertIds] = useState<string[]>([])
   const [cvPairOrder, setCvPairOrder] = useState<string[]>([])
 
-  useEffect(() => {
-    const current = readCurrentUser()
-    if (!current?.id) {
-      router.replace('/login')
-      return
-    }
+  function hydrateLocalState(current: ActiveUser) {
     const currentId = current.id
-    const activeUser = current as ActiveUser
-    setUser(activeUser)
+    setUser(current)
+    setLastUpdatedAt(clean((current as any).cv_last_updated_at))
     setProfile({
       national_id_no: clean((current as any).national_id_no),
       nationality: clean((current as any).nationality),
@@ -596,23 +595,68 @@ export default function CvPage() {
     })
     setServiceForm((prev) => ({ ...prev, crew_id: currentId, rank: current.position || '' }))
     setVaccinationForm((prev) => ({ ...prev, crew_id: currentId }))
-    setManualCompetency(readManualCompetency(activeUser))
+    setManualCompetency(readManualCompetency(current))
     setManualCvCerts(readStoredArray<CrewCert>(cvManualCertsKey(currentId)))
     setHiddenCvCertIds(readStoredArray<string>(cvHiddenCertsKey(currentId)))
     setCvPairOrder(readStoredArray<string>(cvPairOrderKey(currentId)))
-    loadCv(activeUser)
-  }, [router])
+  }
 
-  const admin = isAdminRole(user?.position)
+  useEffect(() => {
+    const current = readCurrentUser()
+    if (!current?.id) {
+      router.replace('/login')
+      return
+    }
+    const activeUser = current as ActiveUser
+    setSessionUser(activeUser)
+
+    const bootstrap = async () => {
+      let targetUser = activeUser
+      if (crewIdParam && crewIdParam !== activeUser.id && canManageCvDashboard(activeUser.position)) {
+        const { data, error } = await supabase
+          .from('crews')
+          .select('id, full_name, position, national_id_no, nationality, date_of_birth, place_of_birth, cv_company, toeic_score, toeic_test_date, suit_color, suit_size, boot_size, cv_last_updated_at')
+          .eq('id', crewIdParam)
+          .maybeSingle()
+
+        if (error || !data?.id) {
+          toast.error('Could not open selected crew CV')
+          router.replace('/cv')
+          return
+        }
+        targetUser = data as ActiveUser
+      }
+
+      hydrateLocalState(targetUser)
+      await loadCv(targetUser, activeUser)
+    }
+
+    void bootstrap()
+  }, [crewIdParam, router])
+
+  useEffect(() => {
+    if (stepParam === 'review') setActiveTab('review')
+  }, [stepParam])
+
+  const admin = isAdminRole(sessionUser?.position)
+  const canOpenDashboard = canManageCvDashboard(sessionUser?.position)
+  const viewingOwnCv = user?.id && sessionUser?.id ? user.id === sessionUser.id : true
 
   const serviceSummary = useMemo(() => {
-    const totalDays = services.reduce((sum, row) => sum + dayDiffInclusive(row.joining_date, row.sign_off_date), 0)
+    return getSeaServiceMetrics(services, user?.position as string | undefined)
+  }, [services, user?.position])
+
+  const completionStatus = useMemo(() => {
+    const personalComplete = Boolean(profile.national_id_no && profile.nationality && profile.date_of_birth && profile.place_of_birth)
+    const certificatesComplete = cvRefreshTargets.length === 0
+    const serviceComplete = services.length > 0
     return {
-      totalDays,
-      totalText: formatServiceDuration(totalDays),
-      vesselCount: new Set(services.map((row) => row.vessel_name).filter(Boolean)).size,
+      personalComplete,
+      certificatesComplete,
+      serviceComplete,
+      allComplete: personalComplete && certificatesComplete && serviceComplete,
     }
-  }, [services])
+  }, [cvRefreshTargets.length, profile.date_of_birth, profile.national_id_no, profile.nationality, profile.place_of_birth, services.length])
 
   const cvRefreshTargets = useMemo(
     () => certRows.filter((cert) => certNeedsCvRefresh(cert)),
@@ -638,7 +682,7 @@ export default function CvPage() {
     fillPassportProfileFromHistory(false).catch(() => undefined)
   }, [checkedPassportHistory, profile.date_of_birth, profile.national_id_no, profile.nationality, profile.place_of_birth, user?.id])
 
-  async function loadCv(current: ActiveUser) {
+  async function loadCv(current: ActiveUser, session: ActiveUser | null = null) {
     setLoading(true)
     setSqlMissing(false)
     const [vesselRes, serviceRes, certRes, certMasterRes, vaccinationRes, crewProfileRes] = await Promise.all([
@@ -663,7 +707,7 @@ export default function CvPage() {
         .order('date_given', { ascending: false, nullsFirst: false }),
       supabase
         .from('crews')
-        .select('national_id_no, nationality, date_of_birth, place_of_birth, cv_company, toeic_score, toeic_test_date, suit_color, suit_size, boot_size')
+        .select('national_id_no, nationality, date_of_birth, place_of_birth, cv_company, toeic_score, toeic_test_date, suit_color, suit_size, boot_size, cv_last_updated_at')
         .eq('id', current.id)
         .maybeSingle(),
     ])
@@ -688,10 +732,14 @@ export default function CvPage() {
         toeic_score: clean(dbProfile.toeic_score) || prev.toeic_score,
         toeic_test_date: toDateValue(dbProfile.toeic_test_date) || prev.toeic_test_date,
       }))
+      setLastUpdatedAt(clean(dbProfile.cv_last_updated_at))
       const nextUser = { ...current, ...dbProfile }
       setUser(nextUser)
-      localStorage.setItem('kmt_user', JSON.stringify(nextUser))
-      window.dispatchEvent(new Event('kmt-user-changed'))
+      if (session?.id === current.id) {
+        setSessionUser(nextUser as ActiveUser)
+        localStorage.setItem('kmt_user', JSON.stringify(nextUser))
+        window.dispatchEvent(new Event('kmt-user-changed'))
+      }
     }
     if (!certRes.error) setCertRows(attachCertMasterRules((certRes.data || []) as CrewCert[], (certMasterRes.data || []) as CertMasterCvRule[]))
     setVaccinations((vaccinationRes.data || []) as VaccinationRow[])
@@ -727,6 +775,7 @@ export default function CvPage() {
     if (!user?.id) return
     const crewId = user.id
     setSavingProfile(true)
+    const updatedAt = new Date().toISOString()
     const payload = {
       national_id_no: profile.national_id_no || null,
       nationality: profile.nationality || null,
@@ -735,7 +784,7 @@ export default function CvPage() {
       cv_company: profile.cv_company || null,
       toeic_score: profile.toeic_score || null,
       toeic_test_date: profile.toeic_test_date || null,
-      cv_last_updated_at: new Date().toISOString(),
+      cv_last_updated_at: updatedAt,
     }
     const { error } = await supabase.from('crews').update(payload).eq('id', crewId)
     setSavingProfile(false)
@@ -755,8 +804,12 @@ export default function CvPage() {
       localStorage.setItem(cvHiddenCertsKey(user.id), JSON.stringify(hiddenCvCertIds))
       localStorage.setItem(cvPairOrderKey(user.id), JSON.stringify(cvPairOrder))
     }
-    localStorage.setItem('kmt_user', JSON.stringify(nextUser))
-    window.dispatchEvent(new Event('kmt-user-changed'))
+    if (viewingOwnCv) {
+      localStorage.setItem('kmt_user', JSON.stringify(nextUser))
+      window.dispatchEvent(new Event('kmt-user-changed'))
+      setSessionUser(nextUser as ActiveUser)
+    }
+    setLastUpdatedAt(updatedAt)
     setUser(nextUser)
     toast.success('CV profile saved')
   }
@@ -785,8 +838,11 @@ export default function CvPage() {
     const nextUser = { ...user, ...payload }
     setProfile(nextProfile)
     setUser(nextUser)
-    localStorage.setItem('kmt_user', JSON.stringify(nextUser))
-    window.dispatchEvent(new Event('kmt-user-changed'))
+    if (viewingOwnCv) {
+      localStorage.setItem('kmt_user', JSON.stringify(nextUser))
+      window.dispatchEvent(new Event('kmt-user-changed'))
+      setSessionUser(nextUser as ActiveUser)
+    }
     if (showToast) toast.success(successMessage)
     return true
   }
@@ -1057,7 +1113,7 @@ export default function CvPage() {
     toast.success('Sea service added')
     setServiceForm({ ...emptySeaService, crew_id: activeUser.id, rank: activeUser.position || '' })
     setSelectedVesselId('')
-    await loadCv(activeUser)
+    await loadCv(activeUser, sessionUser)
   }
 
   async function deleteSeaService(id: string) {
@@ -1230,7 +1286,7 @@ export default function CvPage() {
     }
     toast.success('Vaccination detail added')
     setVaccinationForm({ ...emptyVaccination, crew_id: activeUser.id })
-    await loadCv(activeUser)
+    await loadCv(activeUser, sessionUser)
   }
 
   async function deleteVaccination(id: string) {
@@ -1255,6 +1311,39 @@ export default function CvPage() {
         subtitle="Personal record, certificates, and sea service profile"
       />
 
+      {canOpenDashboard && (
+        <div className="mb-6 flex flex-col gap-3 rounded-[32px] border border-blue-500/20 bg-[var(--surface)] p-5 shadow-xl md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-500">Crew CV Dashboard</p>
+            <p className="mt-1 text-sm font-black text-[var(--headline)]">Open all crew CV records, service years, and export review</p>
+            <p className="mt-1 text-xs text-[var(--subtle)]">Admin and radio operator can review every crew profile from one dashboard.</p>
+          </div>
+          <Link href="/cv/dashboard" className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-blue-500">
+            Open Dashboard
+          </Link>
+        </div>
+      )}
+
+      {!viewingOwnCv && user && (
+        <div className="mb-6 flex flex-col gap-3 rounded-[32px] border border-emerald-500/20 bg-[var(--surface)] p-5 shadow-xl md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-500">Viewing Crew CV</p>
+            <p className="mt-1 text-sm font-black text-[var(--headline)]">{user.full_name}</p>
+            <p className="mt-1 text-xs text-[var(--subtle)]">{user.position || 'Crew'} | Last updated: {formatDateTime(lastUpdatedAt)}</p>
+          </div>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <Link href="/cv/dashboard" className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-500">
+              Back to Dashboard
+            </Link>
+            {sessionUser?.id && (
+              <Link href="/cv" className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">
+                Open My CV
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
       {sqlMissing && (
         <div className="mb-6 rounded-[32px] border border-amber-500/30 bg-amber-500/10 p-6 text-[var(--headline)]">
           <p className="text-sm font-black uppercase text-[var(--warning-text)]">CV database is not ready</p>
@@ -1270,9 +1359,7 @@ export default function CvPage() {
           <p className="mt-1 text-sm font-black text-[var(--headline)]">
             {cvRefreshTargets.length === 0 ? 'Data up to date' : `${cvRefreshTargets.length} certificate file(s) still need AI fill back`}
           </p>
-          <p className="mt-1 text-xs text-[var(--subtle)]">
-            Uses saved crew certificate files only. If any CV field is still incomplete, use fill back once and the result will be stored in the database.
-          </p>
+          <p className="mt-1 text-xs text-[var(--subtle)]">Last updated: {formatDateTime(lastUpdatedAt)}</p>
         </div>
         <button
           type="button"
@@ -1285,14 +1372,16 @@ export default function CvPage() {
       </div>
 
       <div className="mb-6 rounded-[32px] border border-orange-500/20 bg-[var(--surface)] p-2 shadow-xl">
-        <div className={`grid gap-2 ${admin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-          <TabButton active={activeTab === 'form'} label="CV Form" onClick={() => setActiveTab('form')} />
-          <TabButton active={activeTab === 'service'} label="Sea Service" onClick={() => setActiveTab('service')} />
+        <div className={`grid gap-2 ${admin ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
+          <TabButton active={activeTab === 'personal'} label="Personal Details" status={completionStatus.personalComplete ? 'Complete' : 'Needs Update'} onClick={() => setActiveTab('personal')} />
+          <TabButton active={activeTab === 'certificates'} label="Certificates" status={completionStatus.certificatesComplete ? 'Complete' : 'Needs Fill Back'} onClick={() => setActiveTab('certificates')} />
+          <TabButton active={activeTab === 'service'} label="Sea Service" status={completionStatus.serviceComplete ? 'Complete' : 'Add Records'} onClick={() => setActiveTab('service')} />
+          <TabButton active={activeTab === 'review'} label="Review & Export" status={completionStatus.allComplete ? 'Ready' : 'Check Before Export'} onClick={() => setActiveTab('review')} />
           {admin && <TabButton active={activeTab === 'vessels'} label="Vessel Data" onClick={() => setActiveTab('vessels')} />}
         </div>
       </div>
 
-      {activeTab === 'form' && (
+      {activeTab === 'personal' && (
         <>
           <section className="rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
             <div className="mb-5 flex items-center gap-3">
@@ -1346,6 +1435,27 @@ export default function CvPage() {
           </section>
 
           <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Step 1 of 4</p>
+                <p className="text-sm font-black text-[var(--headline)]">Save personal details, then continue to certificates and CV data.</p>
+              </div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
+                <button onClick={saveProfile} disabled={savingProfile || sqlMissing} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+                  <Save size={15} className="mr-2 inline" /> {savingProfile ? 'Saving...' : 'Save Personal'}
+                </button>
+                <button onClick={() => setActiveTab('certificates')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-[var(--accent-text)]">
+                  Next: Certificates
+                </button>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {activeTab === 'certificates' && (
+        <>
+          <section className="rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
             <div className="mb-5 flex items-center gap-3">
               <FileBadge className="text-orange-500" />
               <div>
@@ -1395,13 +1505,19 @@ export default function CvPage() {
           </section>
 
           <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
-              <button onClick={saveProfile} disabled={savingProfile || sqlMissing} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
-                <Save size={15} className="mr-2 inline" /> {savingProfile ? 'Saving...' : 'Save CV'}
-              </button>
-              <button onClick={exportCvExcel} disabled={sqlMissing} className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-blue-400 shadow-lg shadow-blue-500/10 disabled:opacity-50">
-                <Download size={15} className="mr-2 inline" /> Export CV Excel
-              </button>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Step 2 of 4</p>
+                <p className="text-sm font-black text-[var(--headline)]">Certificates save row by row. When the data is complete, continue to sea service.</p>
+              </div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
+                <button onClick={() => setActiveTab('personal')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-[var(--accent-text)]">
+                  Back: Personal
+                </button>
+                <button onClick={() => setActiveTab('service')} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20">
+                  Next: Sea Service
+                </button>
+              </div>
             </div>
           </section>
         </>
@@ -1452,6 +1568,67 @@ export default function CvPage() {
           </section>
 
           <SeaServiceHistory services={services} onDelete={deleteSeaService} />
+
+          <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Step 3 of 4</p>
+                <p className="text-sm font-black text-[var(--headline)]">Sea service stays editable all the time. Add or remove rows before final review.</p>
+              </div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
+                <button onClick={() => setActiveTab('certificates')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-[var(--accent-text)]">
+                  Back: Certificates
+                </button>
+                <button onClick={() => setActiveTab('review')} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20">
+                  Next: Review & Export
+                </button>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {activeTab === 'review' && (
+        <>
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard label="Last Updated" value={formatDateTime(lastUpdatedAt)} detail={viewingOwnCv ? 'Your current saved CV' : 'Selected crew CV record'} />
+            <MetricCard label="Year This Company" value={serviceSummary.companyText} detail="Truth Maritime Services only" />
+            <MetricCard label="Year This Type" value={serviceSummary.typeText} detail={serviceSummary.currentType || 'Current vessel type'} />
+            <MetricCard label="Year This Rank" value={serviceSummary.rankText} detail={user?.position ? `${user.position} only` : 'Current rank'} />
+          </section>
+
+          <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
+            <div className="mb-5 flex items-center gap-3">
+              <CalendarDays className="text-orange-500" />
+              <div>
+                <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Review & Export</h2>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Final step before exporting the CV form.</p>
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <ReviewStatusCard label="Personal Details" ok={completionStatus.personalComplete} detail={completionStatus.personalComplete ? 'Required profile fields look ready' : 'Please complete personal details first'} />
+              <ReviewStatusCard label="Certificates" ok={completionStatus.certificatesComplete} detail={completionStatus.certificatesComplete ? 'Certificate data is up to date' : `${cvRefreshTargets.length} file(s) still need AI fill back`} />
+              <ReviewStatusCard label="Sea Service" ok={completionStatus.serviceComplete} detail={completionStatus.serviceComplete ? `${services.length} voyage row(s) recorded` : 'Add at least one sea service row'} />
+            </div>
+            <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="text-xs text-[var(--subtle)]">
+                {completionStatus.allComplete
+                  ? 'CV is ready to export.'
+                  : 'You can still export, but review the incomplete sections above first.'}
+              </div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
+                <button onClick={() => setActiveTab('service')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-[var(--accent-text)]">
+                  Back: Sea Service
+                </button>
+                <button onClick={saveProfile} disabled={savingProfile || sqlMissing} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-[var(--accent-text)] disabled:opacity-50">
+                  <Save size={15} className="mr-2 inline" /> {savingProfile ? 'Saving...' : 'Save Draft'}
+                </button>
+                <button onClick={exportCvExcel} disabled={sqlMissing} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+                  <Download size={15} className="mr-2 inline" /> Export CV Excel
+                </button>
+              </div>
+            </div>
+          </section>
         </>
       )}
 
@@ -1551,16 +1728,27 @@ function buildVesselPayload(form: Omit<VesselMaster, 'id'>, user: CurrentUser | 
   }
 }
 
-function TabButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+function TabButton({ active, label, onClick, status }: { active: boolean; label: string; onClick: () => void; status?: string }) {
   return (
     <button
       onClick={onClick}
-      className={`rounded-[24px] px-5 py-4 text-xs font-black uppercase tracking-widest transition-all ${
+      className={`rounded-[24px] px-5 py-4 text-left text-xs font-black uppercase tracking-widest transition-all ${
         active ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-[var(--subtle)] hover:bg-orange-500/10 hover:text-[var(--headline)]'
       }`}
     >
-      {label}
+      <span className="block">{label}</span>
+      {status && <span className={`mt-1 block text-[9px] tracking-[0.18em] ${active ? 'text-white/80' : 'text-[var(--subtle)]'}`}>{status}</span>}
     </button>
+  )
+}
+
+function ReviewStatusCard({ detail, label, ok }: { detail: string; label: string; ok: boolean }) {
+  return (
+    <div className={`rounded-3xl border p-4 ${ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/20 bg-amber-500/5'}`}>
+      <p className={`text-[10px] font-black uppercase tracking-widest ${ok ? 'text-emerald-500' : 'text-amber-500'}`}>{label}</p>
+      <p className="mt-2 text-sm font-black text-[var(--headline)]">{ok ? 'Complete' : 'Needs update'}</p>
+      <p className="mt-1 text-xs text-[var(--subtle)]">{detail}</p>
+    </div>
   )
 }
 
