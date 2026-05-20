@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { Suspense, type DragEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { BriefcaseBusiness, CalendarDays, Download, FileBadge, Plus, Save, Ship, Trash2, UserRound } from 'lucide-react'
+import { BriefcaseBusiness, CalendarDays, Download, FileBadge, Plus, Ship, Trash2, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageShell } from '@/components/layout/PageShell'
@@ -134,7 +134,7 @@ const emptySeaService: SeaServiceForm = {
   dwt: '',
   engine_type: '',
   bhp: '',
-  company: '',
+  company: defaultCvCompany,
   trading_area: '',
   rank: '',
   charterer: 'PTTEP',
@@ -628,7 +628,7 @@ function CvPageContent() {
       toeic_test_date: toDateValue((current as any).toeic_test_date),
       picture_data_url: localStorage.getItem(cvPictureKey(currentId)) || '',
     })
-    setServiceForm((prev) => ({ ...prev, crew_id: currentId, rank: current.position || '' }))
+    setServiceForm((prev) => ({ ...prev, crew_id: currentId, rank: current.position || '', company: clean((current as any).cv_company || defaultCvCompany) }))
     setVaccinationForm((prev) => ({ ...prev, crew_id: currentId }))
     setManualCompetency(readManualCompetency(current))
     setManualCvCerts(readStoredArray<CrewCert>(cvManualCertsKey(currentId)))
@@ -678,8 +678,13 @@ function CvPageContent() {
   const viewingOwnCv = user?.id && sessionUser?.id ? user.id === sessionUser.id : true
 
   const serviceSummary = useMemo(() => {
-    return getSeaServiceMetrics(services, user?.position as string | undefined)
-  }, [services, user?.position])
+    return getSeaServiceMetrics(
+      services,
+      user?.position as string | undefined,
+      undefined,
+      profile.cv_company || defaultCvCompany,
+    )
+  }, [profile.cv_company, services, user?.position])
 
   const cvRefreshTargets = useMemo(
     () => certRows.filter((cert) => certNeedsCvRefresh(cert)),
@@ -796,7 +801,7 @@ function CvPageContent() {
       dwt: vessel.dwt || '',
       engine_type: vessel.engine_type || '',
       bhp: vessel.bhp || '',
-      company: vessel.company || '',
+      company: vessel.company || prev.company || profile.cv_company || defaultCvCompany,
       trading_area: vessel.trading_area || '',
     }))
   }
@@ -844,6 +849,13 @@ function CvPageContent() {
       window.dispatchEvent(new Event('kmt-user-changed'))
       setSessionUser(nextUser as ActiveUser)
     }
+    setServiceForm((prev) => ({
+      ...prev,
+      company:
+        !clean(prev.company) || clean(prev.company) === clean(defaultCvCompany) || clean(prev.company) === clean(profile.cv_company)
+          ? clean(profile.cv_company) || defaultCvCompany
+          : prev.company,
+    }))
     setLastUpdatedAt(updatedAt)
     setUser(nextUser)
     toast.success('CV profile saved')
@@ -1146,7 +1158,12 @@ function CvPageContent() {
       return
     }
     toast.success('Sea service added')
-    setServiceForm({ ...emptySeaService, crew_id: activeUser.id, rank: activeUser.position || '' })
+    setServiceForm({
+      ...emptySeaService,
+      crew_id: activeUser.id,
+      rank: activeUser.position || '',
+      company: profile.cv_company || defaultCvCompany,
+    })
     setSelectedVesselId('')
     await loadCv(activeUser, sessionUser)
   }
@@ -1504,7 +1521,7 @@ function CvPageContent() {
               </div>
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
                 <button onClick={saveProfile} disabled={savingProfile || sqlMissing} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
-                  <Save size={15} className="mr-2 inline" /> {savingProfile ? 'Saving...' : 'Save Personal'}
+                  {savingProfile ? 'Saving...' : 'Save Personal'}
                 </button>
                 <button onClick={() => setActiveTab('certificates')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-[var(--accent-text)]">
                   Next: Certificates
@@ -1599,7 +1616,7 @@ function CvPageContent() {
                 <Ship className="text-orange-500" />
                 <div>
                   <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Sailing Voyages Entry</h2>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">CV-ready voyage data: select vessel, then fill rank, charter, and dates</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">CV-ready voyage data: select vessel, then fill company, rank, charter, and dates</p>
                 </div>
               </div>
               <select value={selectedVesselId} onChange={(event) => applyVesselShortcut(event.target.value)} className="rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] px-4 py-3 text-xs font-black text-[var(--headline)]">
@@ -1617,6 +1634,7 @@ function CvPageContent() {
               <TextField label="IMO No." value={serviceForm.imo_no || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, imo_no: value }))} />
               <TextField label="GRT" value={serviceForm.grt || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, grt: value }))} />
               <TextField label="DWT" value={serviceForm.dwt || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, dwt: value }))} />
+              <TextField label="Company" value={serviceForm.company || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, company: value }))} />
               <RankField label="Rank" value={serviceForm.rank || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, rank: value }))} />
               <SelectField label="Charter" value={serviceForm.charterer || 'PTTEP'} options={['PTTEP', 'Other']} onChange={(value) => setServiceForm((prev) => ({ ...prev, charterer: value }))} />
               <DateField label="Joining Date" value={serviceForm.joining_date || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, joining_date: value }))} />
@@ -1654,7 +1672,7 @@ function CvPageContent() {
         <>
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <MetricCard label="Last Updated" value={formatDateTime(lastUpdatedAt)} detail={viewingOwnCv ? 'Your current saved CV' : 'Selected crew CV record'} />
-            <MetricCard label="Year This Company" value={serviceSummary.companyText} detail="Truth Maritime Services only" />
+            <MetricCard label="Year This Company" value={serviceSummary.companyText} detail={serviceSummary.currentCompany || 'Current company'} />
             <MetricCard label="Year This Type" value={serviceSummary.typeText} detail={serviceSummary.currentType || 'Current vessel type'} />
             <MetricCard label="Year This Rank" value={serviceSummary.rankText} detail={user?.position ? `${user.position} only` : 'Current rank'} />
           </section>
@@ -1664,7 +1682,7 @@ function CvPageContent() {
               <CalendarDays className="text-orange-500" />
               <div>
                 <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Review & Export</h2>
-                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Final step before exporting the CV form.</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Final step before exporting the CV form. Personal details save in step 1, certificates save per row, and sea service saves when added.</p>
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
@@ -1681,9 +1699,6 @@ function CvPageContent() {
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
                 <button onClick={() => setActiveTab('service')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-[var(--accent-text)]">
                   Back: Sea Service
-                </button>
-                <button onClick={saveProfile} disabled={savingProfile || sqlMissing} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-[var(--accent-text)] disabled:opacity-50">
-                  <Save size={15} className="mr-2 inline" /> {savingProfile ? 'Saving...' : 'Save Draft'}
                 </button>
                 <button onClick={exportCvExcel} disabled={sqlMissing} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
                   <Download size={15} className="mr-2 inline" /> Export CV Excel
@@ -2493,7 +2508,7 @@ function SeaServiceHistory({ onDelete, services }: { onDelete: (id: string) => v
         {services.map((row) => {
           const days = dayDiffInclusive(row.joining_date, row.sign_off_date)
           return (
-            <div key={row.id} className="grid gap-4 rounded-3xl border border-orange-500/15 bg-[var(--surface-strong)] p-5 md:grid-cols-[1.4fr_1fr_1fr_1fr_auto] md:items-center">
+            <div key={row.id} className="grid gap-4 rounded-3xl border border-orange-500/15 bg-[var(--surface-strong)] p-5 md:grid-cols-[1.3fr_1fr_1fr_1fr_auto] md:items-center">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">{row.vessel_type || 'Vessel'}</p>
                 <h3 className="mt-1 text-lg font-black italic uppercase text-[var(--headline)]">{row.vessel_name}</h3>
@@ -2504,8 +2519,9 @@ function SeaServiceHistory({ onDelete, services }: { onDelete: (id: string) => v
                 <p className="text-sm font-black text-[var(--headline)]">{row.rank || '-'}</p>
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Charter</p>
-                <p className="text-sm font-black text-[var(--headline)]">{row.charterer || '-'}</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Company / Charter</p>
+                <p className="text-sm font-black text-[var(--headline)]">{row.company || '-'}</p>
+                <p className="mt-1 text-[10px] font-black uppercase text-[var(--accent-text)]">{row.charterer || '-'}</p>
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Period</p>

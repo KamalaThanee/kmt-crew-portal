@@ -33,16 +33,18 @@ export function getSeaServiceMetrics(
   rows: SeaServiceMetricRow[],
   currentRank?: string | null,
   preferredVesselType?: string | null,
+  preferredCompany?: string | null,
 ) {
   const totalDays = rows.reduce((sum, row) => sum + dayDiffInclusive(row.joining_date, row.sign_off_date), 0)
   const vesselCount = new Set(rows.map((row) => clean(row.vessel_type) || clean(row.company)).filter(Boolean)).size
   const latestRow = rows[0]
   const currentType = clean(preferredVesselType) || clean(latestRow?.vessel_type) || 'Offshore Support Vessel (AWB)'
+  const currentCompany = clean(preferredCompany) || clean(latestRow?.company) || 'Truth Maritime Services'
   const normalizedRank = clean(currentRank)
 
   const companyDays = rows.reduce((sum, row) => {
-    const company = clean(row.company).toLowerCase()
-    return company.includes('truth maritime services') ? sum + dayDiffInclusive(row.joining_date, row.sign_off_date) : sum
+    const company = clean(row.company || currentCompany).toLowerCase()
+    return company === currentCompany.toLowerCase() ? sum + dayDiffInclusive(row.joining_date, row.sign_off_date) : sum
   }, 0)
 
   const typeDays = rows.reduce((sum, row) => (
@@ -62,6 +64,7 @@ export function getSeaServiceMetrics(
     totalText: formatServiceDuration(totalDays),
     vesselCount,
     currentType,
+    currentCompany,
     companyDays,
     typeDays,
     rankDays,
