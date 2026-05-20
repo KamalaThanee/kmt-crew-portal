@@ -28,7 +28,11 @@ export async function POST(req: Request) {
        - placeOfIssue: for training certificates, prefer the training institute / training center / school / provider name. For licenses, passports, medicals, and authority documents use place of issue or issuing place. If only a country/city is shown, use that.
        - issueAuthority: issuing authority / administration / training center / school / hospital / class society.
        If a field is not clearly visible, return an empty string.
-    5. PASSPORT CV FIELDS: If the selected requirement or uploaded document is a passport, extract CV profile fields from the passport page:
+    5. CERTIFICATE OF COMPETENCY FIELDS: If the uploaded document is a Certificate of Competency / COC / license-style competency certificate, extract:
+       - competencyTitle: the competency grade/title ONLY, such as "Master", "Chief Mate", "Officer in Charge of an Engineering Watch". Do not include tonnage / kW / near coastal / ship size wording here unless it is truly part of the grade title.
+       - competencyCapacity: the capacity / limitation / scope wording, such as "3,000 gross tonnage or more", "500 gross tonnage or more", "750 kW propulsion power or more", or "near coastal voyage". If the document combines the title and capacity on one line, split them into title vs capacity.
+       If it is not a competency certificate, return empty strings for both fields.
+    6. PASSPORT CV FIELDS: If the selected requirement or uploaded document is a passport, extract CV profile fields from the passport page:
        - nationalIdNo: national identification / personal number if clearly printed. Do not use the passport number unless it is explicitly labeled as national ID / personal no.
        - nationality: nationality text exactly as shown, normalized to English when obvious.
        - dateOfBirth: date of birth as YYYY-MM-DD.
@@ -36,7 +40,7 @@ export async function POST(req: Request) {
        If a field is not clearly visible, return an empty string for that field.
 
     Return ONLY raw JSON:
-    {"issueDate": "YYYY-MM-DD or empty", "expiryDate": "YYYY-MM-DD or empty", "certNumber": "text or empty", "placeOfIssue": "text or empty", "issueAuthority": "text or empty", "detectedPersonName": "text", "detectedCertName": "text", "personNameMatch": true, "certTypeMatch": true, "expiryFoundInDocument": true, "passportCvData": {"nationalIdNo": "text or empty", "nationality": "text or empty", "dateOfBirth": "YYYY-MM-DD or empty", "placeOfBirth": "text or empty"}, "note": "Explain your reasoning briefly in English."}`;
+    {"issueDate": "YYYY-MM-DD or empty", "expiryDate": "YYYY-MM-DD or empty", "certNumber": "text or empty", "placeOfIssue": "text or empty", "issueAuthority": "text or empty", "competencyTitle": "text or empty", "competencyCapacity": "text or empty", "detectedPersonName": "text", "detectedCertName": "text", "personNameMatch": true, "certTypeMatch": true, "expiryFoundInDocument": true, "passportCvData": {"nationalIdNo": "text or empty", "nationality": "text or empty", "dateOfBirth": "YYYY-MM-DD or empty", "placeOfBirth": "text or empty"}, "note": "Explain your reasoning briefly in English."}`;
 
     const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
     let response;

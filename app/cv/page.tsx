@@ -388,7 +388,7 @@ function certNeedsCvRefresh(cert: CrewCert) {
   if (!cert.file_url || isManualCvCert(cert) || isRequiredProficiencyPlaceholder(cert)) return false
   const section = getCvCertSection(cert)
   if (section === 'Certificate of Competency') {
-    return !cert.cert_name || !cert.issue_date || !cert.cert_number || !cert.issue_authority
+    return !cert.cert_name || isGenericCompetencyName(cert.cert_name) || !cert.cv_capacity || !cert.issue_date || !cert.cert_number || !cert.issue_authority
   }
   if (section === 'Certificate of Proficiency') {
     return !cert.issue_date || !cert.expiry_date || !cert.cert_number || !cert.issue_authority
@@ -437,6 +437,30 @@ function normalizePassportCvProfileData(value: any): PassportCvProfileData {
 
 function hasPassportCvProfileData(value: PassportCvProfileData) {
   return Boolean(value.nationalIdNo || value.nationality || value.dateOfBirth || value.placeOfBirth)
+}
+
+function normalizeCompetencyAiTitle(value?: string | null) {
+  const title = clean(value)
+  if (!title) return ''
+  return title
+    .replace(/^certificate of competency\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeCompetencyAiCapacity(value?: string | null, fallbackTitle?: string | null) {
+  const capacity = clean(value)
+  if (capacity) {
+    return capacity
+      .replace(/^on\s+/i, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+  const title = clean(fallbackTitle)
+  if (!title) return ''
+  const match = title.match(/\b(\d[\d,]*(?:\.\d+)?)\s*(gross tonnage|gt|kw|kW|propulsion power)\b[\s\S]*/i)
+  if (!match) return ''
+  return clean(match[0]).replace(/^on\s+/i, '').trim()
 }
 
 const cvSpreadsheetNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
@@ -1184,6 +1208,7 @@ function CvPageContent() {
       const imageBase64 = mimeType === 'application/pdf' ? await blobToDataUrl(blob) : await compressImage(file)
 
       let latestError = 'AI models busy'
+      const section = getCvCertSection(cert)
       for (const model of AI_MODELS) {
         try {
           const response = await fetch('/api/ocr', {
@@ -1204,21 +1229,42 @@ function CvPageContent() {
             throw new Error(latestError)
           }
 
+          const detectedCertName = String(result.detectedCertName || '').trim()
+          const aiCompetencyTitle = normalizeCompetencyAiTitle(result.competencyTitle || (section === 'Certificate of Competency' ? result.detectedCertName : ''))
+          const aiCompetencyCapacity = normalizeCompetencyAiCapacity(result.competencyCapacity, result.detectedCertName)
+          const shouldReplaceCompetencyName =
+            section === 'Certificate of Competency'
+            && Boolean(aiCompetencyTitle)
+            && (
+              isGenericCompetencyName(cert.cert_name)
+              || normalize(cert.cert_name) === normalize(detectedCertName)
+            )
+
           const nextCert: CrewCert = {
             ...cert,
+            cert_name:
+              section === 'Certificate of Competency'
+                ? (shouldReplaceCompetencyName ? aiCompetencyTitle : (cert.cert_name || aiCompetencyTitle || null))
+                : cert.cert_name,
             issue_date: cert.issue_date || result.issueDate || null,
             expiry_date: cert.expiry_date || result.expiryDate || null,
             cert_number: cert.cert_number || String(result.certNumber || '').trim() || null,
             place_of_issue: cert.place_of_issue || String(result.placeOfIssue || '').trim() || null,
             issue_authority: cert.issue_authority || String(result.issueAuthority || '').trim() || null,
+            cv_capacity:
+              section === 'Certificate of Competency'
+                ? (cert.cv_capacity || aiCompetencyCapacity || null)
+                : cert.cv_capacity,
           }
 
           const payload = {
+            cert_name: section === 'Certificate of Competency' ? nextCert.cert_name || null : undefined,
             issue_date: nextCert.issue_date,
             expiry_date: nextCert.expiry_date,
             cert_number: nextCert.cert_number || null,
             place_of_issue: nextCert.place_of_issue || null,
             issue_authority: nextCert.issue_authority || null,
+            cv_capacity: section === 'Certificate of Competency' ? nextCert.cv_capacity || null : undefined,
             updated_at: new Date().toISOString(),
           }
           const { error } = await supabase.from('crew_certs').update(payload).eq('id', cert.id)
@@ -2347,6 +2393,13 @@ function EditableCertName({ cert, onChange, section }: { cert: CrewCert; section
 }
 
 function hasMissingCvCertFields(cert: CrewCert) {
+  const section = getCvCertSection(cert)
+  if (section === 'Certificate of Competency') {
+    return !cert.cert_name || isGenericCompetencyName(cert.cert_name) || !cert.cv_capacity || !cert.cert_number || !cert.issue_authority || !cert.issue_date || !cert.expiry_date
+  }
+  if (section === 'Certificate of Proficiency') {
+    return !cert.cert_number || !cert.issue_authority || !cert.issue_date || !cert.expiry_date
+  }
   return !cert.cert_number || !cert.place_of_issue || !cert.issue_authority || !cert.issue_date || !cert.expiry_date
 }
 
