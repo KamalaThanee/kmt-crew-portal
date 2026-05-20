@@ -18,6 +18,7 @@ alter table public.crew_certs
   add column if not exists issue_authority text,
   add column if not exists cv_section text,
   add column if not exists cv_row_no integer,
+  add column if not exists cv_competency_title text,
   add column if not exists cv_capacity text;
 
 alter table public.cert_master
