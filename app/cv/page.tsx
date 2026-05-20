@@ -1244,8 +1244,8 @@ function CvPageContent() {
             ...cert,
             cert_name:
               section === 'Certificate of Competency'
-                ? (shouldReplaceCompetencyName ? aiCompetencyTitle : (cert.cert_name || aiCompetencyTitle || null))
-                : cert.cert_name,
+                ? (shouldReplaceCompetencyName ? aiCompetencyTitle : (cert.cert_name || aiCompetencyTitle || ''))
+                : (cert.cert_name || ''),
             issue_date: cert.issue_date || result.issueDate || null,
             expiry_date: cert.expiry_date || result.expiryDate || null,
             cert_number: cert.cert_number || String(result.certNumber || '').trim() || null,
