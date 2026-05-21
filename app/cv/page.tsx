@@ -243,7 +243,6 @@ function profileSnapshot(profile: CvProfile) {
     cv_company: clean(profile.cv_company),
     toeic_score: clean(profile.toeic_score),
     toeic_test_date: toDateValue(profile.toeic_test_date),
-    picture_data_url: clean(profile.picture_data_url),
   })
 }
 
@@ -844,7 +843,10 @@ function CvPageContent() {
   useEffect(() => {
     if (activeTab !== 'service' || !editingServiceId) return
     const timer = window.setTimeout(() => {
-      serviceEntryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const target = serviceEntryRef.current
+      if (!target) return
+      const top = target.getBoundingClientRect().top + window.scrollY - 112
+      window.scrollTo({ top, behavior: 'smooth' })
     }, 80)
     return () => window.clearTimeout(timer)
   }, [activeTab, editingServiceId])
@@ -899,29 +901,18 @@ function CvPageContent() {
     setEditingServiceSnapshot(serviceFormSnapshot(resetServiceForm))
     if (!crewProfileRes.error && crewProfileRes.data) {
       const dbProfile = crewProfileRes.data as any
-      const nextProfile = {
-        ...profile,
-        national_id_no: clean(dbProfile.national_id_no) || profile.national_id_no,
-        nationality: clean(dbProfile.nationality) || profile.nationality,
-        date_of_birth: toDateValue(dbProfile.date_of_birth) || profile.date_of_birth,
-        place_of_birth: clean(dbProfile.place_of_birth) || profile.place_of_birth,
-        cv_company: clean(dbProfile.cv_company) || profile.cv_company,
-        toeic_score: clean(dbProfile.toeic_score) || profile.toeic_score,
-        toeic_test_date: toDateValue(dbProfile.toeic_test_date) || profile.toeic_test_date,
-        picture_data_url: localStorage.getItem(cvPictureKey(current.id)) || profile.picture_data_url,
+      const mergedProfile = {
+        national_id_no: clean(dbProfile.national_id_no) || clean((current as any).national_id_no),
+        nationality: clean(dbProfile.nationality) || clean((current as any).nationality),
+        date_of_birth: toDateValue(dbProfile.date_of_birth) || toDateValue((current as any).date_of_birth),
+        place_of_birth: clean(dbProfile.place_of_birth) || clean((current as any).place_of_birth),
+        cv_company: clean(dbProfile.cv_company || (current as any).cv_company || defaultCvCompany),
+        toeic_score: clean(dbProfile.toeic_score || (current as any).toeic_score),
+        toeic_test_date: toDateValue(dbProfile.toeic_test_date || (current as any).toeic_test_date),
+        picture_data_url: localStorage.getItem(cvPictureKey(current.id)) || '',
       }
-      setProfile((prev) => ({
-        ...prev,
-        national_id_no: clean(dbProfile.national_id_no) || prev.national_id_no,
-        nationality: clean(dbProfile.nationality) || prev.nationality,
-        date_of_birth: toDateValue(dbProfile.date_of_birth) || prev.date_of_birth,
-        place_of_birth: clean(dbProfile.place_of_birth) || prev.place_of_birth,
-        cv_company: clean(dbProfile.cv_company) || prev.cv_company,
-        toeic_score: clean(dbProfile.toeic_score) || prev.toeic_score,
-        toeic_test_date: toDateValue(dbProfile.toeic_test_date) || prev.toeic_test_date,
-        picture_data_url: localStorage.getItem(cvPictureKey(current.id)) || prev.picture_data_url,
-      }))
-      setSavedProfileSnapshot(profileSnapshot(nextProfile))
+      setProfile(mergedProfile)
+      setSavedProfileSnapshot(profileSnapshot(mergedProfile))
       setLastUpdatedAt(clean(dbProfile.cv_last_updated_at))
       const nextUser = { ...current, ...dbProfile }
       setUser(nextUser)
@@ -1729,7 +1720,7 @@ function CvPageContent() {
             </div>
           </section>
 
-          <section ref={serviceEntryRef} className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
+          <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Step 1 of 4</p>
@@ -1804,7 +1795,7 @@ function CvPageContent() {
             <VaccinationTable rows={vaccinations} onDelete={deleteVaccination} />
           </section>
 
-          <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
+          <section ref={serviceEntryRef} className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Step 2 of 4</p>

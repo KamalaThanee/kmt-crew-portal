@@ -35,6 +35,12 @@ const formatDateTime = (value?: string | null) => {
 }
 
 const clean = (value: unknown) => String(value || '').trim()
+const normalizeSearch = (value: unknown) =>
+  clean(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 
 export default function CvDashboardPage() {
   const router = useRouter()
@@ -86,11 +92,13 @@ export default function CvDashboardPage() {
   }, [crews])
 
   const rows = useMemo(() => {
-    const keyword = nameFilter.trim().toLowerCase()
+    const keyword = normalizeSearch(nameFilter)
+    const normalizedRankFilter = clean(rankFilter)
+    const shouldFilterRank = normalizedRankFilter && normalizedRankFilter.toLowerCase() !== 'all ranks'
     return crews.filter((crew) => {
-      if (clean(rankFilter) && clean(crew.position) !== clean(rankFilter)) return false
+      if (shouldFilterRank && clean(crew.position) !== normalizedRankFilter) return false
       if (!keyword) return true
-      return clean(crew.full_name).toLowerCase().includes(keyword)
+      return normalizeSearch(crew.full_name).includes(keyword)
     }).map((crew) => ({
       crew,
       services: services.filter((row) => row.crew_id === crew.id),
