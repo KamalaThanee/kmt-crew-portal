@@ -40,7 +40,7 @@ export default function CvDashboardPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [nameFilter, setNameFilter] = useState('')
-  const [rankFilter, setRankFilter] = useState('All Ranks')
+  const [rankFilter, setRankFilter] = useState('')
   const [crews, setCrews] = useState<CrewRow[]>([])
   const [services, setServices] = useState<SeaServiceRow[]>([])
 
@@ -88,7 +88,7 @@ export default function CvDashboardPage() {
   const rows = useMemo(() => {
     const keyword = nameFilter.trim().toLowerCase()
     return crews.filter((crew) => {
-      if (rankFilter && clean(crew.position) !== rankFilter) return false
+      if (clean(rankFilter) && clean(crew.position) !== clean(rankFilter)) return false
       if (!keyword) return true
       return clean(crew.full_name).toLowerCase().includes(keyword)
     }).map((crew) => ({
@@ -132,7 +132,7 @@ export default function CvDashboardPage() {
               list="cv-dashboard-ranks"
               value={rankFilter}
               onChange={(event) => setRankFilter(event.target.value)}
-              placeholder="Search or pick rank..."
+              placeholder="All Ranks"
               className="w-full bg-transparent text-sm font-black text-[var(--headline)] outline-none placeholder:text-[var(--subtle)]"
             />
             <datalist id="cv-dashboard-ranks">

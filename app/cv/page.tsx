@@ -841,6 +841,14 @@ function CvPageContent() {
     fillPassportProfileFromHistory(false).catch(() => undefined)
   }, [checkedPassportHistory, profile.date_of_birth, profile.national_id_no, profile.nationality, profile.place_of_birth, user?.id])
 
+  useEffect(() => {
+    if (activeTab !== 'service' || !editingServiceId) return
+    const timer = window.setTimeout(() => {
+      serviceEntryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+    return () => window.clearTimeout(timer)
+  }, [activeTab, editingServiceId])
+
   async function loadCv(current: ActiveUser, session: ActiveUser | null = null) {
     setLoading(true)
     setSqlMissing(false)
@@ -900,6 +908,7 @@ function CvPageContent() {
         cv_company: clean(dbProfile.cv_company) || profile.cv_company,
         toeic_score: clean(dbProfile.toeic_score) || profile.toeic_score,
         toeic_test_date: toDateValue(dbProfile.toeic_test_date) || profile.toeic_test_date,
+        picture_data_url: localStorage.getItem(cvPictureKey(current.id)) || profile.picture_data_url,
       }
       setProfile((prev) => ({
         ...prev,
@@ -910,6 +919,7 @@ function CvPageContent() {
         cv_company: clean(dbProfile.cv_company) || prev.cv_company,
         toeic_score: clean(dbProfile.toeic_score) || prev.toeic_score,
         toeic_test_date: toDateValue(dbProfile.toeic_test_date) || prev.toeic_test_date,
+        picture_data_url: localStorage.getItem(cvPictureKey(current.id)) || prev.picture_data_url,
       }))
       setSavedProfileSnapshot(profileSnapshot(nextProfile))
       setLastUpdatedAt(clean(dbProfile.cv_last_updated_at))
@@ -1029,6 +1039,7 @@ function CvPageContent() {
     }
     const nextUser = { ...user, ...payload }
     setProfile(nextProfile)
+    setSavedProfileSnapshot(profileSnapshot(nextProfile))
     setUser(nextUser)
     if (viewingOwnCv) {
       localStorage.setItem('kmt_user', JSON.stringify(nextUser))
@@ -1365,9 +1376,6 @@ function CvPageContent() {
       remarks: row.remarks || '',
     }))
     setActiveTab('service')
-    requestAnimationFrame(() => {
-      serviceEntryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
   }
 
   function cancelSeaServiceEdit() {
