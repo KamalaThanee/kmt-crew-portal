@@ -761,6 +761,12 @@ function CvPageContent() {
     [certRows],
   )
 
+  const cvSourceRows = useMemo(() => {
+    const hasRealCompetency = certRows.some((cert) => getCvCertSection(cert) === 'Certificate of Competency')
+    const baseRows = !hasRealCompetency && manualCompetency ? [...certRows, manualCompetency] : certRows
+    return [...baseRows, ...manualCvCerts].filter((cert) => !hiddenCvCertIds.includes(cert.id))
+  }, [certRows, hiddenCvCertIds, manualCompetency, manualCvCerts])
+
   const profileDirty = useMemo(() => profileSnapshot(profile) !== savedProfileSnapshot, [profile, savedProfileSnapshot])
   const certDirtyMap = useMemo(() => {
     return Object.fromEntries(cvSourceRows.map((cert) => [cert.id, savedCertSnapshots[cert.id] !== certSnapshot(cert)]))
@@ -821,11 +827,6 @@ function CvPageContent() {
   }, [cvRefreshTargets, dirtyCertCount, editingServiceId, profile.date_of_birth, profile.national_id_no, profile.nationality, profile.place_of_birth, profileDirty, serviceDirty, services.length])
 
   const personalDocs = useMemo(() => buildPersonalDocs(certRows), [certRows])
-  const cvSourceRows = useMemo(() => {
-    const hasRealCompetency = certRows.some((cert) => getCvCertSection(cert) === 'Certificate of Competency')
-    const baseRows = !hasRealCompetency && manualCompetency ? [...certRows, manualCompetency] : certRows
-    return [...baseRows, ...manualCvCerts].filter((cert) => !hiddenCvCertIds.includes(cert.id))
-  }, [certRows, hiddenCvCertIds, manualCompetency, manualCvCerts])
   const cvCertTables = useMemo(() => applyCvPairOrder(buildCvCertTables(cvSourceRows), cvPairOrder), [cvPairOrder, cvSourceRows])
 
   useEffect(() => {
