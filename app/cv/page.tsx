@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Suspense, type DragEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { Suspense, type DragEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { BriefcaseBusiness, CalendarDays, Download, FileBadge, PencilLine, Plus, Ship, Trash2, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
@@ -670,6 +670,7 @@ function CvPageContent() {
   const [selectedMetricCompany, setSelectedMetricCompany] = useState('')
   const [selectedMetricType, setSelectedMetricType] = useState('')
   const [selectedMetricRank, setSelectedMetricRank] = useState('')
+  const serviceEntryRef = useRef<HTMLElement | null>(null)
 
   function hydrateLocalState(current: ActiveUser) {
     const currentId = current.id
@@ -1304,17 +1305,22 @@ function CvPageContent() {
       return
     }
     toast.success(editingServiceId ? 'Sea service updated' : 'Sea service added')
+    resetSeaServiceEditor(activeUser)
+    await loadCv(activeUser, sessionUser)
+  }
+
+  function resetSeaServiceEditor(activeUserOverride?: ActiveUser | null) {
+    const activeUser = activeUserOverride || (user as ActiveUser | null)
     const resetServiceForm = {
       ...emptySeaService,
-      crew_id: activeUser.id,
-      rank: activeUser.position || '',
+      crew_id: activeUser?.id || user?.id || '',
+      rank: activeUser?.position || user?.position || '',
       company: profile.cv_company || defaultCvCompany,
     }
     setServiceForm(resetServiceForm)
     setEditingServiceSnapshot(serviceFormSnapshot(resetServiceForm))
     setSelectedVesselId('')
     setEditingServiceId('')
-    await loadCv(activeUser, sessionUser)
   }
 
   function editSeaService(row: SeaServiceRow) {
@@ -1359,9 +1365,14 @@ function CvPageContent() {
       remarks: row.remarks || '',
     }))
     setActiveTab('service')
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    }
+    requestAnimationFrame(() => {
+      serviceEntryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
+  function cancelSeaServiceEdit() {
+    resetSeaServiceEditor()
+    toast.success('Sea service edit cancelled')
   }
 
   async function deleteSeaService(id: string) {
@@ -1710,7 +1721,7 @@ function CvPageContent() {
             </div>
           </section>
 
-          <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
+          <section ref={serviceEntryRef} className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Step 1 of 4</p>
@@ -1846,11 +1857,23 @@ function CvPageContent() {
               <TextField label="Remarks" value={serviceForm.remarks || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, remarks: value }))} />
             </div>
 
-            {(!editingServiceId || serviceDirty) && (
-              <button onClick={saveSeaService} disabled={savingService || sqlMissing} className="mt-5 rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
-                <Plus size={15} className="mr-2 inline" /> {savingService ? 'Saving...' : editingServiceId ? 'Save after edit' : 'Add Sea Service'}
-              </button>
-            )}
+            <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center">
+              {!editingServiceId && (
+                <button onClick={saveSeaService} disabled={savingService || sqlMissing} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+                  <Plus size={15} className="mr-2 inline" /> {savingService ? 'Saving...' : 'Add Sea Service'}
+                </button>
+              )}
+              {editingServiceId && serviceDirty && (
+                <button onClick={saveSeaService} disabled={savingService || sqlMissing} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+                  {savingService ? 'Saving...' : 'Save after edit'}
+                </button>
+              )}
+              {editingServiceId && (
+                <button onClick={cancelSeaServiceEdit} disabled={savingService} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-[var(--accent-text)] disabled:opacity-50">
+                  Cancel
+                </button>
+              )}
+            </div>
           </section>
 
           <SeaServiceHistory services={services} onDelete={deleteSeaService} onEdit={editSeaService} />
