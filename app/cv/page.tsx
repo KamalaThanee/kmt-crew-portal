@@ -3,13 +3,13 @@
 import Link from 'next/link'
 import { Suspense, type DragEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { BriefcaseBusiness, CalendarDays, Download, FileBadge, Plus, Ship, Trash2, UserRound } from 'lucide-react'
+import { BriefcaseBusiness, CalendarDays, Download, FileBadge, PencilLine, Plus, Ship, Trash2, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageShell } from '@/components/layout/PageShell'
 import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
-import { dayDiffInclusive, formatServiceDuration, formatYearsOneDecimal, getSeaServiceMetrics } from '@/lib/cvMetrics'
+import { dayDiffInclusive, formatServiceDuration, formatYearsOneDecimal, getSeaServiceMetrics, sameMetricLabel } from '@/lib/cvMetrics'
 import { canManageCvDashboard, isAdminRole } from '@/lib/roles'
 import { supabase } from '@/lib/supabase'
 
@@ -233,6 +233,56 @@ const cvPictureKey = (crewId: string) => `kmt_cv_picture_${crewId}`
 const cvHiddenCertsKey = (crewId: string) => `kmt_cv_hidden_certs_${crewId}`
 const cvManualCertsKey = (crewId: string) => `kmt_cv_manual_certs_${crewId}`
 const cvPairOrderKey = (crewId: string) => `kmt_cv_pair_order_${crewId}`
+
+function profileSnapshot(profile: CvProfile) {
+  return JSON.stringify({
+    national_id_no: clean(profile.national_id_no),
+    nationality: clean(profile.nationality),
+    date_of_birth: toDateValue(profile.date_of_birth),
+    place_of_birth: clean(profile.place_of_birth),
+    cv_company: clean(profile.cv_company),
+    toeic_score: clean(profile.toeic_score),
+    toeic_test_date: toDateValue(profile.toeic_test_date),
+    picture_data_url: clean(profile.picture_data_url),
+  })
+}
+
+function certSnapshot(cert: CrewCert) {
+  return JSON.stringify({
+    cert_name: clean(cert.cert_name),
+    issue_date: toDateValue(cert.issue_date),
+    expiry_date: toDateValue(cert.expiry_date),
+    cert_number: clean(cert.cert_number),
+    place_of_issue: clean(cert.place_of_issue),
+    issue_authority: clean(cert.issue_authority),
+    cv_section: clean(cert.cv_section),
+    cv_row_no: cert.cv_row_no || null,
+    cv_competency_title: clean(cert.cv_competency_title),
+    cv_capacity: clean(cert.cv_capacity),
+    linked_training_id: clean(cert.linked_training_id),
+  })
+}
+
+function serviceFormSnapshot(form: SeaServiceForm) {
+  return JSON.stringify({
+    vessel_master_id: clean(form.vessel_master_id),
+    vessel_name: clean(form.vessel_name),
+    vessel_type: clean(form.vessel_type),
+    flag: clean(form.flag),
+    imo_no: clean(form.imo_no),
+    grt: clean(form.grt),
+    dwt: clean(form.dwt),
+    engine_type: clean(form.engine_type),
+    bhp: clean(form.bhp),
+    company: clean(form.company),
+    trading_area: clean(form.trading_area),
+    rank: clean(form.rank),
+    charterer: clean(form.charterer),
+    joining_date: toDateValue(form.joining_date),
+    sign_off_date: toDateValue(form.sign_off_date),
+    remarks: clean(form.remarks),
+  })
+}
 
 function formatCvCertName(value?: string | null) {
   const raw = clean(value)
@@ -609,10 +659,17 @@ function CvPageContent() {
   const [refreshingCvData, setRefreshingCvData] = useState(false)
   const [selectedVesselId, setSelectedVesselId] = useState('')
   const [activeTab, setActiveTab] = useState<CvTab>('personal')
+  const [editingServiceId, setEditingServiceId] = useState('')
   const [manualCompetency, setManualCompetency] = useState<CrewCert | null>(null)
   const [manualCvCerts, setManualCvCerts] = useState<CrewCert[]>([])
   const [hiddenCvCertIds, setHiddenCvCertIds] = useState<string[]>([])
   const [cvPairOrder, setCvPairOrder] = useState<string[]>([])
+  const [savedProfileSnapshot, setSavedProfileSnapshot] = useState('')
+  const [savedCertSnapshots, setSavedCertSnapshots] = useState<Record<string, string>>({})
+  const [editingServiceSnapshot, setEditingServiceSnapshot] = useState('')
+  const [selectedMetricCompany, setSelectedMetricCompany] = useState('')
+  const [selectedMetricType, setSelectedMetricType] = useState('')
+  const [selectedMetricRank, setSelectedMetricRank] = useState('')
 
   function hydrateLocalState(current: ActiveUser) {
     const currentId = current.id
@@ -628,7 +685,19 @@ function CvPageContent() {
       toeic_test_date: toDateValue((current as any).toeic_test_date),
       picture_data_url: localStorage.getItem(cvPictureKey(currentId)) || '',
     })
-    setServiceForm((prev) => ({ ...prev, crew_id: currentId, rank: current.position || '', company: clean((current as any).cv_company || defaultCvCompany) }))
+    setSavedProfileSnapshot(profileSnapshot({
+      national_id_no: clean((current as any).national_id_no),
+      nationality: clean((current as any).nationality),
+      date_of_birth: toDateValue((current as any).date_of_birth),
+      place_of_birth: clean((current as any).place_of_birth),
+      cv_company: clean((current as any).cv_company || defaultCvCompany),
+      toeic_score: clean((current as any).toeic_score),
+      toeic_test_date: toDateValue((current as any).toeic_test_date),
+      picture_data_url: localStorage.getItem(cvPictureKey(currentId)) || '',
+    }))
+    const nextServiceForm = { ...emptySeaService, crew_id: currentId, rank: current.position || '', company: clean((current as any).cv_company || defaultCvCompany) }
+    setServiceForm(nextServiceForm)
+    setEditingServiceSnapshot(serviceFormSnapshot(nextServiceForm))
     setVaccinationForm((prev) => ({ ...prev, crew_id: currentId }))
     setManualCompetency(readManualCompetency(current))
     setManualCvCerts(readStoredArray<CrewCert>(cvManualCertsKey(currentId)))
@@ -681,27 +750,75 @@ function CvPageContent() {
     return getSeaServiceMetrics(
       services,
       user?.position as string | undefined,
-      undefined,
-      profile.cv_company || defaultCvCompany,
+      selectedMetricType || undefined,
+      selectedMetricCompany || undefined,
+      selectedMetricRank || undefined,
     )
-  }, [profile.cv_company, services, user?.position])
+  }, [selectedMetricCompany, selectedMetricRank, selectedMetricType, services, user?.position])
 
   const cvRefreshTargets = useMemo(
     () => certRows.filter((cert) => certNeedsCvRefresh(cert)),
     [certRows],
   )
 
+  const profileDirty = useMemo(() => profileSnapshot(profile) !== savedProfileSnapshot, [profile, savedProfileSnapshot])
+  const certDirtyMap = useMemo(() => {
+    return Object.fromEntries(cvSourceRows.map((cert) => [cert.id, savedCertSnapshots[cert.id] !== certSnapshot(cert)]))
+  }, [cvSourceRows, savedCertSnapshots])
+  const dirtyCertCount = useMemo(() => Object.values(certDirtyMap).filter(Boolean).length, [certDirtyMap])
+  const serviceDirty = useMemo(() => serviceFormSnapshot(serviceForm) !== editingServiceSnapshot, [editingServiceSnapshot, serviceForm])
+
+  useEffect(() => {
+    const hasCompany = selectedMetricCompany && serviceSummary.companyOptions.some((option) => sameMetricLabel(option, selectedMetricCompany))
+    const hasType = selectedMetricType && serviceSummary.typeOptions.some((option) => sameMetricLabel(option, selectedMetricType))
+    const hasRank = selectedMetricRank && serviceSummary.rankOptions.some((option) => sameMetricLabel(option, selectedMetricRank))
+    if (!hasCompany && serviceSummary.currentCompany) setSelectedMetricCompany(serviceSummary.currentCompany)
+    if (!hasType && serviceSummary.currentType) setSelectedMetricType(serviceSummary.currentType)
+    if (!hasRank && serviceSummary.currentRank) setSelectedMetricRank(serviceSummary.currentRank)
+  }, [
+    selectedMetricCompany,
+    selectedMetricRank,
+    selectedMetricType,
+    serviceSummary.companyOptions,
+    serviceSummary.currentCompany,
+    serviceSummary.currentRank,
+    serviceSummary.currentType,
+    serviceSummary.rankOptions,
+    serviceSummary.typeOptions,
+  ])
+
   const completionStatus = useMemo(() => {
-    const personalComplete = Boolean(profile.national_id_no && profile.nationality && profile.date_of_birth && profile.place_of_birth)
+    const personalMissing = [
+      !profile.national_id_no ? 'National ID No.' : '',
+      !profile.nationality ? 'Nationality' : '',
+      !profile.date_of_birth ? 'Date of Birth' : '',
+      !profile.place_of_birth ? 'Place of Birth' : '',
+    ].filter(Boolean)
+    const personalComplete = personalMissing.length === 0
     const certificatesComplete = cvRefreshTargets.length === 0
     const serviceComplete = services.length > 0
+    const certificatesMissing = cvRefreshTargets.slice(0, 8).map((cert) => formatCvCertName(getCompetencyDisplayTitle(cert) || cert.cert_name))
+    const serviceMissing = serviceComplete ? [] : ['Add at least one sailing voyage row']
+    const personalWarnings = profileDirty ? ['Personal details edited but not saved yet'] : []
+    const certificatesWarnings = dirtyCertCount > 0 ? [`${dirtyCertCount} certificate row(s) edited but not saved yet`] : []
+    const serviceWarnings = editingServiceId && serviceDirty ? ['Sea service row edited but not saved yet'] : []
     return {
       personalComplete,
+      personalMissing,
       certificatesComplete,
+      certificatesMissing,
       serviceComplete,
+      serviceMissing,
+      reviewNotes: [...personalMissing, ...certificatesMissing, ...serviceMissing, ...personalWarnings, ...certificatesWarnings, ...serviceWarnings],
       allComplete: personalComplete && certificatesComplete && serviceComplete,
+      personalDirty: profileDirty,
+      certificatesDirty: dirtyCertCount,
+      serviceDirty,
+      personalWarnings,
+      certificatesWarnings,
+      serviceWarnings,
     }
-  }, [cvRefreshTargets.length, profile.date_of_birth, profile.national_id_no, profile.nationality, profile.place_of_birth, services.length])
+  }, [cvRefreshTargets, dirtyCertCount, editingServiceId, profile.date_of_birth, profile.national_id_no, profile.nationality, profile.place_of_birth, profileDirty, serviceDirty, services.length])
 
   const personalDocs = useMemo(() => buildPersonalDocs(certRows), [certRows])
   const cvSourceRows = useMemo(() => {
@@ -758,10 +875,30 @@ function CvPageContent() {
       return
     }
 
+    const nextServices = (serviceRes.data || []) as SeaServiceRow[]
     setVessels((vesselRes.data || []) as VesselMaster[])
-    setServices((serviceRes.data || []) as SeaServiceRow[])
+    setServices(nextServices)
+    setEditingServiceId('')
+    const resetServiceForm = {
+      ...emptySeaService,
+      crew_id: current.id,
+      rank: current.position || '',
+      company: clean((current as any).cv_company || defaultCvCompany),
+    }
+    setServiceForm(resetServiceForm)
+    setEditingServiceSnapshot(serviceFormSnapshot(resetServiceForm))
     if (!crewProfileRes.error && crewProfileRes.data) {
       const dbProfile = crewProfileRes.data as any
+      const nextProfile = {
+        ...profile,
+        national_id_no: clean(dbProfile.national_id_no) || profile.national_id_no,
+        nationality: clean(dbProfile.nationality) || profile.nationality,
+        date_of_birth: toDateValue(dbProfile.date_of_birth) || profile.date_of_birth,
+        place_of_birth: clean(dbProfile.place_of_birth) || profile.place_of_birth,
+        cv_company: clean(dbProfile.cv_company) || profile.cv_company,
+        toeic_score: clean(dbProfile.toeic_score) || profile.toeic_score,
+        toeic_test_date: toDateValue(dbProfile.toeic_test_date) || profile.toeic_test_date,
+      }
       setProfile((prev) => ({
         ...prev,
         national_id_no: clean(dbProfile.national_id_no) || prev.national_id_no,
@@ -772,6 +909,7 @@ function CvPageContent() {
         toeic_score: clean(dbProfile.toeic_score) || prev.toeic_score,
         toeic_test_date: toDateValue(dbProfile.toeic_test_date) || prev.toeic_test_date,
       }))
+      setSavedProfileSnapshot(profileSnapshot(nextProfile))
       setLastUpdatedAt(clean(dbProfile.cv_last_updated_at))
       const nextUser = { ...current, ...dbProfile }
       setUser(nextUser)
@@ -781,7 +919,11 @@ function CvPageContent() {
         window.dispatchEvent(new Event('kmt-user-changed'))
       }
     }
-    if (!certRes.error) setCertRows(attachCertMasterRules((certRes.data || []) as CrewCert[], (certMasterRes.data || []) as CertMasterCvRule[]))
+    if (!certRes.error) {
+      const nextCertRows = attachCertMasterRules((certRes.data || []) as CrewCert[], (certMasterRes.data || []) as CertMasterCvRule[])
+      setCertRows(nextCertRows)
+      setSavedCertSnapshots(Object.fromEntries(nextCertRows.map((cert) => [cert.id, certSnapshot(cert)])))
+    }
     setVaccinations((vaccinationRes.data || []) as VaccinationRow[])
     setLoading(false)
   }
@@ -858,6 +1000,7 @@ function CvPageContent() {
     }))
     setLastUpdatedAt(updatedAt)
     setUser(nextUser)
+    setSavedProfileSnapshot(profileSnapshot(profile))
     toast.success('CV profile saved')
   }
 
@@ -1151,21 +1294,73 @@ function CvPageContent() {
       crew_id: activeUser.id,
       updated_at: new Date().toISOString(),
     }
-    const { error } = await supabase.from('crew_cv_sea_services').insert(payload)
+    const { error } = editingServiceId
+      ? await supabase.from('crew_cv_sea_services').update(payload).eq('id', editingServiceId)
+      : await supabase.from('crew_cv_sea_services').insert(payload)
     setSavingService(false)
     if (error) {
       toast.error(`${error.message}. Run sql/crew_cv_foundation.sql first.`)
       return
     }
-    toast.success('Sea service added')
-    setServiceForm({
+    toast.success(editingServiceId ? 'Sea service updated' : 'Sea service added')
+    const resetServiceForm = {
       ...emptySeaService,
       crew_id: activeUser.id,
       rank: activeUser.position || '',
       company: profile.cv_company || defaultCvCompany,
-    })
+    }
+    setServiceForm(resetServiceForm)
+    setEditingServiceSnapshot(serviceFormSnapshot(resetServiceForm))
     setSelectedVesselId('')
+    setEditingServiceId('')
     await loadCv(activeUser, sessionUser)
+  }
+
+  function editSeaService(row: SeaServiceRow) {
+    setEditingServiceId(row.id)
+    setSelectedVesselId(row.vessel_master_id || '')
+    setServiceForm({
+      crew_id: user?.id || row.crew_id,
+      vessel_master_id: row.vessel_master_id || '',
+      vessel_name: row.vessel_name || '',
+      vessel_type: row.vessel_type || '',
+      flag: row.flag || '',
+      imo_no: row.imo_no || '',
+      grt: row.grt || '',
+      dwt: row.dwt || '',
+      engine_type: row.engine_type || '',
+      bhp: row.bhp || '',
+      company: row.company || profile.cv_company || defaultCvCompany,
+      trading_area: row.trading_area || '',
+      rank: row.rank || '',
+      charterer: row.charterer || 'PTTEP',
+      joining_date: toDateValue(row.joining_date),
+      sign_off_date: toDateValue(row.sign_off_date),
+      remarks: row.remarks || '',
+    })
+    setEditingServiceSnapshot(serviceFormSnapshot({
+      crew_id: user?.id || row.crew_id,
+      vessel_master_id: row.vessel_master_id || '',
+      vessel_name: row.vessel_name || '',
+      vessel_type: row.vessel_type || '',
+      flag: row.flag || '',
+      imo_no: row.imo_no || '',
+      grt: row.grt || '',
+      dwt: row.dwt || '',
+      engine_type: row.engine_type || '',
+      bhp: row.bhp || '',
+      company: row.company || profile.cv_company || defaultCvCompany,
+      trading_area: row.trading_area || '',
+      rank: row.rank || '',
+      charterer: row.charterer || 'PTTEP',
+      joining_date: toDateValue(row.joining_date),
+      sign_off_date: toDateValue(row.sign_off_date),
+      remarks: row.remarks || '',
+    }))
+    setActiveTab('service')
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
   }
 
   async function deleteSeaService(id: string) {
@@ -1220,6 +1415,7 @@ function CvPageContent() {
       toast.error(`${error.message}. Run sql/crew_cv_foundation.sql first.`)
       return
     }
+    setSavedCertSnapshots((prev) => ({ ...prev, [cert.id]: certSnapshot(cert) }))
     toast.success('CV certificate detail saved')
   }
 
@@ -1517,12 +1713,16 @@ function CvPageContent() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Step 1 of 4</p>
-                <p className="text-sm font-black text-[var(--headline)]">Save personal details, then continue to certificates and CV data.</p>
+                <p className="text-sm font-black text-[var(--headline)]">
+                  {profileDirty ? 'Personal details changed. Save before moving on.' : 'Personal details are already saved. Continue to certificates when ready.'}
+                </p>
               </div>
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
-                <button onClick={saveProfile} disabled={savingProfile || sqlMissing} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
-                  {savingProfile ? 'Saving...' : 'Save Personal'}
-                </button>
+                {profileDirty && (
+                  <button onClick={saveProfile} disabled={savingProfile || sqlMissing} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+                    {savingProfile ? 'Saving...' : 'Save after edit'}
+                  </button>
+                )}
                 <button onClick={() => setActiveTab('certificates')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-[var(--accent-text)]">
                   Next: Certificates
                 </button>
@@ -1544,6 +1744,7 @@ function CvPageContent() {
             </div>
             <CvCertificateTables
               fillingCertId={fillingCertId}
+              isDirty={(cert) => Boolean(certDirtyMap[cert.id])}
               tables={cvCertTables}
               savingCertId={savingCertId}
               onChange={updateCvCert}
@@ -1587,7 +1788,9 @@ function CvPageContent() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Step 2 of 4</p>
-                <p className="text-sm font-black text-[var(--headline)]">Certificates save row by row. When the data is complete, continue to sea service.</p>
+                <p className="text-sm font-black text-[var(--headline)]">
+                  {dirtyCertCount > 0 ? `${dirtyCertCount} certificate row(s) changed. Save only the rows you edited.` : 'Certificate data is saved. Continue when ready.'}
+                </p>
               </div>
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
                 <button onClick={() => setActiveTab('personal')} className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-6 py-4 text-xs font-black uppercase tracking-widest text-[var(--accent-text)]">
@@ -1642,12 +1845,14 @@ function CvPageContent() {
               <TextField label="Remarks" value={serviceForm.remarks || ''} onChange={(value) => setServiceForm((prev) => ({ ...prev, remarks: value }))} />
             </div>
 
-            <button onClick={saveSeaService} disabled={savingService || sqlMissing} className="mt-5 rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
-              <Plus size={15} className="mr-2 inline" /> {savingService ? 'Saving...' : 'Add Sea Service'}
-            </button>
+            {(!editingServiceId || serviceDirty) && (
+              <button onClick={saveSeaService} disabled={savingService || sqlMissing} className="mt-5 rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+                <Plus size={15} className="mr-2 inline" /> {savingService ? 'Saving...' : editingServiceId ? 'Save after edit' : 'Add Sea Service'}
+              </button>
+            )}
           </section>
 
-          <SeaServiceHistory services={services} onDelete={deleteSeaService} />
+          <SeaServiceHistory services={services} onDelete={deleteSeaService} onEdit={editSeaService} />
 
           <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1672,9 +1877,30 @@ function CvPageContent() {
         <>
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <MetricCard label="Last Updated" value={formatDateTime(lastUpdatedAt)} detail={viewingOwnCv ? 'Your current saved CV' : 'Selected crew CV record'} />
-            <MetricCard label="Year This Company" value={serviceSummary.companyText} detail={serviceSummary.currentCompany || 'Current company'} />
-            <MetricCard label="Year This Type" value={serviceSummary.typeText} detail={serviceSummary.currentType || 'Current vessel type'} />
-            <MetricCard label="Year This Rank" value={serviceSummary.rankText} detail={user?.position ? `${user.position} only` : 'Current rank'} />
+            <MetricCard
+              label="Year This Company"
+              value={serviceSummary.companyText}
+              detail={serviceSummary.currentCompany || 'Current company'}
+              options={serviceSummary.companyOptions}
+              selected={selectedMetricCompany}
+              onSelect={setSelectedMetricCompany}
+            />
+            <MetricCard
+              label="Year This Type"
+              value={serviceSummary.typeText}
+              detail={serviceSummary.currentType || 'Current vessel type'}
+              options={serviceSummary.typeOptions}
+              selected={selectedMetricType}
+              onSelect={setSelectedMetricType}
+            />
+            <MetricCard
+              label="Year This Rank"
+              value={serviceSummary.rankText}
+              detail={serviceSummary.currentRank || user?.position || 'Current rank'}
+              options={serviceSummary.rankOptions}
+              selected={selectedMetricRank}
+              onSelect={setSelectedMetricRank}
+            />
           </section>
 
           <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
@@ -1682,13 +1908,28 @@ function CvPageContent() {
               <CalendarDays className="text-orange-500" />
               <div>
                 <h2 className="text-xl font-black italic uppercase text-[var(--headline)]">Review & Export</h2>
-                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Final step before exporting the CV form. Personal details save in step 1, certificates save per row, and sea service saves when added.</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Final step before exporting the CV form. Review missing data, tenure totals, and unsaved edits before export.</p>
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
-              <ReviewStatusCard label="Personal Details" ok={completionStatus.personalComplete} detail={completionStatus.personalComplete ? 'Required profile fields look ready' : 'Please complete personal details first'} />
-              <ReviewStatusCard label="Certificates" ok={completionStatus.certificatesComplete} detail={completionStatus.certificatesComplete ? 'Certificate data is up to date' : `${cvRefreshTargets.length} file(s) still need AI fill back`} />
-              <ReviewStatusCard label="Sea Service" ok={completionStatus.serviceComplete} detail={completionStatus.serviceComplete ? `${services.length} voyage row(s) recorded` : 'Add at least one sea service row'} />
+              <ReviewStatusCard
+                label="Personal Details"
+                ok={completionStatus.personalComplete}
+                detail={completionStatus.personalComplete ? 'Required profile fields look ready' : 'Please complete personal details first'}
+                missing={[...completionStatus.personalMissing, ...completionStatus.personalWarnings]}
+              />
+              <ReviewStatusCard
+                label="Certificates"
+                ok={completionStatus.certificatesComplete}
+                detail={completionStatus.certificatesComplete ? 'Certificate data is up to date' : `${cvRefreshTargets.length} file(s) still need AI fill back`}
+                missing={[...completionStatus.certificatesMissing, ...completionStatus.certificatesWarnings]}
+              />
+              <ReviewStatusCard
+                label="Sea Service"
+                ok={completionStatus.serviceComplete}
+                detail={completionStatus.serviceComplete ? `${services.length} voyage row(s) recorded` : 'Add at least one sea service row'}
+                missing={[...completionStatus.serviceMissing, ...completionStatus.serviceWarnings]}
+              />
             </div>
             <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="text-xs text-[var(--subtle)]">
@@ -1827,12 +2068,19 @@ export default function CvPage() {
   )
 }
 
-function ReviewStatusCard({ detail, label, ok }: { detail: string; label: string; ok: boolean }) {
+function ReviewStatusCard({ detail, label, missing = [], ok }: { detail: string; label: string; missing?: string[]; ok: boolean }) {
   return (
     <div className={`rounded-3xl border p-4 ${ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/20 bg-amber-500/5'}`}>
       <p className={`text-[10px] font-black uppercase tracking-widest ${ok ? 'text-emerald-500' : 'text-amber-500'}`}>{label}</p>
       <p className="mt-2 text-sm font-black text-[var(--headline)]">{ok ? 'Complete' : 'Needs update'}</p>
       <p className="mt-1 text-xs text-[var(--subtle)]">{detail}</p>
+      {!ok && missing.length > 0 && (
+        <ul className="mt-3 space-y-1">
+          {missing.map((item) => (
+            <li key={item} className="text-[11px] font-black text-red-500">- {item}</li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -2025,6 +2273,7 @@ function applyCvPairOrder(tables: ReturnType<typeof buildCvCertTables>, order: s
 function CvCertificateTables({
   fillingCertId,
   hiddenCount,
+  isDirty,
   onAddManual,
   onAddProficiency,
   onChange,
@@ -2038,6 +2287,7 @@ function CvCertificateTables({
 }: {
   fillingCertId: string
   hiddenCount: number
+  isDirty: (cert: CrewCert) => boolean
   tables: ReturnType<typeof buildCvCertTables>
   savingCertId: string
   onAddManual: (section: string) => void
@@ -2057,6 +2307,7 @@ function CvCertificateTables({
         rows={tables.competency}
         section="Certificate of Competency"
         savingCertId={savingCertId}
+        isDirty={isDirty}
         onChange={onChange}
         onFillMissing={onFillMissing}
         onHide={onHide}
@@ -2087,6 +2338,7 @@ function CvCertificateTables({
                 rowNumber={index + 1}
                 savingCertId={savingCertId}
                 fillingCertId={fillingCertId}
+                isDirty={isDirty}
                 dragged={draggedPairKey === getCvPairKey(row)}
                 onChange={onChange}
                 onFillMissing={onFillMissing}
@@ -2118,6 +2370,7 @@ function CvCertificateTables({
         rows={tables.medical}
         section="Medical"
         savingCertId={savingCertId}
+        isDirty={isDirty}
         onChange={onChange}
         onFillMissing={onFillMissing}
         onHide={onHide}
@@ -2140,6 +2393,7 @@ function CvTableTitle({ subtitle, title }: { subtitle?: string; title: string })
 
 function CvSimpleCertTable({
   fillingCertId,
+  isDirty,
   medical,
   competency,
   onChange,
@@ -2156,6 +2410,7 @@ function CvSimpleCertTable({
   rows: CrewCert[]
   fillingCertId: string
   savingCertId: string
+  isDirty: (cert: CrewCert) => boolean
   onChange: (cert: CrewCert) => void
   onFillMissing: (cert: CrewCert) => void
   onHide: (certId?: string) => void
@@ -2187,6 +2442,7 @@ function CvSimpleCertTable({
             onFillMissing={() => onFillMissing(cert)}
             onHide={() => onHide(cert.id)}
             onSave={() => onSave(cert.id)}
+            showSave={isDirty(cert)}
             medical={medical}
             competency={competency}
           />
@@ -2199,6 +2455,7 @@ function CvSimpleCertTable({
 function CvTrainingPairForm({
   dragged,
   fillingCertId,
+  isDirty,
   onAddProficiency,
   onChange,
   onDragEnd,
@@ -2216,6 +2473,7 @@ function CvTrainingPairForm({
   rowNumber: number
   fillingCertId: string
   savingCertId: string
+  isDirty: (cert: CrewCert) => boolean
   onAddProficiency: (trainingCert: CrewCert) => void
   onChange: (cert: CrewCert) => void
   onFillMissing: (cert: CrewCert) => void
@@ -2285,6 +2543,7 @@ function CvTrainingPairForm({
             onFillMissing={() => row.training && onFillMissing(row.training)}
             onHide={() => onHide(row.training?.id)}
             onSave={() => onSave(row.training!.id)}
+            showSave={isDirty(row.training)}
             titleOverride="Certificate of Training"
             compact
           />
@@ -2302,6 +2561,7 @@ function CvTrainingPairForm({
               onFillMissing={() => row.proficiency && onFillMissing(row.proficiency)}
               onHide={isRequiredProficiencyPlaceholder(row.proficiency) ? undefined : () => onHide(row.proficiency?.id)}
               onSave={() => onSave(row.proficiency!.id)}
+              showSave={isDirty(row.proficiency)}
               titleOverride="Certificate of Proficiency"
               proficiency
               compact
@@ -2337,6 +2597,7 @@ function CvCertFormCard({
   proficiency,
   saving,
   section,
+  showSave,
   titleOverride,
 }: {
   cert: CrewCert
@@ -2347,6 +2608,7 @@ function CvCertFormCard({
   medical?: boolean
   proficiency?: boolean
   compact?: boolean
+  showSave?: boolean
   titleOverride?: string
   onChange: (cert: CrewCert) => void
   onFillMissing?: () => void
@@ -2397,7 +2659,7 @@ function CvCertFormCard({
         />
       </div>
       <div className="mt-4 flex justify-end">
-        <CertActions cert={cert} filling={filling} saving={saving} onFillMissing={onFillMissing} onSave={onSave} />
+        <CertActions cert={cert} filling={filling} saving={saving} showSave={showSave} onFillMissing={onFillMissing} onSave={onSave} />
       </div>
     </div>
   )
@@ -2438,7 +2700,7 @@ function hasMissingCvCertFields(cert: CrewCert) {
   return !cert.cert_number || !cert.place_of_issue || !cert.issue_authority || !cert.issue_date || !cert.expiry_date
 }
 
-function CertActions({ cert, filling, onFillMissing, onSave, saving }: { cert: CrewCert; filling?: boolean; onFillMissing?: () => void; onSave: () => void; saving: boolean }) {
+function CertActions({ cert, filling, onFillMissing, onSave, saving, showSave }: { cert: CrewCert; filling?: boolean; onFillMissing?: () => void; onSave: () => void; saving: boolean; showSave?: boolean }) {
   return (
     <div className="flex flex-wrap gap-2">
       {cert.file_url && (
@@ -2456,9 +2718,11 @@ function CertActions({ cert, filling, onFillMissing, onSave, saving }: { cert: C
           {filling ? 'Reading...' : 'Fill missing from file'}
         </button>
       )}
-      <button onClick={onSave} disabled={saving} className="rounded-2xl bg-orange-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
-        {saving ? 'Saving...' : 'Save'}
-      </button>
+      {showSave && (
+        <button onClick={onSave} disabled={saving} className="rounded-2xl bg-orange-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+          {saving ? 'Saving...' : 'Save after edit'}
+        </button>
+      )}
     </div>
   )
 }
@@ -2499,7 +2763,7 @@ function VaccinationTable({ onDelete, rows }: { rows: VaccinationRow[]; onDelete
   )
 }
 
-function SeaServiceHistory({ onDelete, services }: { onDelete: (id: string) => void; services: SeaServiceRow[] }) {
+function SeaServiceHistory({ onDelete, onEdit, services }: { onDelete: (id: string) => void; onEdit: (row: SeaServiceRow) => void; services: SeaServiceRow[] }) {
   return (
     <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
       <h2 className="mb-5 text-xl font-black italic uppercase text-[var(--headline)]">Sailing Voyages History</h2>
@@ -2528,9 +2792,14 @@ function SeaServiceHistory({ onDelete, services }: { onDelete: (id: string) => v
                 <p className="text-sm font-black text-[var(--headline)]">{formatDate(row.joining_date)} - {formatDate(row.sign_off_date)}</p>
                 <p className="mt-1 text-[10px] font-black uppercase text-[var(--accent-text)]">{formatServiceDuration(days)}</p>
               </div>
-              <button onClick={() => onDelete(row.id)} className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-black uppercase text-[var(--danger-text)]">
-                <Trash2 size={14} className="mr-2 inline" /> Delete
-              </button>
+              <div className="flex flex-col gap-2">
+                <button onClick={() => onEdit(row)} className="rounded-2xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-xs font-black uppercase text-blue-600">
+                  <PencilLine size={14} className="mr-2 inline" /> Edit
+                </button>
+                <button onClick={() => onDelete(row.id)} className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-black uppercase text-[var(--danger-text)]">
+                  <Trash2 size={14} className="mr-2 inline" /> Delete
+                </button>
+              </div>
             </div>
           )
         })}
@@ -2560,12 +2829,38 @@ function buildSeaServicePayload(form: SeaServiceForm) {
   }
 }
 
-function MetricCard({ detail, label, value }: { detail: string; label: string; value: string }) {
+function MetricCard({
+  detail,
+  label,
+  onSelect,
+  options,
+  selected,
+  value,
+}: {
+  detail: string
+  label: string
+  onSelect?: (value: string) => void
+  options?: string[]
+  selected?: string
+  value: string
+}) {
+  const canSelect = Boolean(onSelect && options && options.length > 1)
   return (
     <div className="rounded-[32px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
       <p className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--accent-text)]">{label}</p>
       <p className="mt-4 text-3xl font-black text-[var(--headline)]">{value}</p>
       <p className="mt-1 text-xs normal-case text-[var(--subtle)]">{detail}</p>
+      {canSelect && options && onSelect && (
+        <select
+          value={selected || options[0] || ''}
+          onChange={(event) => onSelect(event.target.value)}
+          className="mt-4 w-full rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] px-4 py-3 text-xs font-black uppercase tracking-widest text-[var(--headline)] outline-none transition-all focus:border-orange-500"
+        >
+          {options.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+      )}
     </div>
   )
 }
