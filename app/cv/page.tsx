@@ -664,6 +664,7 @@ function CvPageContent() {
   const [hiddenCvCertIds, setHiddenCvCertIds] = useState<string[]>([])
   const [cvPairOrder, setCvPairOrder] = useState<string[]>([])
   const [savedProfileSnapshot, setSavedProfileSnapshot] = useState('')
+  const [profileTouched, setProfileTouched] = useState(false)
   const [savedCertSnapshots, setSavedCertSnapshots] = useState<Record<string, string>>({})
   const [editingServiceSnapshot, setEditingServiceSnapshot] = useState('')
   const [selectedMetricCompany, setSelectedMetricCompany] = useState('')
@@ -695,6 +696,7 @@ function CvPageContent() {
       toeic_test_date: toDateValue((current as any).toeic_test_date),
       picture_data_url: localStorage.getItem(cvPictureKey(currentId)) || '',
     }))
+    setProfileTouched(false)
     const nextServiceForm = { ...emptySeaService, crew_id: currentId, rank: current.position || '', company: clean((current as any).cv_company || defaultCvCompany) }
     setServiceForm(nextServiceForm)
     setEditingServiceSnapshot(serviceFormSnapshot(nextServiceForm))
@@ -768,11 +770,18 @@ function CvPageContent() {
   }, [certRows, hiddenCvCertIds, manualCompetency, manualCvCerts])
 
   const profileDirty = useMemo(() => profileSnapshot(profile) !== savedProfileSnapshot, [profile, savedProfileSnapshot])
+  const showProfileSave = profileTouched && profileDirty
   const certDirtyMap = useMemo(() => {
     return Object.fromEntries(cvSourceRows.map((cert) => [cert.id, savedCertSnapshots[cert.id] !== certSnapshot(cert)]))
   }, [cvSourceRows, savedCertSnapshots])
   const dirtyCertCount = useMemo(() => Object.values(certDirtyMap).filter(Boolean).length, [certDirtyMap])
   const serviceDirty = useMemo(() => serviceFormSnapshot(serviceForm) !== editingServiceSnapshot, [editingServiceSnapshot, serviceForm])
+
+  useEffect(() => {
+    if (!profileDirty && profileTouched) {
+      setProfileTouched(false)
+    }
+  }, [profileDirty, profileTouched])
 
   useEffect(() => {
     const hasCompany = selectedMetricCompany && serviceSummary.companyOptions.some((option) => sameMetricLabel(option, selectedMetricCompany))
@@ -1004,6 +1013,7 @@ function CvPageContent() {
     setLastUpdatedAt(updatedAt)
     setUser(nextUser)
     setSavedProfileSnapshot(profileSnapshot(profile))
+    setProfileTouched(false)
     toast.success('CV profile saved')
   }
 
@@ -1031,6 +1041,7 @@ function CvPageContent() {
     const nextUser = { ...user, ...payload }
     setProfile(nextProfile)
     setSavedProfileSnapshot(profileSnapshot(nextProfile))
+    setProfileTouched(false)
     setUser(nextUser)
     if (viewingOwnCv) {
       localStorage.setItem('kmt_user', JSON.stringify(nextUser))
@@ -1072,6 +1083,20 @@ function CvPageContent() {
     setProfile((prev) => ({ ...prev, picture_data_url: dataUrl }))
     localStorage.setItem(cvPictureKey(user.id), dataUrl)
     toast.success('CV picture ready for export')
+  }
+
+  function updateProfileField<K extends keyof CvProfile>(field: K, value: CvProfile[K]) {
+    setProfileTouched(true)
+    setProfile((prev) => ({ ...prev, [field]: value }))
+  }
+
+  function scrollToSeaServiceEntry() {
+    const target = serviceEntryRef.current
+    if (!target) return
+    const top = target.getBoundingClientRect().top + window.scrollY - 112
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top, behavior: 'smooth' })
+    })
   }
 
   async function exportCvExcel() {
@@ -1367,6 +1392,7 @@ function CvPageContent() {
       remarks: row.remarks || '',
     }))
     setActiveTab('service')
+    window.setTimeout(() => scrollToSeaServiceEntry(), 140)
   }
 
   function cancelSeaServiceEdit() {
@@ -1680,17 +1706,17 @@ function CvPageContent() {
             <div className="grid gap-3 md:grid-cols-2">
               <FormLine label="Name" value={user?.full_name || '-'} />
               <FormLine label="Rank" value={user?.position || '-'} />
-              <FormLine label="National ID No." editable={<TextField label="" value={profile.national_id_no} onChange={(value) => setProfile((prev) => ({ ...prev, national_id_no: value }))} />} />
-              <FormLine label="Nationality" editable={<TextField label="" value={profile.nationality} onChange={(value) => setProfile((prev) => ({ ...prev, nationality: value }))} />} />
-              <FormLine label="Date of Birth" editable={<DateField label="" value={profile.date_of_birth} onChange={(value) => setProfile((prev) => ({ ...prev, date_of_birth: value }))} />} />
-              <FormLine label="Place of Birth" editable={<TextField label="" value={profile.place_of_birth} onChange={(value) => setProfile((prev) => ({ ...prev, place_of_birth: value }))} />} />
+              <FormLine label="National ID No." editable={<TextField label="" value={profile.national_id_no} onChange={(value) => updateProfileField('national_id_no', value)} />} />
+              <FormLine label="Nationality" editable={<TextField label="" value={profile.nationality} onChange={(value) => updateProfileField('nationality', value)} />} />
+              <FormLine label="Date of Birth" editable={<DateField label="" value={profile.date_of_birth} onChange={(value) => updateProfileField('date_of_birth', value)} />} />
+              <FormLine label="Place of Birth" editable={<TextField label="" value={profile.place_of_birth} onChange={(value) => updateProfileField('place_of_birth', value)} />} />
               <FormLine label="Passport" value={formatPersonalDoc(personalDocs.passport)} />
               <FormLine label="Seaman Book" value={formatPersonalDoc(personalDocs.seamanBook)} />
-              <FormLine label="TOEIC Score" editable={<TextField label="" value={profile.toeic_score} onChange={(value) => setProfile((prev) => ({ ...prev, toeic_score: value }))} />} />
-              <FormLine label="TOEIC Test Date" editable={<DateField label="" value={profile.toeic_test_date} onChange={(value) => setProfile((prev) => ({ ...prev, toeic_test_date: value }))} />} />
+              <FormLine label="TOEIC Score" editable={<TextField label="" value={profile.toeic_score} onChange={(value) => updateProfileField('toeic_score', value)} />} />
+              <FormLine label="TOEIC Test Date" editable={<DateField label="" value={profile.toeic_test_date} onChange={(value) => updateProfileField('toeic_test_date', value)} />} />
               <FormLine label="Safety Shoe" value={clean((user as any)?.boot_size) || '-'} />
               <FormLine label="Boiler Suit" value={`${clean((user as any)?.suit_color) || '-'} | ${clean((user as any)?.suit_size) || '-'}`} />
-              <FormLine label="Company" editable={<TextField label="" value={profile.cv_company} onChange={(value) => setProfile((prev) => ({ ...prev, cv_company: value }))} />} />
+              <FormLine label="Company" editable={<TextField label="" value={profile.cv_company} onChange={(value) => updateProfileField('cv_company', value)} />} />
             </div>
             <div className="mt-5 rounded-[28px] border border-orange-500/20 bg-[var(--surface-strong)] p-4">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1725,11 +1751,11 @@ function CvPageContent() {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Step 1 of 4</p>
                 <p className="text-sm font-black text-[var(--headline)]">
-                  {profileDirty ? 'Personal details changed. Save before moving on.' : 'Personal details are already saved. Continue to certificates when ready.'}
+                  {showProfileSave ? 'Personal details changed. Save before moving on.' : 'Personal details are already saved. Continue to certificates when ready.'}
                 </p>
               </div>
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
-                {profileDirty && (
+                {showProfileSave && (
                   <button onClick={saveProfile} disabled={savingProfile || sqlMissing} className="rounded-2xl bg-orange-600 px-6 py-4 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
                     {savingProfile ? 'Saving...' : 'Save after edit'}
                   </button>
@@ -1773,7 +1799,7 @@ function CvPageContent() {
             />
           </section>
 
-          <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
+          <section ref={serviceEntryRef} className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
             <div className="mb-5 flex items-center gap-3">
               <FileBadge className="text-orange-500" />
               <div>
@@ -1795,7 +1821,7 @@ function CvPageContent() {
             <VaccinationTable rows={vaccinations} onDelete={deleteVaccination} />
           </section>
 
-          <section ref={serviceEntryRef} className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
+          <section className="mt-6 rounded-[36px] border border-orange-500/20 bg-[var(--surface)] p-6 shadow-xl">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--subtle)]">Step 2 of 4</p>
