@@ -298,6 +298,12 @@ function isGenericCompetencyName(value?: string | null) {
   return normalized === 'certificateofcompetencycoc' || normalized === 'certificateofcompetency'
 }
 
+function isCapacityStyleCompetencyTitle(value?: string | null) {
+  const title = clean(value)
+  if (!title) return false
+  return /on\s+ships?\s+of|gross tonnage|near\s+coastal\s+voyage|propulsion power|\bgt\b|\bkw\b/i.test(title)
+}
+
 const buildManualCompetency = (crew?: CurrentUser | null): CrewCert => ({
   id: `manual-cv-competency-${crew?.id || 'current'}`,
   cert_name: '',
@@ -315,7 +321,13 @@ const buildManualCompetency = (crew?: CurrentUser | null): CrewCert => ({
 })
 
 function getCompetencyDisplayTitle(cert?: CrewCert | null) {
-  return clean(cert?.cv_competency_title) || clean(cert?.cert_name)
+  const competencyTitle = clean(cert?.cv_competency_title)
+  if (competencyTitle && !isGenericCompetencyName(competencyTitle)) {
+    return isCapacityStyleCompetencyTitle(competencyTitle)
+      ? normalizeCompetencyAiTitle(competencyTitle) || competencyTitle
+      : competencyTitle
+  }
+  return clean(cert?.cert_name)
 }
 
 const buildManualCvCert = (section: string, linkedTraining?: CrewCert): CrewCert => ({
@@ -500,10 +512,15 @@ function normalizeCompetencyAiTitle(value?: string | null) {
   if (!title) return ''
   const stripped = title
     .replace(/^certificate of competency\s*/i, '')
+    .replace(/^\(?coc\)?\s*/i, '')
+    .replace(/\(?coc\)?$/i, '')
     .replace(/\s+/g, ' ')
     .trim()
+  if (!stripped) return ''
   const splitMatch = stripped.match(/^(.*?)(?:\s+on\s+ships?\s+of\s+.+|\s+near\s+coastal\s+voyage.*|\s+\d[\d,]*(?:\.\d+)?\s*(?:gross tonnage|gt|kw|kW|propulsion power).*)$/i)
-  return clean(splitMatch?.[1] || stripped)
+  const normalized = clean(splitMatch?.[1] || stripped)
+  if (isGenericCompetencyName(normalized) || normalize(normalized) === 'coc') return ''
+  return normalized
 }
 
 function normalizeCompetencyAiCapacity(value?: string | null, fallbackTitle?: string | null) {
@@ -659,6 +676,7 @@ function CvPageContent() {
   const [selectedVesselId, setSelectedVesselId] = useState('')
   const [activeTab, setActiveTab] = useState<CvTab>('personal')
   const [editingServiceId, setEditingServiceId] = useState('')
+  const [serviceEditModalOpen, setServiceEditModalOpen] = useState(false)
   const [manualCompetency, setManualCompetency] = useState<CrewCert | null>(null)
   const [manualCvCerts, setManualCvCerts] = useState<CrewCert[]>([])
   const [hiddenCvCertIds, setHiddenCvCertIds] = useState<string[]>([])
@@ -1086,16 +1104,10 @@ function CvPageContent() {
   }
 
   function updateProfileField<K extends keyof CvProfile>(field: K, value: CvProfile[K]) {
-    setProfileTouched(true)
-    setProfile((prev) => ({ ...prev, [field]: value }))
-  }
-
-  function scrollToSeaServiceEntry() {
-    const target = serviceEntryRef.current
-    if (!target) return
-    const top = target.getBoundingClientRect().top + window.scrollY - 112
-    window.requestAnimationFrame(() => {
-      window.scrollTo({ top, behavior: 'smooth' })
+    setProfile((prev) => {
+      if (prev[field] === value) return prev
+      setProfileTouched(true)
+      return { ...prev, [field]: value }
     })
   }
 
@@ -1348,51 +1360,35 @@ function CvPageContent() {
     setEditingServiceSnapshot(serviceFormSnapshot(resetServiceForm))
     setSelectedVesselId('')
     setEditingServiceId('')
+    setServiceEditModalOpen(false)
   }
 
   function editSeaService(row: SeaServiceRow) {
+    const nextForm = {
+      crew_id: user?.id || row.crew_id,
+      vessel_master_id: row.vessel_master_id || '',
+      vessel_name: row.vessel_name || '',
+      vessel_type: row.vessel_type || '',
+      flag: row.flag || '',
+      imo_no: row.imo_no || '',
+      grt: row.grt || '',
+      dwt: row.dwt || '',
+      engine_type: row.engine_type || '',
+      bhp: row.bhp || '',
+      company: row.company || profile.cv_company || defaultCvCompany,
+      trading_area: row.trading_area || '',
+      rank: row.rank || '',
+      charterer: row.charterer || 'PTTEP',
+      joining_date: toDateValue(row.joining_date),
+      sign_off_date: toDateValue(row.sign_off_date),
+      remarks: row.remarks || '',
+    }
     setEditingServiceId(row.id)
     setSelectedVesselId(row.vessel_master_id || '')
-    setServiceForm({
-      crew_id: user?.id || row.crew_id,
-      vessel_master_id: row.vessel_master_id || '',
-      vessel_name: row.vessel_name || '',
-      vessel_type: row.vessel_type || '',
-      flag: row.flag || '',
-      imo_no: row.imo_no || '',
-      grt: row.grt || '',
-      dwt: row.dwt || '',
-      engine_type: row.engine_type || '',
-      bhp: row.bhp || '',
-      company: row.company || profile.cv_company || defaultCvCompany,
-      trading_area: row.trading_area || '',
-      rank: row.rank || '',
-      charterer: row.charterer || 'PTTEP',
-      joining_date: toDateValue(row.joining_date),
-      sign_off_date: toDateValue(row.sign_off_date),
-      remarks: row.remarks || '',
-    })
-    setEditingServiceSnapshot(serviceFormSnapshot({
-      crew_id: user?.id || row.crew_id,
-      vessel_master_id: row.vessel_master_id || '',
-      vessel_name: row.vessel_name || '',
-      vessel_type: row.vessel_type || '',
-      flag: row.flag || '',
-      imo_no: row.imo_no || '',
-      grt: row.grt || '',
-      dwt: row.dwt || '',
-      engine_type: row.engine_type || '',
-      bhp: row.bhp || '',
-      company: row.company || profile.cv_company || defaultCvCompany,
-      trading_area: row.trading_area || '',
-      rank: row.rank || '',
-      charterer: row.charterer || 'PTTEP',
-      joining_date: toDateValue(row.joining_date),
-      sign_off_date: toDateValue(row.sign_off_date),
-      remarks: row.remarks || '',
-    }))
+    setServiceForm(nextForm)
+    setEditingServiceSnapshot(serviceFormSnapshot(nextForm))
     setActiveTab('service')
-    window.setTimeout(() => scrollToSeaServiceEntry(), 140)
+    setServiceEditModalOpen(true)
   }
 
   function cancelSeaServiceEdit() {
@@ -1503,6 +1499,7 @@ function CvPageContent() {
             && (
               !currentCompetencyTitle
               || isGenericCompetencyName(currentCompetencyTitle)
+              || isCapacityStyleCompetencyTitle(currentCompetencyTitle)
               || normalize(currentCompetencyTitle) === normalize(detectedCertName)
             )
 
