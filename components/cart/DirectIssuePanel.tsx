@@ -8,7 +8,6 @@ type DirectIssuePanelProps = {
   enabled: boolean
   locked?: boolean
   targetCrewId: string
-  userId?: string
   onEnabledChange: (enabled: boolean) => void
   onTargetCrewChange: (crewId: string) => void
 }
@@ -18,7 +17,6 @@ export function DirectIssuePanel({
   enabled,
   locked = false,
   targetCrewId,
-  userId,
   onEnabledChange,
   onTargetCrewChange,
 }: DirectIssuePanelProps) {
@@ -47,7 +45,6 @@ export function DirectIssuePanel({
           >
             <option value="">-- Choose Member --</option>
             {crews
-              .filter((crew) => crew.id !== userId)
               .map((crew) => (
                 <option key={crew.id} value={crew.id || ''}>
                   {crew.full_name}

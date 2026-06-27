@@ -183,7 +183,6 @@ export default function CartDrawer() {
               enabled
               locked
               targetCrewId={targetCrewId}
-              userId={user.id}
               onEnabledChange={() => {}}
               onTargetCrewChange={setTargetCrewId}
             />
