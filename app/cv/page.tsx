@@ -586,6 +586,15 @@ function getCvCell(doc: Document, row: Element, colIndex: number, rowNumber: num
   return cell
 }
 
+function sanitizeCvXmlText(value: string) {
+  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim()
+}
+
+function clearCvCell(cell: Element) {
+  cell.removeAttribute('t')
+  Array.from(cell.childNodes).forEach((node) => cell.removeChild(node))
+}
+
 function setCvCellValue(doc: Document, address: string, value: unknown) {
   const match = address.match(/^([A-Z]+)(\d+)$/i)
   if (!match) return
@@ -594,16 +603,20 @@ function setCvCellValue(doc: Document, address: string, value: unknown) {
   if (!row) return
 
   const cell = getCvCell(doc, row, decodeCvCol(address), rowNumber)
-  const nextValue = value == null ? '' : String(value)
-  cell.setAttribute('t', 'inlineStr')
-  Array.from(cell.childNodes).forEach((node) => cell.removeChild(node))
+  clearCvCell(cell)
+  if (value == null || value === '') return
 
-  const is = doc.createElementNS(cvSpreadsheetNs, 'is')
-  const t = doc.createElementNS(cvSpreadsheetNs, 't')
-  t.textContent = nextValue
-  t.setAttribute('xml:space', 'preserve')
-  is.appendChild(t)
-  cell.appendChild(is)
+  if (typeof value === 'number') {
+    const v = doc.createElementNS(cvSpreadsheetNs, 'v')
+    v.textContent = String(value)
+    cell.appendChild(v)
+    return
+  }
+
+  cell.setAttribute('t', 'str')
+  const v = doc.createElementNS(cvSpreadsheetNs, 'v')
+  v.textContent = sanitizeCvXmlText(String(value))
+  cell.appendChild(v)
 }
 
 function setCvCellStyle(doc: Document, address: string, styleId: string) {
@@ -628,11 +641,9 @@ function ensureContentType(contentTypes: string, extension: string, mime: string
   return next
 }
 
-async function embedCvPictureInWorkbook(workbookArray: ArrayBuffer, pictureDataUrl?: string | null) {
-  const JSZip = (await import('jszip')).default
-  const zip = await JSZip.loadAsync(workbookArray)
+async function embedCvPictureInZip(zip: any, pictureDataUrl?: string | null) {
   const templatePicturePath = 'xl/media/image1.png'
-  if (!zip.file(templatePicturePath)) return workbookArray
+  if (!zip.file(templatePicturePath)) return
   const drawingPath = 'xl/drawings/drawing1.xml'
   const drawingXml = await zip.file(drawingPath)?.async('string')
   if (drawingXml) {
@@ -645,7 +656,6 @@ async function embedCvPictureInWorkbook(workbookArray: ArrayBuffer, pictureDataU
     zip.file(drawingPath, tunedDrawingXml)
   }
   zip.file(templatePicturePath, await imageDataUrlToPngBytes(pictureDataUrl))
-  return zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' })
 }
 
 function CvPageContent() {
@@ -1210,13 +1220,13 @@ function CvPageContent() {
     zip.file(sheetPath, serializer.serializeToString(sheetDoc))
 
     const stamp = new Date().toISOString().slice(0, 10)
+    await embedCvPictureInZip(zip, profile.picture_data_url || null)
     const fileName = `KMT-CV-${clean(user.full_name).replace(/[^a-z0-9]+/gi, '-') || 'Crew'}-${stamp}.xlsx`
-    const xlsxArray = await zip.generateAsync({
+    const finalWorkbook = await zip.generateAsync({
       type: 'arraybuffer',
       compression: 'DEFLATE',
       mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     })
-    const finalWorkbook = await embedCvPictureInWorkbook(xlsxArray, profile.picture_data_url || null)
     downloadWorkbook(finalWorkbook, fileName)
   }
 
