@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ShoppingCart, X, Trash2, PackageCheck, ShieldAlert, Loader2, History as HistoryIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
@@ -83,6 +83,51 @@ export default function CartDrawer() {
   }, [loadData]);
 
   const isAdmin = isAdminRole(user?.position);
+  const selectedCrew = useMemo(
+    () => crews.find((crew) => String(crew.id) === String(targetCrewId)) || null,
+    [crews, targetCrewId],
+  );
+
+  const isSuitItem = (item: any) => String(item?.item_name || '').toLowerCase().includes('suit');
+  const isBootItem = (item: any) => {
+    const name = String(item?.item_name || '').toLowerCase();
+    return name.includes('safety boot') && !name.includes('rubber');
+  };
+
+  const getPpeProfileMismatch = (item: any, crew: any) => {
+    if (!crew) return null;
+
+    if (isSuitItem(item)) {
+      const expectedColor = String(crew.suit_color || '').trim();
+      const expectedSize = String(crew.suit_size || '').trim();
+      const actualColor = String(item.color || '').trim();
+      const actualSize = String(item.size || '').trim();
+
+      if ((expectedColor && actualColor !== expectedColor) || (expectedSize && actualSize !== expectedSize)) {
+        return `Registered boiler suit: ${expectedColor || '-'} | ${expectedSize || '-'}`
+      }
+    }
+
+    if (isBootItem(item)) {
+      const expectedBootSize = String(crew.boot_size || '').trim();
+      const actualBootSize = String(item.size || '').trim();
+      if (expectedBootSize && actualBootSize !== expectedBootSize) {
+        return `Registered safety boots: ${expectedBootSize || '-'}`
+      }
+    }
+
+    return null;
+  };
+
+  const mismatchWarnings = useMemo(() => {
+    if (!selectedCrew) return [];
+    return cartItems
+      .map((item) => ({
+        item,
+        warning: getPpeProfileMismatch(item, selectedCrew),
+      }))
+      .filter((entry) => entry.warning);
+  }, [cartItems, selectedCrew]);
 
   const getTargetItemStats = (itemName: string) => {
     let count = 0;
@@ -119,8 +164,20 @@ export default function CartDrawer() {
 
     setIsSubmitting(true);
     try {
-      const selectedCrew = crews.find((crew) => String(crew.id) === String(targetCrewId));
       if (!selectedCrew) throw new Error('Selected crew not found');
+
+      if (mismatchWarnings.length > 0) {
+        const warningText = mismatchWarnings
+          .map((entry) => `- ${entry.item.item_name} ${entry.item.color ? `(${entry.item.color})` : ''} ${entry.item.size ? `[${entry.item.size}]` : ''}: ${entry.warning}`)
+          .join('\n');
+        const confirmed = window.confirm(
+          `Some issued PPE does not match ${selectedCrew.full_name}'s registered size/profile.\n\n${warningText}\n\nDo you want to continue anyway?`,
+        );
+        if (!confirmed) {
+          setIsSubmitting(false);
+          return;
+        }
+      }
 
       const directIssueAt = new Date().toISOString();
       const { data, error } = await insertPpeRequest({
@@ -191,6 +248,7 @@ export default function CartDrawer() {
           <div className="space-y-4">
             {cartItems.map((item, idx) => {
               const targetStats = targetCrewId ? getTargetItemStats(item.item_name) : null;
+              const mismatchWarning = selectedCrew ? getPpeProfileMismatch(item, selectedCrew) : null;
               return (
                 <div key={`${item.id}-${idx}`} className="space-y-3 rounded-[28px] border border-white/5 bg-zinc-900 p-4 shadow-md">
                   <div className="flex items-start justify-between">
@@ -222,6 +280,16 @@ export default function CartDrawer() {
                           {targetStats.count} Total Issued <span className="ml-2 text-zinc-500">Last: {targetStats.lastDate}</span>
                         </p>
                       </div>
+                    </div>
+                  )}
+
+                  {mismatchWarning && (
+                    <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-3">
+                      <p className="text-[8px] font-black uppercase tracking-widest text-amber-300">Profile mismatch</p>
+                      <p className="mt-1 text-[11px] font-bold text-amber-100">
+                        This item does not match the registered PPE profile.
+                      </p>
+                      <p className="mt-1 text-[10px] font-semibold text-amber-200">{mismatchWarning}</p>
                     </div>
                   )}
                 </div>
