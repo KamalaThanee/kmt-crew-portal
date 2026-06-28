@@ -5,12 +5,7 @@ export type CertPolicy = {
 
 export const NO_EXPIRY_DATE = '2099-12-31'
 
-const fallbackPolicies: Array<{ match: string; policy: CertPolicy }> = [
-  {
-    match: 'safetyofficertraining',
-    policy: { refreshYears: 3, noExpiry: false },
-  },
-]
+const fallbackPolicies: Array<{ match: string; policy: CertPolicy }> = []
 
 export function normalizeText(value: unknown) {
   return String(value || '')
@@ -75,9 +70,11 @@ export function extractCertPolicy(row: Record<string, any> | null | undefined): 
     row.validity_years ??
     row.renew_years
 
-  const refreshYears = Number.isFinite(Number(refreshYearsRaw)) ? Number(refreshYearsRaw) : null
+  const parsedRefreshYears = Number.isFinite(Number(refreshYearsRaw)) ? Number(refreshYearsRaw) : null
+  const refreshYears = parsedRefreshYears && parsedRefreshYears > 0 ? parsedRefreshYears : null
 
   const noExpiryFlag =
+    parsedRefreshYears === 0 ||
     parseBooleanLike(row.no_expiry) ||
     parseBooleanLike(row.noExpiry) ||
     parseBooleanLike(row.no_refresh) ||
@@ -87,7 +84,7 @@ export function extractCertPolicy(row: Record<string, any> | null | undefined): 
 
   return {
     refreshYears,
-    noExpiry: !!noExpiryFlag && !(refreshYears && refreshYears > 0),
+    noExpiry: !!noExpiryFlag,
   }
 }
 
@@ -114,47 +111,47 @@ export function addYearsToDate(dateText: string, years: number) {
 }
 
 const THAI_DIGIT_MAP: Record<string, string> = {
-  '๐': '0',
-  '๑': '1',
-  '๒': '2',
-  '๓': '3',
-  '๔': '4',
-  '๕': '5',
-  '๖': '6',
-  '๗': '7',
-  '๘': '8',
-  '๙': '9',
+  '\u0e50': '0',
+  '\u0e51': '1',
+  '\u0e52': '2',
+  '\u0e53': '3',
+  '\u0e54': '4',
+  '\u0e55': '5',
+  '\u0e56': '6',
+  '\u0e57': '7',
+  '\u0e58': '8',
+  '\u0e59': '9',
 }
 
 const THAI_MONTH_MAP: Record<string, string> = {
-  มกราคม: '01',
-  กุมภาพันธ์: '02',
-  มีนาคม: '03',
-  เมษายน: '04',
-  พฤษภาคม: '05',
-  มิถุนายน: '06',
-  กรกฎาคม: '07',
-  สิงหาคม: '08',
-  กันยายน: '09',
-  ตุลาคม: '10',
-  พฤศจิกายน: '11',
-  ธันวาคม: '12',
-  ม.ค.: '01',
-  ก.พ.: '02',
-  มี.ค.: '03',
-  เม.ย.: '04',
-  พ.ค.: '05',
-  มิ.ย.: '06',
-  ก.ค.: '07',
-  ส.ค.: '08',
-  ก.ย.: '09',
-  ต.ค.: '10',
-  พ.ย.: '11',
-  ธ.ค.: '12',
+  '\u0e21\u0e01\u0e23\u0e32\u0e04\u0e21': '01',
+  '\u0e01\u0e38\u0e21\u0e20\u0e32\u0e1e\u0e31\u0e19\u0e18\u0e4c': '02',
+  '\u0e21\u0e35\u0e19\u0e32\u0e04\u0e21': '03',
+  '\u0e40\u0e21\u0e29\u0e32\u0e22\u0e19': '04',
+  '\u0e1e\u0e24\u0e29\u0e20\u0e32\u0e04\u0e21': '05',
+  '\u0e21\u0e34\u0e16\u0e38\u0e19\u0e32\u0e22\u0e19': '06',
+  '\u0e01\u0e23\u0e01\u0e0e\u0e32\u0e04\u0e21': '07',
+  '\u0e2a\u0e34\u0e07\u0e2b\u0e32\u0e04\u0e21': '08',
+  '\u0e01\u0e31\u0e19\u0e22\u0e32\u0e22\u0e19': '09',
+  '\u0e15\u0e38\u0e25\u0e32\u0e04\u0e21': '10',
+  '\u0e1e\u0e24\u0e28\u0e08\u0e34\u0e01\u0e32\u0e22\u0e19': '11',
+  '\u0e18\u0e31\u0e19\u0e27\u0e32\u0e04\u0e21': '12',
+  '\u0e21.\u0e04.': '01',
+  '\u0e01.\u0e1e.': '02',
+  '\u0e21\u0e35.\u0e04.': '03',
+  '\u0e40\u0e21.\u0e22.': '04',
+  '\u0e1e.\u0e04.': '05',
+  '\u0e21\u0e34.\u0e22.': '06',
+  '\u0e01.\u0e04.': '07',
+  '\u0e2a.\u0e04.': '08',
+  '\u0e01.\u0e22.': '09',
+  '\u0e15.\u0e04.': '10',
+  '\u0e1e.\u0e22.': '11',
+  '\u0e18.\u0e04.': '12',
 }
 
 export function normalizeThaiDigits(value: unknown) {
-  return String(value || '').replace(/[๐-๙]/g, (digit) => THAI_DIGIT_MAP[digit] || digit)
+  return String(value || '').replace(/[\u0e50-\u0e59]/g, (digit) => THAI_DIGIT_MAP[digit] || digit)
 }
 
 function parseSlashDate(source: string) {
@@ -177,12 +174,12 @@ function parseThaiNamedDate(source: string) {
     .map((month) => month.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     .join('|')
 
-  const pattern = new RegExp(`(\\d{1,2})\\s*(?:-|ถึง)?\\s*(\\d{1,2})?\\s*(${monthTokens})\\s*(\\d{4})`, 'g')
+  const pattern = new RegExp(`(\\d{1,2})\\s*(?:-|\u0e16\u0e36\u0e07)?\\s*(\\d{1,2})?\\s*(${monthTokens})\\s*(\\d{4})`, 'g')
   const matches = Array.from(source.matchAll(pattern))
   if (!matches.length) return ''
 
   const preferredSlice =
-    ['ให้ไว้ ณ วันที่', 'ออกให้ไว้ ณ วันที่', 'วันที่ออก', 'วันออกใบ', 'date of issue', 'issued on']
+    ['\u0e43\u0e2b\u0e49\u0e44\u0e27\u0e49 \u0e13 \u0e27\u0e31\u0e19\u0e17\u0e35\u0e48', '\u0e2d\u0e2d\u0e01\u0e43\u0e2b\u0e49\u0e44\u0e27\u0e49 \u0e13 \u0e27\u0e31\u0e19\u0e17\u0e35\u0e48', '\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e2d\u0e2d\u0e01', '\u0e27\u0e31\u0e19\u0e2d\u0e2d\u0e01\u0e43\u0e1a', 'date of issue', 'issued on']
       .map((phrase) => source.lastIndexOf(phrase))
       .find((index) => index !== undefined && index >= 0) ?? -1
 

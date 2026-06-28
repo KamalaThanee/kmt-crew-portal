@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Loader2, X } from 'lucide-react'
 import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
-import { extractCertPolicy, getFallbackCertPolicy, matchCertMasterRow, resolveExpiryDate } from '@/lib/certificates'
+import { extractCertPolicy, matchCertMasterRow, resolveExpiryDate } from '@/lib/certificates'
 import { CertificateScanReview } from '@/components/certificates/CertificateScanReview'
 import { CertificateUploadDropzone } from '@/components/certificates/CertificateUploadDropzone'
 
@@ -79,13 +79,7 @@ function UploadContent() {
 
       const matchedMasterRow = matchCertMasterRow(certMasterRes.data || [], certName)
       const extractedPolicy = extractCertPolicy(matchedMasterRow)
-      const fallbackPolicy = getFallbackCertPolicy(certName)
-
-      setCertPolicy(
-        extractedPolicy.refreshYears || extractedPolicy.noExpiry
-          ? extractedPolicy
-          : fallbackPolicy || extractedPolicy,
-      )
+      setCertPolicy(extractedPolicy)
     }
 
     loadContext()
@@ -176,11 +170,7 @@ function UploadContent() {
 
           const matchedPolicyRow = matchCertMasterRow(certMasterRows, certName, result.detectedCertName)
           const extractedPolicy = extractCertPolicy(matchedPolicyRow)
-          const fallbackPolicy = getFallbackCertPolicy(certName, result.detectedCertName)
-          const resolvedPolicy =
-            extractedPolicy.refreshYears || extractedPolicy.noExpiry
-              ? extractedPolicy
-              : fallbackPolicy || extractedPolicy
+          const resolvedPolicy = extractedPolicy
 
           const resolvedExpiry = resolveExpiryDate({
             issueDate: result.issueDate,
