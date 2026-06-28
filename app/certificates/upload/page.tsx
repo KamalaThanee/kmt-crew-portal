@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Loader2, X } from 'lucide-react'
 import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
-import { extractCertPolicy, normalizeText, resolveExpiryDate } from '@/lib/certificates'
+import { extractCertPolicy, matchCertMasterRow, resolveExpiryDate } from '@/lib/certificates'
 import { CertificateScanReview } from '@/components/certificates/CertificateScanReview'
 import { CertificateUploadDropzone } from '@/components/certificates/CertificateUploadDropzone'
 
@@ -27,6 +27,7 @@ function UploadContent() {
   const [user, setUser] = useState<any>(null)
   const [targetCrew, setTargetCrew] = useState<any>(null)
   const [certPolicy, setCertPolicy] = useState({ refreshYears: null as number | null, noExpiry: false })
+  const [certMasterRows, setCertMasterRows] = useState<any[]>([])
 
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -74,11 +75,9 @@ function UploadContent() {
       }
 
       setTargetCrew(resolvedCrew)
+      setCertMasterRows(certMasterRes.data || [])
 
-      const matchedMasterRow =
-        certMasterRes.data?.find((row: any) => normalizeText(row.cert_name) === normalizeText(certName)) ||
-        certMasterRes.data?.find((row: any) => normalizeText(row.cert_name).includes(normalizeText(certName)) || normalizeText(certName).includes(normalizeText(row.cert_name))) ||
-        null
+      const matchedMasterRow = matchCertMasterRow(certMasterRes.data || [], certName)
 
       setCertPolicy(extractCertPolicy(matchedMasterRow))
     }
@@ -153,13 +152,17 @@ function UploadContent() {
             throw new Error(latestError)
           }
 
+          const matchedPolicyRow = matchCertMasterRow(certMasterRows, certName, result.detectedCertName)
+          const resolvedPolicy = extractCertPolicy(matchedPolicyRow)
+
           const resolvedExpiry = resolveExpiryDate({
             issueDate: result.issueDate,
             expiryDate: result.expiryDate,
-            refreshYears: certPolicy.refreshYears,
-            noExpiry: certPolicy.noExpiry,
+            refreshYears: resolvedPolicy.refreshYears,
+            noExpiry: resolvedPolicy.noExpiry,
           })
 
+          setCertPolicy(resolvedPolicy)
           setScanResult(result)
           setPassportCvData(normalizePassportCvData(result.passportCvData))
           setFinalData({

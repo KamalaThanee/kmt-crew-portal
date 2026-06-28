@@ -12,6 +12,40 @@ export function normalizeText(value: unknown) {
     .trim()
 }
 
+export function normalizeCertPolicyText(value: unknown) {
+  const normalized = normalizeText(value)
+
+  if (!normalized) return ''
+
+  if (normalized.includes('safetyofficer')) {
+    return 'safetyofficertraining'
+  }
+
+  if ((normalized.includes('advance') || normalized.includes('advanced')) && normalized.includes('fire')) {
+    return normalized.includes('cop') ? 'advancedtraininginfirefightingcop' : 'advancedtraininginfirefighting'
+  }
+
+  if (normalized.includes('basicsafety') || normalized.includes('4basic')) {
+    return normalized.includes('cop') ? 'basicsafetytrainingcop' : 'basicsafetytraining'
+  }
+
+  if (normalized.includes('medicalfirstaid')) {
+    return normalized.includes('cop') ? 'medicalfirstaidcop' : 'medicalfirstaid'
+  }
+
+  if (normalized.includes('survivalcraft') || normalized.includes('rescueboats')) {
+    return normalized.includes('cop')
+      ? 'proficiencyinsurvivalcraftandrescueboatscop'
+      : 'proficiencyinsurvivalcraftandrescueboats'
+  }
+
+  if (normalized.includes('gmdss') || normalized.includes('generaloperatorscertificate') || normalized.includes('goc')) {
+    return normalized.includes('cop') ? 'gmdssradiooperatorcop' : 'gmdssradiooperator'
+  }
+
+  return normalized
+}
+
 export function normalizePersonName(value: unknown) {
   return normalizeText(value).replace(/^(mr|mrs|ms|capt|captain|chief|officer)+/g, '')
 }
@@ -83,6 +117,34 @@ export function isNoExpiryDate(value: unknown) {
 
 export function formatExpiryLabel(value: unknown) {
   return isNoExpiryDate(value) ? 'No Expiry' : String(value || '')
+}
+
+export function matchCertMasterRow(
+  rows: Array<Record<string, any>> | null | undefined,
+  ...candidates: Array<unknown>
+) {
+  if (!rows?.length) return null
+
+  const normalizedCandidates = candidates
+    .map((candidate) => normalizeCertPolicyText(candidate))
+    .filter(Boolean)
+
+  if (!normalizedCandidates.length) return null
+
+  for (const candidate of normalizedCandidates) {
+    const exact = rows.find((row) => normalizeCertPolicyText(row.cert_name) === candidate)
+    if (exact) return exact
+  }
+
+  for (const candidate of normalizedCandidates) {
+    const partial = rows.find((row) => {
+      const rowName = normalizeCertPolicyText(row.cert_name)
+      return rowName.includes(candidate) || candidate.includes(rowName)
+    })
+    if (partial) return partial
+  }
+
+  return null
 }
 
 export function auditCertTypeMatch(requestedCertName: unknown, detectedCertName: unknown, note?: unknown) {
