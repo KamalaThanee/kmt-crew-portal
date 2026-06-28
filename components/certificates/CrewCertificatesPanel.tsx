@@ -126,6 +126,7 @@ export function CrewCertificatesPanel({
         {finalDisplayCrews.map((crew) => {
           const isExpanded = expandedCrews.includes(crew.id)
           const pColor = crew.certData.progress === 100 ? 'text-emerald-500' : crew.certData.expired > 0 ? 'text-red-500' : 'text-amber-500'
+          const expandedRows = buildCrewExpandedRows(crew.certData.list || [])
 
           return (
             <div key={crew.id} className={`overflow-hidden rounded-[32px] border bg-[var(--surface)] transition-all duration-300 ${isExpanded ? 'border-orange-500/50 shadow-2xl' : 'border-orange-500/15 hover:border-orange-500/35'}`}>
@@ -146,20 +147,15 @@ export function CrewCertificatesPanel({
               </button>
               {isExpanded && (
                 <div className="animate-in border-t border-orange-500/10 bg-orange-500/5 p-6 pt-0 slide-in-from-top-4 md:p-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    {crew.certData.list.filter((cert: any) => !cert.triggerCert).map((cert: any, index: number) => (
-                      <div key={index} className={`flex items-center justify-between rounded-2xl border border-orange-500/10 bg-[var(--surface-strong)] p-4 border-l-4 ${cert.status === 'ok' ? 'border-l-emerald-500' : cert.status === 'expired' ? 'border-l-red-500' : cert.status === 'warning' ? 'border-l-amber-500' : 'border-l-zinc-400'}`}>
-                        <div>
-                          <p className="text-[11px] font-black uppercase leading-tight text-[var(--headline)]">{cert.cert_name}</p>
-                          <p className={`mt-1 text-[8px] font-bold uppercase ${cert.status === 'ok' ? 'text-emerald-500' : cert.status === 'expired' ? 'text-red-500' : 'text-[var(--subtle)]'}`}>{cert.uploaded ? `Expiry: ${formatExpiryLabel(cert.uploaded.expiry_date)}` : 'Document Missing'}</p>
-                          {cert.satisfiedByRefresher && (
-                            <p className="mt-1 text-[8px] font-black uppercase tracking-widest text-emerald-500">Satisfied by refresher</p>
-                          )}
-                        </div>
-                        <div className="flex gap-2 shrink-0">
-                          {cert.uploaded && <a href={cert.uploaded.file_url} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-orange-500/10 p-2 text-orange-500 hover:bg-orange-600 hover:text-white"><Eye size={16}/></a>}
-                          <button onClick={() => onUploadCrewCertificate(cert.cert_name, crew.id)} className="p-2 bg-orange-600/10 text-orange-500 rounded-lg hover:bg-orange-600 hover:text-white"><RefreshCcw size={16}/></button>
-                        </div>
+                  <div className="mt-4 space-y-3">
+                    {expandedRows.map((row: any, index: number) => (
+                      <div key={`${crew.id}-${row.item.cert_name}-${index}`} className="space-y-2">
+                        <CrewCertCard cert={row.item} crewId={crew.id} onUploadCrewCertificate={onUploadCrewCertificate} />
+                        {row.children.map((child: any) => (
+                          <div key={`${crew.id}-${row.item.cert_name}-${child.cert_name}`} className="pl-4 md:pl-10">
+                            <CrewCertCard cert={child} crewId={crew.id} onUploadCrewCertificate={onUploadCrewCertificate} child />
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>
@@ -169,6 +165,90 @@ export function CrewCertificatesPanel({
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+function normalizeCertName(value: unknown) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function buildCrewExpandedRows(items: any[]) {
+  const itemByName = new Map(items.map((item) => [normalizeCertName(item.cert_name), item]))
+  const childNames = new Set<string>()
+
+  const rows = items.map((item) => {
+    const requiredCerts = Array.isArray(item.requiredCerts) ? item.requiredCerts : item.requiredCert ? [item.requiredCert] : []
+    const children = requiredCerts.map((requiredCert: string) => {
+      const child = itemByName.get(normalizeCertName(requiredCert))
+      if (child) {
+        childNames.add(normalizeCertName(child.cert_name))
+        return child
+      }
+      return {
+        cert_name: requiredCert,
+        status: 'missing',
+        uploaded: null,
+        triggerCert: item.cert_name,
+        relationKind: 'requirement',
+        cert_family: item.cert_family || item.category,
+        virtualRelated: true,
+      }
+    })
+    return { item, children }
+  })
+
+  return rows.filter((row) => !childNames.has(normalizeCertName(row.item.cert_name)) && !row.item.triggerCert)
+}
+
+function CrewCertCard({
+  cert,
+  crewId,
+  onUploadCrewCertificate,
+  child,
+}: {
+  cert: any
+  crewId: string
+  onUploadCrewCertificate: (certName: string, crewId: string) => void
+  child?: boolean
+}) {
+  const statusBorder =
+    cert.status === 'ok'
+      ? 'border-l-emerald-500'
+      : cert.status === 'expired'
+        ? 'border-l-red-500'
+        : cert.status === 'warning'
+          ? 'border-l-amber-500'
+          : 'border-l-zinc-400'
+
+  const statusText =
+    cert.status === 'ok'
+      ? 'text-emerald-500'
+      : cert.status === 'expired'
+        ? 'text-red-500'
+        : 'text-[var(--subtle)]'
+
+  const childLabel =
+    cert.relationKind === 'proficiency'
+      ? 'Related proficiency'
+      : cert.relationKind === 'requirement'
+        ? 'Related requirement'
+        : 'Child certificate'
+
+  return (
+    <div className={`flex items-center justify-between rounded-2xl border border-orange-500/10 bg-[var(--surface-strong)] p-4 border-l-4 ${statusBorder} ${child ? 'bg-blue-500/5 border-blue-500/20' : ''}`}>
+      <div className="min-w-0">
+        {child && <p className="mb-1 text-[8px] font-black uppercase tracking-widest text-blue-500">{childLabel}</p>}
+        <p className="text-[11px] font-black uppercase leading-tight text-[var(--headline)]">{cert.cert_name}</p>
+        <p className={`mt-1 text-[8px] font-bold uppercase ${statusText}`}>{cert.uploaded ? `Expiry: ${formatExpiryLabel(cert.uploaded.expiry_date)}` : 'Document Missing'}</p>
+        {cert.satisfiedByRefresher && (
+          <p className="mt-1 text-[8px] font-black uppercase tracking-widest text-emerald-500">Satisfied by refresher</p>
+        )}
+      </div>
+      <div className="ml-4 flex gap-2 shrink-0">
+        {cert.uploaded?.file_url && <a href={cert.uploaded.file_url} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-orange-500/10 p-2 text-orange-500 hover:bg-orange-600 hover:text-white"><Eye size={16}/></a>}
+        <button onClick={() => onUploadCrewCertificate(cert.cert_name, crewId)} className="rounded-lg bg-orange-600/10 p-2 text-orange-500 hover:bg-orange-600 hover:text-white"><RefreshCcw size={16}/></button>
       </div>
     </div>
   )
