@@ -93,6 +93,21 @@ export function calculateCrewCertificateCompliance({
       const refresherUploaded =
         crewCerts.find((cert) => isBasicSafetyRefresherName(cert.cert_name)) ||
         directUploaded
+      const refresherCertName =
+        required.find((row) => isBasicSafetyRefresherName(row.cert_name))?.cert_name ||
+        refresherUploaded?.cert_name ||
+        'Basic Safety Training ( 4 Basic COP )'
+      const refresherState = evaluateCertStatus(refresherUploaded, today)
+      const refresherChild = {
+        cert_name: refresherCertName,
+        uploaded: refresherUploaded,
+        status: refresherUploaded ? refresherState.status : 'missing',
+        daysLeft: refresherUploaded ? refresherState.daysLeft : -1,
+        cert_family: req.cert_family || req.category,
+        relationKind: 'proficiency',
+        triggerCert: req.cert_name,
+        virtualRelated: !refresherUploaded,
+      }
 
       const componentRows = getBasicSafetyComponentDefinitions().map((definition) => {
         const componentUploaded = crewCerts.find((cert) =>
@@ -111,7 +126,7 @@ export function calculateCrewCertificateCompliance({
         }
       })
 
-      basicSafetyChildren = componentRows
+      basicSafetyChildren = [refresherChild, ...componentRows]
       const validComponentRows = componentRows.filter((row) => row.status === 'ok' || row.status === 'warning')
       const allComponentsPresent = componentRows.every((row) => row.uploaded)
       const allComponentsValid = componentRows.every((row) => row.status === 'ok' || row.status === 'warning')
@@ -120,7 +135,6 @@ export function calculateCrewCertificateCompliance({
       const missingComponentCount = componentRows.filter((row) => row.status === 'missing').length
 
       if (refresherUploaded) {
-        const refresherState = evaluateCertStatus(refresherUploaded, today)
         uploaded = refresherUploaded
         satisfiedByRefresher = refresherState.status === 'ok' || refresherState.status === 'warning'
         status = refresherState.status
@@ -194,7 +208,12 @@ export function calculateCrewCertificateCompliance({
     Array.isArray(row.basicSafetyChildren) ? row.basicSafetyChildren : [],
   )
 
-  const finalList = [...list, ...basicSafetyVirtualChildren]
+  const hasBasicSafetyParent = list.some((row) => isBasicSafetyParentName(row.cert_name))
+  const visibleTopLevelRows = hasBasicSafetyParent
+    ? list.filter((row) => !isBasicSafetyRefresherName(row.cert_name))
+    : list
+
+  const finalList = [...visibleTopLevelRows, ...basicSafetyVirtualChildren]
 
   return {
     list: finalList,
