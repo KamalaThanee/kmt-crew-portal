@@ -13,7 +13,7 @@ import {
   Users,
   XCircle,
 } from 'lucide-react'
-import { formatExpiryLabel } from '@/lib/certificates'
+import { formatExpiryLabel, isBasicSafetyParentName } from '@/lib/certificates'
 
 type CrewCertificatesPanelProps = {
   allCertTypes: string[]
@@ -196,7 +196,14 @@ function buildCrewExpandedRows(items: any[]) {
         virtualRelated: true,
       }
     })
-    return { item, children }
+    const hideBasicSafetyRequirementChildren =
+      isBasicSafetyParentName(item.cert_name) && !!(item.uploaded || item.satisfiedByRefresher)
+
+    const visibleChildren = hideBasicSafetyRequirementChildren
+      ? children.filter((child) => child.relationKind !== 'requirement')
+      : children
+
+    return { item, children: visibleChildren }
   })
 
   return rows.filter((row) => !childNames.has(normalizeCertName(row.item.cert_name)) && !row.item.triggerCert)
