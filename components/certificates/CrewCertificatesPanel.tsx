@@ -200,7 +200,7 @@ function buildCrewExpandedRows(items: any[]) {
       isBasicSafetyParentName(item.cert_name) && !!(item.uploaded || item.satisfiedByRefresher)
 
     const visibleChildren = hideBasicSafetyRequirementChildren
-      ? children.filter((child) => child.relationKind !== 'requirement')
+      ? children.filter((child: any) => child.relationKind !== 'requirement')
       : children
 
     return { item, children: visibleChildren }
