@@ -90,9 +90,8 @@ export function calculateCrewCertificateCompliance({
     let satisfiedByRefresher = false
 
     if (isBasicSafetyParentName(req.cert_name)) {
-      const refresherUploaded =
-        crewCerts.find((cert) => isBasicSafetyRefresherName(cert.cert_name)) ||
-        directUploaded
+      const refresherUploaded = crewCerts.find((cert) => isBasicSafetyRefresherName(cert.cert_name))
+      const parentFallbackUploaded = directUploaded
       const refresherCertName =
         required.find((row) => isBasicSafetyRefresherName(row.cert_name))?.cert_name ||
         refresherUploaded?.cert_name ||
@@ -139,6 +138,12 @@ export function calculateCrewCertificateCompliance({
         satisfiedByRefresher = refresherState.status === 'ok' || refresherState.status === 'warning'
         status = refresherState.status
         daysLeft = refresherState.daysLeft
+      } else if (parentFallbackUploaded) {
+        const parentState = evaluateCertStatus(parentFallbackUploaded, today)
+        uploaded = parentFallbackUploaded
+        satisfiedByRefresher = true
+        status = parentState.status
+        daysLeft = parentState.daysLeft
       } else if (allComponentsValid) {
         status = anyComponentWarning ? 'warning' : 'ok'
         daysLeft = validComponentRows.reduce((lowest, row) => Math.min(lowest, row.daysLeft), 9999)
