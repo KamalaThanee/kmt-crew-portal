@@ -3,7 +3,7 @@
 import { type Dispatch, type SetStateAction, useRef } from 'react'
 import { AlertTriangle, CalendarDays, CheckCircle, Loader2 } from 'lucide-react'
 import type { CertPolicy } from '@/lib/certificates'
-import { resolveExpiryDate } from '@/lib/certificates'
+import { normalizeThaiDigits, resolveExpiryDate } from '@/lib/certificates'
 
 type FinalCertData = {
   issueDate: string
@@ -76,7 +76,7 @@ export function CertificateScanReview({
         <PassportCvInput
           label="Certificate No."
           value={finalData.certNumber || ''}
-          onChange={(value) => onFinalDataChange((prev) => ({ ...prev, certNumber: value }))}
+          onChange={(value) => onFinalDataChange((prev) => ({ ...prev, certNumber: normalizeThaiDigits(value) }))}
         />
         <PassportCvInput
           label="Place of Issue"

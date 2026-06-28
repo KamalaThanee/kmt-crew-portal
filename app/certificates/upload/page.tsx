@@ -5,14 +5,14 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Loader2, X } from 'lucide-react'
 import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
-import { extractCertPolicy, matchCertMasterRow, resolveExpiryDate } from '@/lib/certificates'
+import { extractCertPolicy, matchCertMasterRow, normalizeThaiDigits, resolveExpiryDate } from '@/lib/certificates'
 import { CertificateScanReview } from '@/components/certificates/CertificateScanReview'
 import { CertificateUploadDropzone } from '@/components/certificates/CertificateUploadDropzone'
 
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at
 const isPassportCertificate = (value: string) => value.toLowerCase().includes('passport')
 const normalizePassportCvData = (value: any) => ({
-  nationalIdNo: String(value?.nationalIdNo || '').trim(),
+  nationalIdNo: normalizeThaiDigits(String(value?.nationalIdNo || '').trim()),
   nationality: String(value?.nationality || '').trim(),
   dateOfBirth: String(value?.dateOfBirth || '').trim(),
   placeOfBirth: String(value?.placeOfBirth || '').trim(),
@@ -185,7 +185,7 @@ function UploadContent() {
           setFinalData({
             issueDate: result.issueDate || '',
             expiryDate: resolvedExpiry || '',
-            certNumber: String(result.certNumber || '').trim(),
+            certNumber: normalizeThaiDigits(String(result.certNumber || '').trim()),
             placeOfIssue: String(result.placeOfIssue || '').trim(),
             issueAuthority: String(result.issueAuthority || '').trim(),
           })
@@ -239,6 +239,7 @@ function UploadContent() {
         refreshYears: certPolicy.refreshYears,
         noExpiry: certPolicy.noExpiry,
       })
+      const normalizedCertNumber = normalizeThaiDigits(finalData.certNumber || '')
 
       const { error: dbError } = await supabase.from('crew_certs').upsert(
         {
@@ -246,7 +247,7 @@ function UploadContent() {
           cert_name: certName,
           issue_date: finalData.issueDate,
           expiry_date: expiryDate,
-          cert_number: finalData.certNumber || null,
+          cert_number: normalizedCertNumber || null,
           place_of_issue: finalData.placeOfIssue || null,
           issue_authority: finalData.issueAuthority || null,
           file_url: publicData.publicUrl,
@@ -286,7 +287,7 @@ function UploadContent() {
           cert_name: certName,
           issue_date: finalData.issueDate,
           expiry_date: expiryDate,
-          cert_number: finalData.certNumber || null,
+          cert_number: normalizedCertNumber || null,
           place_of_issue: finalData.placeOfIssue || null,
           issue_authority: finalData.issueAuthority || null,
           file_url: publicData.publicUrl,
