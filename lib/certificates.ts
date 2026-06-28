@@ -5,6 +5,13 @@ export type CertPolicy = {
 
 export const NO_EXPIRY_DATE = '2099-12-31'
 
+const fallbackPolicies: Array<{ match: string; policy: CertPolicy }> = [
+  {
+    match: 'safetyofficertraining',
+    policy: { refreshYears: 3, noExpiry: false },
+  },
+]
+
 export function normalizeText(value: unknown) {
   return String(value || '')
     .toLowerCase()
@@ -82,6 +89,18 @@ export function extractCertPolicy(row: Record<string, any> | null | undefined): 
     refreshYears,
     noExpiry: !!noExpiryFlag && !(refreshYears && refreshYears > 0),
   }
+}
+
+export function getFallbackCertPolicy(...candidates: Array<unknown>): CertPolicy | null {
+  const normalizedCandidates = candidates.map((candidate) => normalizeCertPolicyText(candidate)).filter(Boolean)
+  if (!normalizedCandidates.length) return null
+
+  for (const candidate of normalizedCandidates) {
+    const matched = fallbackPolicies.find((entry) => entry.match === candidate)
+    if (matched) return matched.policy
+  }
+
+  return null
 }
 
 export function addYearsToDate(dateText: string, years: number) {

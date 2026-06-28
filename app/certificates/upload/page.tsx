@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Loader2, X } from 'lucide-react'
 import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
-import { extractCertPolicy, matchCertMasterRow, resolveExpiryDate } from '@/lib/certificates'
+import { extractCertPolicy, getFallbackCertPolicy, matchCertMasterRow, resolveExpiryDate } from '@/lib/certificates'
 import { CertificateScanReview } from '@/components/certificates/CertificateScanReview'
 import { CertificateUploadDropzone } from '@/components/certificates/CertificateUploadDropzone'
 
@@ -78,8 +78,14 @@ function UploadContent() {
       setCertMasterRows(certMasterRes.data || [])
 
       const matchedMasterRow = matchCertMasterRow(certMasterRes.data || [], certName)
+      const extractedPolicy = extractCertPolicy(matchedMasterRow)
+      const fallbackPolicy = getFallbackCertPolicy(certName)
 
-      setCertPolicy(extractCertPolicy(matchedMasterRow))
+      setCertPolicy(
+        extractedPolicy.refreshYears || extractedPolicy.noExpiry
+          ? extractedPolicy
+          : fallbackPolicy || extractedPolicy,
+      )
     }
 
     loadContext()
@@ -87,6 +93,22 @@ function UploadContent() {
       active = false
     }
   }, [user, certName, targetCrewId, router])
+
+  useEffect(() => {
+    if (!scanResult || !finalData.issueDate) return
+    if (scanResult.expiryFoundInDocument && finalData.expiryDate) return
+
+    const resolvedExpiry = resolveExpiryDate({
+      issueDate: finalData.issueDate,
+      expiryDate: '',
+      refreshYears: certPolicy.refreshYears,
+      noExpiry: certPolicy.noExpiry,
+    })
+
+    if (!resolvedExpiry || resolvedExpiry === finalData.expiryDate) return
+
+    setFinalData((prev) => ({ ...prev, expiryDate: resolvedExpiry }))
+  }, [certPolicy.noExpiry, certPolicy.refreshYears, finalData.expiryDate, finalData.issueDate, scanResult])
 
   const canSave = useMemo(() => {
     if (!file || !finalData.issueDate || !finalData.expiryDate) return false
@@ -153,7 +175,12 @@ function UploadContent() {
           }
 
           const matchedPolicyRow = matchCertMasterRow(certMasterRows, certName, result.detectedCertName)
-          const resolvedPolicy = extractCertPolicy(matchedPolicyRow)
+          const extractedPolicy = extractCertPolicy(matchedPolicyRow)
+          const fallbackPolicy = getFallbackCertPolicy(certName, result.detectedCertName)
+          const resolvedPolicy =
+            extractedPolicy.refreshYears || extractedPolicy.noExpiry
+              ? extractedPolicy
+              : fallbackPolicy || extractedPolicy
 
           const resolvedExpiry = resolveExpiryDate({
             issueDate: result.issueDate,
