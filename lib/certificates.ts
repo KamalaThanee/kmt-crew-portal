@@ -113,6 +113,104 @@ export function addYearsToDate(dateText: string, years: number) {
   return date.toISOString().slice(0, 10)
 }
 
+const THAI_DIGIT_MAP: Record<string, string> = {
+  '๐': '0',
+  '๑': '1',
+  '๒': '2',
+  '๓': '3',
+  '๔': '4',
+  '๕': '5',
+  '๖': '6',
+  '๗': '7',
+  '๘': '8',
+  '๙': '9',
+}
+
+const THAI_MONTH_MAP: Record<string, string> = {
+  มกราคม: '01',
+  กุมภาพันธ์: '02',
+  มีนาคม: '03',
+  เมษายน: '04',
+  พฤษภาคม: '05',
+  มิถุนายน: '06',
+  กรกฎาคม: '07',
+  สิงหาคม: '08',
+  กันยายน: '09',
+  ตุลาคม: '10',
+  พฤศจิกายน: '11',
+  ธันวาคม: '12',
+  ม.ค.: '01',
+  ก.พ.: '02',
+  มี.ค.: '03',
+  เม.ย.: '04',
+  พ.ค.: '05',
+  มิ.ย.: '06',
+  ก.ค.: '07',
+  ส.ค.: '08',
+  ก.ย.: '09',
+  ต.ค.: '10',
+  พ.ย.: '11',
+  ธ.ค.: '12',
+}
+
+export function normalizeThaiDigits(value: unknown) {
+  return String(value || '').replace(/[๐-๙]/g, (digit) => THAI_DIGIT_MAP[digit] || digit)
+}
+
+function parseSlashDate(source: string) {
+  const match = source.match(/(\d{1,2})\s*[\/.-]\s*(\d{1,2})\s*[\/.-]\s*(\d{2,4})/)
+  if (!match) return ''
+
+  let year = Number(match[3])
+  if (year < 100) year += 2000
+  if (year > 2400) year -= 543
+  if (!Number.isFinite(year) || year < 1900) return ''
+
+  const month = match[2].padStart(2, '0')
+  const day = match[1].padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseThaiNamedDate(source: string) {
+  const monthTokens = Object.keys(THAI_MONTH_MAP)
+    .sort((a, b) => b.length - a.length)
+    .map((month) => month.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|')
+
+  const pattern = new RegExp(`(\\d{1,2})\\s*(?:-|ถึง)?\\s*(\\d{1,2})?\\s*(${monthTokens})\\s*(\\d{4})`, 'g')
+  const matches = Array.from(source.matchAll(pattern))
+  if (!matches.length) return ''
+
+  const preferredSlice =
+    ['ให้ไว้ ณ วันที่', 'ออกให้ไว้ ณ วันที่', 'วันที่ออก', 'วันออกใบ', 'date of issue', 'issued on']
+      .map((phrase) => source.lastIndexOf(phrase))
+      .find((index) => index !== undefined && index >= 0) ?? -1
+
+  const selected = preferredSlice >= 0
+    ? matches.find((match) => (match.index ?? -1) >= preferredSlice) || matches[matches.length - 1]
+    : matches[matches.length - 1]
+
+  const day = selected[1].padStart(2, '0')
+  const month = THAI_MONTH_MAP[selected[3]]
+  let year = Number(selected[4])
+
+  if (year > 2400) year -= 543
+  if (!Number.isFinite(year) || year < 1900 || !month) return ''
+
+  return `${year}-${month}-${day}`
+}
+
+export function parseThaiDateEvidence(value: unknown) {
+  const source = normalizeThaiDigits(value)
+    .replace(/\s+/g, ' ')
+    .replace(/,/g, ' ')
+    .trim()
+
+  if (!source) return ''
+
+  return parseThaiNamedDate(source) || parseSlashDate(source)
+}
+
 export function resolveExpiryDate(options: {
   issueDate?: string
   expiryDate?: string

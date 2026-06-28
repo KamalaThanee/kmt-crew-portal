@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auditCertTypeMatch, NO_EXPIRY_DATE, parseBooleanLike, resolveExpiryDate } from '@/lib/certificates';
+import { auditCertTypeMatch, NO_EXPIRY_DATE, parseBooleanLike, parseThaiDateEvidence, resolveExpiryDate } from '@/lib/certificates';
 
 export const runtime = 'edge';
 
@@ -22,7 +22,10 @@ export async function POST(req: Request) {
        - Safety Officer Training requires a safety officer/supervisor certificate. Generic Basic Offshore Safety Training, BOSIET, FOET, or general safety induction is NOT acceptable.
        - BOSIET/FOET can satisfy "Basic Offshore Safety Training / Further Offshore Training" only when the document title/content explicitly indicates BOSIET, FOET, Basic Offshore Safety, or Further Offshore Training.
        - Use maritime/STCW compliance knowledge, but reject when unsure. Do not approve a lower-level certificate for a higher-level requirement.
-    3. DATE: Convert Thai years to CE. If the document does not clearly show an expiry date, return expiryDate as an empty string. Only use "2099-12-31" when the certificate explicitly states it never expires.
+    3. DATE: Convert Thai years to CE. Thai Buddhist year 2568 = 2025. Thai digits ๐๑๒๓๔๕๖๗๘๙ must be read as 0123456789.
+       - For Thai training certificates, do NOT use the training period/range as issue date.
+       - Prefer the actual certificate issuance line such as "ให้ไว้ ณ วันที่ ..." or the final awarded/issued date.
+       - If the document does not clearly show an expiry date, return expiryDate as an empty string. Only use "2099-12-31" when the certificate explicitly states it never expires.
     4. CV CERTIFICATE FIELDS: Extract these fields when visible:
        - certNumber: certificate number / document number / license number.
        - placeOfIssue: for training certificates, prefer the training institute / training center / school / provider name. For licenses, passports, medicals, and authority documents use place of issue or issuing place. If only a country/city is shown, use that.
@@ -40,7 +43,7 @@ export async function POST(req: Request) {
        If a field is not clearly visible, return an empty string for that field.
 
     Return ONLY raw JSON:
-    {"issueDate": "YYYY-MM-DD or empty", "expiryDate": "YYYY-MM-DD or empty", "certNumber": "text or empty", "placeOfIssue": "text or empty", "issueAuthority": "text or empty", "competencyTitle": "text or empty", "competencyCapacity": "text or empty", "detectedPersonName": "text", "detectedCertName": "text", "personNameMatch": true, "certTypeMatch": true, "expiryFoundInDocument": true, "passportCvData": {"nationalIdNo": "text or empty", "nationality": "text or empty", "dateOfBirth": "YYYY-MM-DD or empty", "placeOfBirth": "text or empty"}, "note": "Explain your reasoning briefly in English."}`;
+    {"issueDate": "YYYY-MM-DD or empty", "issueDateEvidence": "original document text for issue date or empty", "expiryDate": "YYYY-MM-DD or empty", "expiryDateEvidence": "original document text for expiry date or empty", "certNumber": "text or empty", "placeOfIssue": "text or empty", "issueAuthority": "text or empty", "competencyTitle": "text or empty", "competencyCapacity": "text or empty", "detectedPersonName": "text", "detectedCertName": "text", "personNameMatch": true, "certTypeMatch": true, "expiryFoundInDocument": true, "passportCvData": {"nationalIdNo": "text or empty", "nationality": "text or empty", "dateOfBirth": "YYYY-MM-DD or empty", "placeOfBirth": "text or empty"}, "note": "Explain your reasoning briefly in English."}`;
 
     const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
     let response;
@@ -73,24 +76,29 @@ export async function POST(req: Request) {
 
     const parsed = JSON.parse(jsonMatch[0]);
     const certTypeAllowed = auditCertTypeMatch(certName, parsed.detectedCertName, parsed.note);
+    const issueDateFromEvidence = parseThaiDateEvidence(parsed.issueDateEvidence);
+    const expiryDateFromEvidence = parseThaiDateEvidence(parsed.expiryDateEvidence);
+    const normalizedIssueDate = issueDateFromEvidence || parsed.issueDate || '';
+    const normalizedExpiryDate = expiryDateFromEvidence || parsed.expiryDate || '';
     const refreshYearsNumber = Number.isFinite(Number(refreshYears)) ? Number(refreshYears) : null;
     const noExpiryPolicy = parseBooleanLike(noExpiry);
     const policyOverrodeNoExpiry =
-      parsed.expiryDate === NO_EXPIRY_DATE &&
+      normalizedExpiryDate === NO_EXPIRY_DATE &&
       !noExpiryPolicy &&
-      !!parsed.issueDate &&
+      !!normalizedIssueDate &&
       !!refreshYearsNumber &&
       refreshYearsNumber > 0;
 
     const resolvedExpiryDate = resolveExpiryDate({
-      issueDate: parsed.issueDate,
-      expiryDate: parsed.expiryDate,
+      issueDate: normalizedIssueDate,
+      expiryDate: normalizedExpiryDate,
       refreshYears: refreshYearsNumber,
       noExpiry: noExpiryPolicy,
     });
 
     return NextResponse.json({
       ...parsed,
+      issueDate: normalizedIssueDate,
       certTypeMatch: Boolean(parsed.certTypeMatch) && certTypeAllowed,
       expiryDate: resolvedExpiryDate,
       expiryFoundInDocument: policyOverrodeNoExpiry ? false : parsed.expiryFoundInDocument,
