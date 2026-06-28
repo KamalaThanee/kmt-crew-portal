@@ -19,6 +19,8 @@ AUDIT RULES:
 2. CERT TYPE MATCH: Be strict. The uploaded certificate must satisfy the selected requirement, not just be vaguely related.
    - Advanced/Advance Fire Fighting requires advanced fire fighting evidence. Basic Fire Fighting is NOT acceptable for Advance Fire.
    - Safety Officer Training requires a safety officer/supervisor certificate. Generic Basic Offshore Safety Training, BOSIET, FOET, or general safety induction is NOT acceptable.
+   - Basic Safety Training (4 Basic) and its refresher/COP are NOT the same as Basic Offshore Safety Training / Further Offshore Training. Never treat BOSIET, FOET, Basic Offshore Safety, or Further Offshore Training as Basic Safety Training (4 Basic).
+   - Basic Offshore Safety Training / Further Offshore Training is NOT acceptable for any STCW Basic Safety Training (4 Basic) requirement or refresher requirement.
    - BOSIET/FOET can satisfy "Basic Offshore Safety Training / Further Offshore Training" only when the document title/content explicitly indicates BOSIET, FOET, Basic Offshore Safety, or Further Offshore Training.
    - Use maritime/STCW compliance knowledge, but reject when unsure. Do not approve a lower-level certificate for a higher-level requirement.
 3. DATE: Convert Thai years to CE. Thai Buddhist year 2568 = 2025. Thai digits ๐๑๒๓๔๕๖๗๘๙ must be read as 0123456789.

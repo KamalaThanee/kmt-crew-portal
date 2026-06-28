@@ -14,11 +14,12 @@ export function PersonalCertificatesPanel({
   onPersonalFilterChange,
   onUploadCertificate,
 }: PersonalCertificatesPanelProps) {
-  const mandatoryCount = myCertData.list.filter((cert: any) => cert.is_mandatory).length
+  const topLevelCerts = myCertData.list.filter((cert: any) => !cert.triggerCert)
+  const mandatoryCount = topLevelCerts.filter((cert: any) => cert.is_mandatory).length
   const displayedCerts = personalFilter === 'all' ? myCertData.list : myCertData.list.filter((cert: any) => cert.status === personalFilter)
   const displayedCertRows = buildPersonalCertRows(displayedCerts)
   const dashboardTiles = [
-    { id: 'all', label: 'All', value: myCertData.list.length, detail: 'Required and optional', icon: ShieldCheck, className: 'border-orange-500/30 bg-orange-500/10 text-orange-500' },
+    { id: 'all', label: 'All', value: topLevelCerts.length, detail: 'Required and optional', icon: ShieldCheck, className: 'border-orange-500/30 bg-orange-500/10 text-orange-500' },
     { id: 'ok', label: 'Ready', value: myCertData.ok, detail: 'Valid certificates', icon: CheckCircle2, className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500' },
     { id: 'warning', label: '90 Days', value: myCertData.warning, detail: 'Renewal window', icon: Clock, className: 'border-amber-500/30 bg-amber-500/10 text-amber-500' },
     { id: 'expired', label: 'Expired', value: myCertData.expired, detail: 'Needs action', icon: AlertTriangle, className: 'border-red-500/30 bg-red-500/10 text-red-500' },
@@ -66,7 +67,7 @@ export function PersonalCertificatesPanel({
 
       <div className="space-y-3">
         <p className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--subtle)]">
-          {displayedCerts.length} shown / {myCertData.list.length} certificate records
+          {displayedCertRows.length} shown / {topLevelCerts.length} certificate records
         </p>
         {displayedCertRows.map((row: any, idx: number) => (
           <div key={`${row.item.cert_name}-${idx}`} className="space-y-2">
@@ -201,6 +202,11 @@ function PersonalCertCard({ child, item, onUploadCertificate }: { child?: boolea
                   Also requires: {requiredCert}
                 </span>
               ))
+            )}
+            {item.satisfiedByRefresher && (
+              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-emerald-600">
+                Satisfied by refresher
+              </span>
             )}
             {isRelatedRequirement && (
               <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-600">

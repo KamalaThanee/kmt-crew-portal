@@ -5,6 +5,42 @@ export type CertPolicy = {
 
 export const NO_EXPIRY_DATE = '2099-12-31'
 
+const BASIC_SAFETY_PARENT_ALIASES = [
+  'Basic Safety Training ( 4 Basic )',
+  'Basic Safety Training (4 Basic)',
+  'Basic Safety Training',
+]
+
+const BASIC_SAFETY_REFRESHER_ALIASES = [
+  'Basic Safety Training ( 4 Basic COP )',
+  'Basic Safety Training (4 Basic COP)',
+  'Basic Safety Training Refresher',
+  'Basic Safety Refresher',
+]
+
+const BASIC_SAFETY_COMPONENT_DEFINITIONS = [
+  {
+    key: 'personal_survival_techniques',
+    displayName: 'Personal Survival Techniques',
+    aliases: ['Personal Survival Techniques', 'PST'],
+  },
+  {
+    key: 'fire_prevention_and_fire_fighting',
+    displayName: 'Fire Prevention and Fire Fighting',
+    aliases: ['Fire Prevention and Fire Fighting', 'FPFF', 'Basic Fire Fighting'],
+  },
+  {
+    key: 'elementary_first_aid',
+    displayName: 'Elementary First Aid',
+    aliases: ['Elementary First Aid', 'EFA'],
+  },
+  {
+    key: 'personal_safety_and_social_responsibilities',
+    displayName: 'Personal Safety and Social Responsibilities',
+    aliases: ['Personal Safety and Social Responsibilities', 'PSSR'],
+  },
+] as const
+
 const fallbackPolicies: Array<{ match: string; policy: CertPolicy }> = []
 
 export function normalizeText(value: unknown) {
@@ -46,6 +82,35 @@ export function normalizeCertPolicyText(value: unknown) {
   }
 
   return normalized
+}
+
+function matchesAlias(value: unknown, aliases: readonly string[]) {
+  const normalized = normalizeText(value)
+  return aliases.some((alias) => normalizeText(alias) === normalized)
+}
+
+export function isBasicSafetyParentName(value: unknown) {
+  return matchesAlias(value, BASIC_SAFETY_PARENT_ALIASES)
+}
+
+export function isBasicSafetyRefresherName(value: unknown) {
+  if (matchesAlias(value, BASIC_SAFETY_REFRESHER_ALIASES)) return true
+  const normalized = normalizeText(value)
+  return normalized.includes('basicsafetytraining') && normalized.includes('cop')
+}
+
+export function getBasicSafetyComponentDefinitions() {
+  return BASIC_SAFETY_COMPONENT_DEFINITIONS.map((definition) => ({
+    ...definition,
+    aliases: [...definition.aliases],
+  }))
+}
+
+export function findBasicSafetyComponentDefinition(value: unknown) {
+  const normalized = normalizeText(value)
+  return BASIC_SAFETY_COMPONENT_DEFINITIONS.find((definition) =>
+    definition.aliases.some((alias) => normalizeText(alias) === normalized),
+  ) || null
 }
 
 export function normalizePersonName(value: unknown) {
@@ -280,6 +345,35 @@ export function auditCertTypeMatch(requestedCertName: unknown, detectedCertName:
   const evidenceGenericSafety = evidence.includes('basicoffshoresafety') || evidence.includes('bosiet') || evidence.includes('foet')
 
   if (requestsSafetyOfficer && evidenceGenericSafety && !evidenceSafetyOfficer) {
+    return false
+  }
+
+  const requestedBasicSafety = requested.includes('basicsafety') || requested.includes('4basic')
+  const requestedBasicOffshore =
+    requested.includes('basicoffshoresafety') ||
+    requested.includes('furtheroffshoretraining') ||
+    requested.includes('bosiet') ||
+    requested.includes('foet')
+
+  const evidenceBasicOffshore =
+    evidence.includes('basicoffshoresafety') ||
+    evidence.includes('furtheroffshoretraining') ||
+    evidence.includes('bosiet') ||
+    evidence.includes('foet')
+
+  const evidenceBasicSafety =
+    evidence.includes('basicsafetytraining') ||
+    evidence.includes('4basic') ||
+    evidence.includes('personalsurvivaltechniques') ||
+    evidence.includes('firepreventionandfirefighting') ||
+    evidence.includes('elementaryfirstaid') ||
+    evidence.includes('personalsafetyandsocialresponsibilities')
+
+  if (requestedBasicSafety && evidenceBasicOffshore && !evidenceBasicSafety) {
+    return false
+  }
+
+  if (requestedBasicOffshore && evidenceBasicSafety && !evidenceBasicOffshore) {
     return false
   }
 

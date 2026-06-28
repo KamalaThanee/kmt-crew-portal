@@ -147,11 +147,14 @@ export function CrewCertificatesPanel({
               {isExpanded && (
                 <div className="animate-in border-t border-orange-500/10 bg-orange-500/5 p-6 pt-0 slide-in-from-top-4 md:p-8">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    {crew.certData.list.map((cert: any, index: number) => (
+                    {crew.certData.list.filter((cert: any) => !cert.triggerCert).map((cert: any, index: number) => (
                       <div key={index} className={`flex items-center justify-between rounded-2xl border border-orange-500/10 bg-[var(--surface-strong)] p-4 border-l-4 ${cert.status === 'ok' ? 'border-l-emerald-500' : cert.status === 'expired' ? 'border-l-red-500' : cert.status === 'warning' ? 'border-l-amber-500' : 'border-l-zinc-400'}`}>
                         <div>
                           <p className="text-[11px] font-black uppercase leading-tight text-[var(--headline)]">{cert.cert_name}</p>
                           <p className={`mt-1 text-[8px] font-bold uppercase ${cert.status === 'ok' ? 'text-emerald-500' : cert.status === 'expired' ? 'text-red-500' : 'text-[var(--subtle)]'}`}>{cert.uploaded ? `Expiry: ${formatExpiryLabel(cert.uploaded.expiry_date)}` : 'Document Missing'}</p>
+                          {cert.satisfiedByRefresher && (
+                            <p className="mt-1 text-[8px] font-black uppercase tracking-widest text-emerald-500">Satisfied by refresher</p>
+                          )}
                         </div>
                         <div className="flex gap-2 shrink-0">
                           {cert.uploaded && <a href={cert.uploaded.file_url} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-orange-500/10 p-2 text-orange-500 hover:bg-orange-600 hover:text-white"><Eye size={16}/></a>}

@@ -1,6 +1,25 @@
-import { isNoExpiryDate } from '@/lib/certificates'
+import {
+  getBasicSafetyComponentDefinitions,
+  isBasicSafetyParentName,
+  isBasicSafetyRefresherName,
+  isNoExpiryDate,
+} from '@/lib/certificates'
 
 const normalize = (value: unknown) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim()
+
+function evaluateCertStatus(uploaded: any, today: Date) {
+  if (!uploaded) return { status: 'missing', daysLeft: -1 }
+
+  if (isNoExpiryDate(uploaded.expiry_date)) {
+    return { status: 'ok', daysLeft: 9999 }
+  }
+
+  const expiryDate = new Date(uploaded.expiry_date)
+  const daysLeft = Math.floor((expiryDate.getTime() - today.getTime()) / 86400000)
+  if (daysLeft < 0) return { status: 'expired', daysLeft }
+  if (daysLeft <= 90) return { status: 'warning', daysLeft }
+  return { status: 'ok', daysLeft }
+}
 
 export function calculateCrewCertificateCompliance({
   certMaster,
@@ -63,39 +82,101 @@ export function calculateCrewCertificateCompliance({
   const list = required.map((req) => {
     if (req.is_mandatory) mandatoryTotal += 1
 
-    const uploaded = crewCerts.find((cert) => normalize(cert.cert_name) === normalize(req.cert_name))
+    const directUploaded = crewCerts.find((cert) => normalize(cert.cert_name) === normalize(req.cert_name))
     let status = req.is_mandatory ? 'missing' : 'optional'
     let daysLeft = -1
+    let uploaded = directUploaded
+    let basicSafetyChildren: any[] = []
+    let satisfiedByRefresher = false
 
-    if (uploaded) {
-      if (isNoExpiryDate(uploaded.expiry_date)) {
-        status = 'ok'
-        ok += 1
-        daysLeft = 9999
-      } else {
-        const expiryDate = new Date(uploaded.expiry_date)
-        daysLeft = Math.floor((expiryDate.getTime() - today.getTime()) / 86400000)
-        if (daysLeft < 0) {
-          status = 'expired'
-          expired += 1
-        } else if (daysLeft <= 90) {
-          status = 'warning'
-          warning += 1
-          ok += 1
-        } else {
-          status = 'ok'
-          ok += 1
+    if (isBasicSafetyParentName(req.cert_name)) {
+      const refresherUploaded =
+        crewCerts.find((cert) => isBasicSafetyRefresherName(cert.cert_name)) ||
+        directUploaded
+
+      const componentRows = getBasicSafetyComponentDefinitions().map((definition) => {
+        const componentUploaded = crewCerts.find((cert) =>
+          definition.aliases.some((alias) => normalize(alias) === normalize(cert.cert_name)),
+        )
+        const componentState = evaluateCertStatus(componentUploaded, today)
+        return {
+          cert_name: definition.displayName,
+          uploaded: componentUploaded,
+          status: componentUploaded ? componentState.status : 'missing',
+          daysLeft: componentUploaded ? componentState.daysLeft : -1,
+          cert_family: req.cert_family || req.category,
+          relationKind: 'requirement',
+          triggerCert: req.cert_name,
+          virtualRelated: !componentUploaded,
         }
+      })
+
+      basicSafetyChildren = componentRows
+      const validComponentRows = componentRows.filter((row) => row.status === 'ok' || row.status === 'warning')
+      const allComponentsPresent = componentRows.every((row) => row.uploaded)
+      const allComponentsValid = componentRows.every((row) => row.status === 'ok' || row.status === 'warning')
+      const anyComponentExpired = componentRows.some((row) => row.status === 'expired')
+      const anyComponentWarning = componentRows.some((row) => row.status === 'warning')
+      const missingComponentCount = componentRows.filter((row) => row.status === 'missing').length
+
+      if (refresherUploaded) {
+        const refresherState = evaluateCertStatus(refresherUploaded, today)
+        uploaded = refresherUploaded
+        satisfiedByRefresher = refresherState.status === 'ok' || refresherState.status === 'warning'
+        status = refresherState.status
+        daysLeft = refresherState.daysLeft
+      } else if (allComponentsValid) {
+        status = anyComponentWarning ? 'warning' : 'ok'
+        daysLeft = validComponentRows.reduce((lowest, row) => Math.min(lowest, row.daysLeft), 9999)
+      } else if (anyComponentExpired) {
+        status = 'expired'
+      } else if (allComponentsPresent && !allComponentsValid) {
+        status = 'expired'
+      } else if (missingComponentCount < componentRows.length && anyComponentWarning) {
+        status = 'warning'
+        daysLeft = validComponentRows.reduce((lowest, row) => Math.min(lowest, row.daysLeft), 9999)
+      } else if (req.is_mandatory) {
+        status = 'missing'
       }
+
+      if (status === 'ok') ok += 1
+      else if (status === 'warning') {
+        warning += 1
+        ok += 1
+      } else if (status === 'expired') expired += 1
+      else if (req.is_mandatory) missing += 1
+    } else if (uploaded) {
+      const state = evaluateCertStatus(uploaded, today)
+      status = state.status
+      daysLeft = state.daysLeft
+      if (status === 'ok') ok += 1
+      else if (status === 'warning') {
+        warning += 1
+        ok += 1
+      } else if (status === 'expired') expired += 1
     } else if (req.is_mandatory) {
       missing += 1
     }
 
     const relationship = relationshipByCert.get(normalize(req.cert_name))
-    const requiredCert = relationship?.requiredCerts?.[0]
+    const requiredCert = basicSafetyChildren.length > 0 ? undefined : relationship?.requiredCerts?.[0]
     const triggerCert = relationship?.triggerCerts?.[0]
+    const requiredCerts = basicSafetyChildren.length > 0
+      ? basicSafetyChildren.map((child) => child.cert_name)
+      : relationship?.requiredCerts
 
-    return { ...req, ...relationship, requiredCert, triggerCert, uploaded, status, daysLeft }
+    return {
+      ...req,
+      ...relationship,
+      requiredCert,
+      requiredCerts,
+      triggerCert,
+      uploaded,
+      status,
+      daysLeft,
+      basicSafetyChildren,
+      satisfiedByRefresher,
+    }
   }).sort((a, b) => {
     const weight: Record<string, number> = { expired: 1, missing: 2, warning: 3, ok: 4, optional: 5 }
     const categorySort = categoryWeight(a.cert_family || a.category) - categoryWeight(b.cert_family || b.category)
@@ -109,8 +190,14 @@ export function calculateCrewCertificateCompliance({
     return String(a.cert_name || '').localeCompare(String(b.cert_name || ''))
   })
 
+  const basicSafetyVirtualChildren = list.flatMap((row) =>
+    Array.isArray(row.basicSafetyChildren) ? row.basicSafetyChildren : [],
+  )
+
+  const finalList = [...list, ...basicSafetyVirtualChildren]
+
   return {
-    list,
+    list: finalList,
     progress: mandatoryTotal > 0 ? Math.round((ok / mandatoryTotal) * 100) : 0,
     ok,
     expired,
