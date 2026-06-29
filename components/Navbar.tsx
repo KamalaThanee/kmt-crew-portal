@@ -48,12 +48,12 @@ export default function Navbar() {
     () => getNavbarMenuItems(isAdmin, user?.position),
     [isAdmin, user?.position],
   );
-  const mobileMenuItems = useMemo(() => {
-    if (isAdmin) {
-      return menuItems.filter((item) => item.href !== '/sms-library').slice(0, 5);
-    }
-    return menuItems.slice(0, 4);
-  }, [isAdmin, menuItems]);
+  const mobileMenuItems = useMemo(() => menuItems, [menuItems]);
+  const mobileNavGridClass = useMemo(() => {
+    if (mobileMenuItems.length <= 4) return 'grid-cols-4';
+    if (mobileMenuItems.length <= 6) return 'grid-cols-3';
+    return 'grid-cols-4';
+  }, [mobileMenuItems.length]);
 
   const isNavItemActive = (href: string) => (
     pathname === href ||
@@ -257,7 +257,7 @@ export default function Navbar() {
         </div>
       </nav>
 
-      <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] h-16 bg-[var(--nav-bg)] backdrop-blur-2xl border border-[var(--nav-border)] rounded-3xl z-[100] px-2 shadow-2xl flex items-center justify-around transition-colors duration-300">
+      <nav className={`md:hidden fixed bottom-6 left-1/2 z-[100] grid w-[92%] max-w-sm -translate-x-1/2 gap-1 rounded-3xl border border-[var(--nav-border)] bg-[var(--nav-bg)] px-2 py-2 shadow-2xl backdrop-blur-2xl transition-colors duration-300 ${mobileNavGridClass}`}>
         {mobileMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive = isNavItemActive(item.href);
@@ -265,7 +265,7 @@ export default function Navbar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center gap-1 w-full h-full relative transition-all ${
+              className={`relative flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-2xl transition-all ${
                 isActive ? 'text-orange-500' : 'text-[var(--text-muted)]'
               }`}
             >
