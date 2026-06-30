@@ -125,6 +125,9 @@ export default function CrewDashboard() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse">LOADING...</div>
 
+  const registeredSuit = [textValue(user?.suit_color), textValue(user?.suit_size)].filter(Boolean).join(' / ') || 'Not registered'
+  const registeredBoots = textValue(user?.boot_size) || 'Not registered'
+
   return (
     <div className="mx-auto max-w-[1380px] px-4 pb-32 pt-28 font-sans text-[10px] font-bold uppercase text-[#17120f] md:px-8">
       <div className="mb-8">
@@ -191,10 +194,12 @@ export default function CrewDashboard() {
               <div className="rounded-[22px] bg-[#f7f0ea] px-4 py-4 text-center">
                 <p className="tracking-[0.18em] text-[#8a7669]">Suit</p>
                 <p className="mt-2 text-3xl font-black text-[#14100d]">{stats.suit}/2</p>
+                <p className="mt-2 truncate text-[11px] font-black normal-case text-[#c24c12]" title={registeredSuit}>{registeredSuit}</p>
               </div>
               <div className="rounded-[22px] bg-[#f7f0ea] px-4 py-4 text-center">
                 <p className="tracking-[0.18em] text-[#8a7669]">Boots</p>
                 <p className="mt-2 text-3xl font-black text-[#14100d]">{stats.boot}/1</p>
+                <p className="mt-2 truncate text-[11px] font-black normal-case text-[#c24c12]" title={registeredBoots}>{registeredBoots}</p>
               </div>
             </div>
           </Link>
