@@ -2,19 +2,12 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
-import { getStatusDisplayLabel } from '@/lib/history'
-import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
-import { getShipCertificateStatus, getShipSurveyStatus } from '@/lib/shipCertificates'
-import { canViewShipCertificates } from '@/lib/roles'
+import { readCurrentUser } from '@/lib/currentUser'
 import { ChevronRight, ShieldCheck, Clock, ShipWheel, Ruler, Save } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 
 const uniqueSorted = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-const crewCertColumns = 'id, crew_id, cert_name, issue_date, expiry_date, file_url, created_at, updated_at'
-const ppeRequestColumns = 'id, items, status, created_at, crew_id, crew_name'
-const shipCertColumns = 'id, expiry_date, next_survey_date, has_expiry, has_survey'
 
 export default function CrewDashboard() {
   const router = useRouter()
@@ -29,9 +22,8 @@ export default function CrewDashboard() {
   const [isSavingPpeSizes, setIsSavingPpeSizes] = useState(false)
 
   useEffect(() => {
-    const uStr = localStorage.getItem('kmt_user')
-    if (!uStr) { router.push('/login'); return; }
-    const u = JSON.parse(uStr);
+    const u = readCurrentUser()
+    if (!u) { router.push('/login'); return; }
     setUser(u);
     setPpeSizeForm({
       suit_color: u.suit_color || '',
@@ -51,92 +43,30 @@ export default function CrewDashboard() {
   }, [activePpeSizeWindow])
 
   async function fetchStats(u: any) {
-    const [
-      matrixRes,
-      myCertsRes,
-      rulesRes,
-    ] = await Promise.all([
-      supabase.from('cert_matrix').select('*'),
-      supabase.from('crew_certs').select(crewCertColumns).eq('crew_id', u.id),
-      supabase.from('cert_rules').select('*'),
-    ])
-    const reqQuery = await applyPpeRequestUserFilter(
-      supabase.from('ppe_requests')
-        .select(ppeRequestColumns)
-        .neq('status', 'rejected')
-        .order('created_at', { ascending: false }),
-      u,
-    )
-    const { data: myReqs } = await reqQuery
-    const [
-      globalIssueRes,
-      inventoryStatsRes,
-      restockRes,
-    ] = await Promise.all([
-      supabase.from('ppe_requests').select('id', { count: 'exact', head: true }).neq('status', 'rejected'),
-      supabase.from('ppe_inventory').select('quantity, threshold'),
-      supabase.from('restock_history').select('created_at').order('created_at', { ascending: false }).limit(1).maybeSingle(),
-    ])
-    const { data: shipCerts } = canViewShipCertificates(u.position)
-      ? await supabase.from('ship_certificates').select(shipCertColumns)
-      : { data: [] as any[] }
-    const [sizeWindowRes, inventoryRes] = await Promise.all([
-      supabase
-        .from('ppe_size_windows')
-        .select('id, title, deadline_at, status, opened_at')
-        .eq('status', 'open')
-        .order('opened_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase.from('ppe_inventory').select('item_name, color, size'),
-    ])
-    if (!sizeWindowRes.error) setActivePpeSizeWindow(sizeWindowRes.data || null)
-    if (!inventoryRes.error) setPpeInventory(inventoryRes.data || [])
-    
-    const matrix = matrixRes.data || []
-    const myCerts = myCertsRes.data || []
-    const rules = rulesRes.data || []
-
-    if (matrix.length) {
-      const certData = calculateCrewCertificateCompliance({ crew: u, crewCerts: myCerts, matrix, rules })
-
-      let sCount = 0, bCount = 0;
-      myReqs?.forEach((r: any) => {
-        r.items?.forEach((i: any) => {
-          if (i.item_name.toLowerCase().includes('suit')) sCount++
-          if (i.item_name.toLowerCase().includes('safety boot') && !i.item_name.toLowerCase().includes('rubber')) bCount++
-        })
+    try {
+      const params = new URLSearchParams({
+        userId: String(u.id || ''),
+        fullName: String(u.full_name || ''),
+        position: String(u.position || ''),
+        suitColor: String(u.suit_color || ''),
+        suitSize: String(u.suit_size || ''),
+        bootSize: String(u.boot_size || ''),
       })
+      const response = await fetch(`/api/dashboard-summary?${params.toString()}`, { cache: 'no-store' })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload?.error || 'Unable to load dashboard summary')
 
-      setStats({
-        total: certData.mandatoryTotal,
-        ok: certData.ok,
-        warn: certData.warning,
-        exp: certData.expired,
-        miss: certData.missing,
-        progress: certData.progress,
-        suit: sCount,
-        boot: bCount,
-        lastStatus: myReqs?.[0]?.status ? getStatusDisplayLabel(myReqs[0].status) : 'No issue yet',
-      })
+      setStats(payload.stats || { progress: 0, ok: 0, warn: 0, exp: 0, miss: 0, total: 0, suit: 0, boot: 0, lastStatus: 'No issue yet' })
+      setShipStats(payload.shipStats || { expired: 0, due90: 0, surveyDue: 0 })
+      setVesselStats(payload.vesselStats || { totalIssues: 0, lowStock: 0, lastIntakeLabel: 'No intake yet' })
+      setActivePpeSizeWindow(payload.activePpeSizeWindow || null)
+      setPpeInventory(Array.isArray(payload.ppeInventory) ? payload.ppeInventory : [])
+    } catch (error: any) {
+      console.error('Dashboard summary failed', error)
+      toast.error(error?.message || 'Unable to load dashboard')
+    } finally {
+      setLoading(false)
     }
-    const shipRows = shipCerts || []
-    const inventoryStatsRows = inventoryStatsRes.data || []
-    const lowStockCount = inventoryStatsRows.filter((item: any) => Number(item.quantity || 0) <= Number(item.threshold || 0)).length
-    const lastIntakeLabel = restockRes.data?.created_at
-      ? new Date(restockRes.data.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).replace(' ', ' ')
-      : 'No intake yet'
-    setShipStats({
-      expired: shipRows.filter((cert: any) => getShipCertificateStatus(cert) === 'expired').length,
-      due90: shipRows.filter((cert: any) => ['due-30', 'due-60', 'due-90'].includes(getShipCertificateStatus(cert))).length,
-      surveyDue: shipRows.filter((cert: any) => ['survey-overdue', 'survey-due-30', 'survey-due-60', 'survey-due-90'].includes(getShipSurveyStatus(cert))).length,
-    })
-    setVesselStats({
-      totalIssues: globalIssueRes.count || 0,
-      lowStock: lowStockCount,
-      lastIntakeLabel,
-    })
-    setLoading(false)
   }
 
   const suitInventory = ppeInventory.filter((item) => String(item.item_name || '').toLowerCase().includes('suit'))

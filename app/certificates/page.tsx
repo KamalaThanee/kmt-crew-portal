@@ -157,6 +157,9 @@ function CertificatesContent() {
   const [crewCertificateLogs, setCrewCertificateLogs] = useState<CrewCertificateLogRow[]>([])
   const [certEmailSettings, setCertEmailSettings] = useState<CertEmailSettings | null>(null)
   const [certEmailLogs, setCertEmailLogs] = useState<CertEmailLogRow[]>([])
+  const [baseLoaded, setBaseLoaded] = useState(false)
+  const [crewLoaded, setCrewLoaded] = useState(false)
+  const [logLoaded, setLogLoaded] = useState(false)
   
   // Filter States
   const [searchTerm, setSearchTerm] = useState('')
@@ -172,30 +175,47 @@ function CertificatesContent() {
   const canManageCertificates = useMemo(() => isAdminRole(currentUser?.position) || canViewShipCertificates(currentUser?.position), [currentUser]);
   const canOpenShipCertificates = useMemo(() => canViewShipCertificates(currentUser?.position), [currentUser]);
 
-  const fetchData = async () => {
-    const [m, master, c, crewsRes, allC, r, logs, crewLogs, emailSettings, emailLogs] = await Promise.all([
+  const fetchBaseData = async () => {
+    const [m, master, c, r] = await Promise.all([
       supabase.from('cert_matrix').select('*'),
       supabase.from('cert_master').select(certMasterColumns),
       supabase.from('crew_certs').select(crewCertColumns).eq('crew_id', currentUser?.id),
+      supabase.from('cert_rules').select('*'),
+    ])
+    if (m.data) setMatrix(m.data)
+    if (master.data) setCertMaster(master.data)
+    if (c.data) setMyCerts(c.data)
+    if (r.data) setRules(r.data)
+    setBaseLoaded(true)
+    setLoading(false)
+  }
+
+  const fetchCrewData = async () => {
+    const [crewsRes, allC] = await Promise.all([
       supabase.from('crews').select(crewColumns).order('full_name'),
       supabase.from('crew_certs').select(crewCertColumns),
-      supabase.from('cert_rules').select('*'),
+    ])
+    if (crewsRes.data) setCrews(crewsRes.data.filter(isCrewActive))
+    if (allC.data) setAllCerts(allC.data)
+    setCrewLoaded(true)
+  }
+
+  const fetchLogData = async () => {
+    const [logs, crewLogs, emailSettings, emailLogs] = await Promise.all([
       supabase.from('ship_cert_history').select(certLogColumns).order('created_at', { ascending: false }).limit(50),
       supabase.from('crew_cert_history').select(crewCertLogColumns).order('created_at', { ascending: false }).limit(100),
       supabase.from('cert_email_settings').select(certEmailSettingsColumns).eq('id', 'default').maybeSingle(),
       supabase.from('cert_email_logs').select(certEmailLogColumns).order('created_at', { ascending: false }).limit(150),
-    ]);
-    if (m.data) setMatrix(m.data);
-    if (master.data) setCertMaster(master.data);
-    if (c.data) setMyCerts(c.data);
-    if (crewsRes.data) setCrews(crewsRes.data.filter(isCrewActive));
-    if (allC.data) setAllCerts(allC.data);
-    if (r.data) setRules(r.data);
-    if (logs.data) setCertificateLogs(logs.data as unknown as CertificateLogRow[]);
-    if (crewLogs.data) setCrewCertificateLogs(crewLogs.data as unknown as CrewCertificateLogRow[]);
-    if (emailSettings.data) setCertEmailSettings(emailSettings.data as unknown as CertEmailSettings);
-    if (emailLogs.data) setCertEmailLogs(emailLogs.data as unknown as CertEmailLogRow[]);
-    setLoading(false);
+    ])
+    if (logs.data) setCertificateLogs(logs.data as unknown as CertificateLogRow[])
+    if (crewLogs.data) setCrewCertificateLogs(crewLogs.data as unknown as CrewCertificateLogRow[])
+    if (emailSettings.data) setCertEmailSettings(emailSettings.data as unknown as CertEmailSettings)
+    if (emailLogs.data) setCertEmailLogs(emailLogs.data as unknown as CertEmailLogRow[])
+    setLogLoaded(true)
+  }
+
+  const fetchData = async () => {
+    await Promise.all([fetchBaseData(), fetchCrewData(), fetchLogData()])
   }
 
   useEffect(() => {
@@ -224,8 +244,23 @@ function CertificatesContent() {
   }, [canManageCertificates, canOpenShipCertificates, router, searchParams])
 
   useEffect(() => {
-    if (currentUser) fetchData();
-  }, [currentUser]);
+    if (!currentUser) return
+    setLoading(true)
+    void fetchBaseData()
+  }, [currentUser])
+
+  useEffect(() => {
+    if (!currentUser || !baseLoaded) return
+    if (activeTab === 'crew' && canManageCertificates && !crewLoaded) {
+      void fetchCrewData()
+    }
+    if (activeTab === 'log' && canManageCertificates && !logLoaded) {
+      void Promise.all([
+        crewLoaded ? Promise.resolve() : fetchCrewData(),
+        fetchLogData(),
+      ])
+    }
+  }, [activeTab, baseLoaded, canManageCertificates, crewLoaded, currentUser, logLoaded])
 
   const calculateCerts = (targetCrew: any, crewCertList: any[]) => {
     return calculateCrewCertificateCompliance({ crew: targetCrew, crewCerts: crewCertList, matrix, rules, certMaster })
@@ -405,7 +440,7 @@ function CertificatesContent() {
         }
       }
 
-      await fetchData()
+      await Promise.all([fetchBaseData(), fetchCrewData()])
       if (updated > 0) toast.success(`AI filled ${updated} certificate record${updated === 1 ? '' : 's'}`)
       if (failed > 0) toast.error(`${failed} certificate${failed === 1 ? '' : 's'} need manual review or retry later`)
       if (updated === 0 && failed === 0) toast.info('AI found no new missing fields to save')
@@ -482,7 +517,9 @@ function CertificatesContent() {
           shipRows={certificateLogs}
           emailSettings={certEmailSettings}
           emailLogs={certEmailLogs}
-          onRefresh={fetchData}
+          onRefresh={async () => {
+            await Promise.all([fetchCrewData(), fetchLogData()])
+          }}
         />
       )}
     </div>

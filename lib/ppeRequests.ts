@@ -42,24 +42,39 @@ async function findFirstExistingColumn(candidates: string[]) {
   return null
 }
 
+async function findFirstExistingColumnForClient(client: any, candidates: string[]) {
+  for (const column of candidates) {
+    const { error } = await client.from('ppe_requests').select(`id, ${column}`).limit(1)
+    if (!error) return column
+    if (!isMissingColumnError(error, column)) {
+      console.warn(`Unable to verify ppe_requests.${column}:`, error)
+    }
+  }
+  return null
+}
+
+export async function getPpeRequestColumnsForClient(client: any) {
+  const [idColumn, nameColumn] = await Promise.all([
+    findFirstExistingColumnForClient(client, ID_COLUMN_CANDIDATES),
+    findFirstExistingColumnForClient(client, NAME_COLUMN_CANDIDATES),
+  ])
+
+  return { idColumn, nameColumn }
+}
+
 export async function getPpeRequestColumns() {
   if (!cachedColumns) {
-    cachedColumns = (async () => {
-      const [idColumn, nameColumn] = await Promise.all([
-        findFirstExistingColumn(ID_COLUMN_CANDIDATES),
-        findFirstExistingColumn(NAME_COLUMN_CANDIDATES),
-      ])
-
-      return { idColumn, nameColumn }
-    })()
+    cachedColumns = getPpeRequestColumnsForClient(supabase)
   }
 
   return cachedColumns
 }
 
-export async function applyPpeRequestUserFilter(query: any, user: { id?: string; full_name?: string }) {
-  const columns = await getPpeRequestColumns()
-
+export async function applyPpeRequestUserFilterWithColumns(
+  query: any,
+  user: { id?: string; full_name?: string },
+  columns: PpeRequestColumns,
+) {
   if (columns.idColumn && user?.id && columns.nameColumn && user?.full_name) {
     return query.or(
       `${columns.idColumn}.eq.${toPostgrestEqValue(user.id)},${columns.nameColumn}.eq.${toPostgrestEqValue(user.full_name)}`,
@@ -75,6 +90,20 @@ export async function applyPpeRequestUserFilter(query: any, user: { id?: string;
   }
 
   return query.eq('id', '__no_matching_identity__')
+}
+
+export async function applyPpeRequestUserFilterWithClient(
+  client: any,
+  query: any,
+  user: { id?: string; full_name?: string },
+) {
+  const columns = await getPpeRequestColumnsForClient(client)
+  return applyPpeRequestUserFilterWithColumns(query, user, columns)
+}
+
+export async function applyPpeRequestUserFilter(query: any, user: { id?: string; full_name?: string }) {
+  const columns = await getPpeRequestColumns()
+  return applyPpeRequestUserFilterWithColumns(query, user, columns)
 }
 
 export async function buildPpeRequestInsert(payload: {

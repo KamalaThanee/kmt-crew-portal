@@ -9,7 +9,6 @@ import { PageShell } from '@/components/layout/PageShell'
 import { getSeaServiceMetrics } from '@/lib/cvMetrics'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import { canManageCvDashboard } from '@/lib/roles'
-import { supabase } from '@/lib/supabase'
 
 type CrewRow = CurrentUser & {
   id: string
@@ -70,17 +69,15 @@ export default function CvDashboardPage() {
 
   async function loadDashboard() {
     setLoading(true)
-    const [crewRes, serviceRes] = await Promise.all([
-      supabase.from('crews').select('id, full_name, position, cv_last_updated_at').order('full_name', { ascending: true }),
-      supabase
-        .from('crew_cv_sea_services')
-        .select('crew_id, company, vessel_type, rank, joining_date, sign_off_date')
-        .order('joining_date', { ascending: false, nullsFirst: false }),
-    ])
-
-    setCrews((crewRes.data || []) as CrewRow[])
-    setServices((serviceRes.data || []) as SeaServiceRow[])
-    setLoading(false)
+    try {
+      const response = await fetch('/api/cv-dashboard-summary', { cache: 'no-store' })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload?.error || 'Unable to load CV dashboard')
+      setCrews((payload.crews || []) as CrewRow[])
+      setServices((payload.services || []) as SeaServiceRow[])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const rankOptions = useMemo(() => {

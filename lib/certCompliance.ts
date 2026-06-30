@@ -6,6 +6,7 @@ import {
 } from '@/lib/certificates'
 
 const normalize = (value: unknown) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim()
+const normalizeRequirementType = (value: unknown) => String(value || '').trim().toUpperCase()
 
 function evaluateCertStatus(uploaded: any, today: Date) {
   if (!uploaded) return { status: 'missing', daysLeft: -1 }
@@ -39,8 +40,14 @@ export function calculateCrewCertificateCompliance({
   const crewPosition = normalize(crew?.position)
   const masterByCert = new Map((certMaster || []).map((row) => [normalize(row.cert_name), row]))
   const required = matrix
-    .filter((row) => normalize(row.position) === crewPosition && (row.requirement_type === 'P' || row.requirement_type === 'O'))
-    .map((row) => ({ ...row, ...(masterByCert.get(normalize(row.cert_name)) || {}), is_mandatory: row.requirement_type === 'P' }))
+    .filter((row) => {
+      const requirementType = normalizeRequirementType(row.requirement_type)
+      return normalize(row.position) === crewPosition && (requirementType === 'P' || requirementType === 'O')
+    })
+    .map((row) => {
+      const requirementType = normalizeRequirementType(row.requirement_type)
+      return { ...row, ...(masterByCert.get(normalize(row.cert_name)) || {}), requirement_type: requirementType, is_mandatory: requirementType === 'P' }
+    })
 
   ;(rules || []).forEach((rule) => {
     const hasTriggerCert = crewCerts.some((cert) => normalize(cert.cert_name) === normalize(rule.trigger_cert))
@@ -209,9 +216,13 @@ export function calculateCrewCertificateCompliance({
     return String(a.cert_name || '').localeCompare(String(b.cert_name || ''))
   })
 
-  const basicSafetyVirtualChildren = list.flatMap((row) =>
-    Array.isArray(row.basicSafetyChildren) ? row.basicSafetyChildren : [],
-  )
+  const basicSafetyVirtualChildren = list.flatMap((row) => {
+    if (!Array.isArray(row.basicSafetyChildren)) return []
+    if (isBasicSafetyParentName(row.cert_name) && (row.uploaded || row.satisfiedByRefresher)) {
+      return row.basicSafetyChildren.filter((child: any) => child.relationKind !== 'requirement')
+    }
+    return row.basicSafetyChildren
+  })
 
   const hasBasicSafetyParent = list.some((row) => isBasicSafetyParentName(row.cert_name))
   const visibleTopLevelRows = hasBasicSafetyParent
@@ -220,14 +231,26 @@ export function calculateCrewCertificateCompliance({
 
   const finalList = [...visibleTopLevelRows, ...basicSafetyVirtualChildren]
 
+  const mandatoryParentNames = new Set(list.filter((row) => row.is_mandatory).map((row) => normalize(row.cert_name)))
+  const mandatoryRows = finalList.filter((row) => {
+    if (row.is_mandatory) return true
+    if (row.triggerCert && mandatoryParentNames.has(normalize(row.triggerCert))) return true
+    return false
+  })
+  const countedOk = mandatoryRows.filter((row) => row.status === 'ok' || row.status === 'warning').length
+  const countedWarning = mandatoryRows.filter((row) => row.status === 'warning').length
+  const countedExpired = mandatoryRows.filter((row) => row.status === 'expired').length
+  const countedMissing = mandatoryRows.filter((row) => row.status === 'missing').length
+  const countedMandatoryTotal = mandatoryRows.length
+
   return {
     list: finalList,
-    progress: mandatoryTotal > 0 ? Math.round((ok / mandatoryTotal) * 100) : 0,
-    ok,
-    expired,
-    warning,
-    missing,
-    mandatoryTotal,
+    progress: countedMandatoryTotal > 0 ? Math.round((countedOk / countedMandatoryTotal) * 100) : 0,
+    ok: countedOk,
+    expired: countedExpired,
+    warning: countedWarning,
+    missing: countedMissing,
+    mandatoryTotal: countedMandatoryTotal,
   }
 }
 

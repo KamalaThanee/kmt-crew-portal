@@ -4,8 +4,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, Clock, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
-import { supabase } from '@/lib/supabase'
 import type { CurrentUser } from '@/lib/currentUser'
 import {
   getCrewNotificationStorageKey,
@@ -105,88 +103,27 @@ export function useNavbarNotifications({
 
     const fetchNotifications = async () => {
       let currentTotal = 0
-      const fetchActivePpeSizeWindow = async () => {
-        const { data, error } = await supabase
-          .from('ppe_size_windows')
-          .select('id, title, deadline_at')
-          .eq('status', 'open')
-          .order('opened_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (error) return null
-        return (data || null) as PpeSizeWindow | null
-      }
+      const params = new URLSearchParams({
+        userId: String(user.id || ''),
+        fullName: String(user.full_name || ''),
+        isAdmin: isAdmin ? 'true' : 'false',
+      })
+      const response = await fetch(`/api/navbar-notifications?${params.toString()}`, { cache: 'no-store' })
+      const payload = await response.json()
+      if (!response.ok) return
 
       if (isAdmin) {
-        const personalCountQuery = await applyPpeRequestUserFilter(
-          supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).in('status', ['approved', 'rejected']),
-          user,
-        )
-
-        const personalUpdatesQuery = await applyPpeRequestUserFilter(
-          supabase
-            .from('ppe_requests')
-            .select('id, created_at, status, admin_remark, rejection_reason, reason, items')
-            .in('status', ['approved', 'rejected'])
-            .order('created_at', { ascending: false })
-            .limit(6),
-          user,
-        )
-
-        const [pendingRes, pendingRowsRes, personalCountRes, personalUpdatesRes, activePpeSizeWindow] = await Promise.all([
-          supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-          supabase
-            .from('ppe_requests')
-            .select('*')
-            .eq('status', 'pending')
-            .order('created_at', { ascending: false })
-            .limit(5),
-          personalCountQuery,
-          personalUpdatesQuery,
-          fetchActivePpeSizeWindow(),
-        ])
-
-        const pendingCount = pendingRes.count || 0
-        const pendingRows = pendingRowsRes.data || []
-        const personalRows = personalUpdatesRes.data || []
-
-        const pendingActions: AdminActionItem[] = pendingRows.map((req: any) => {
-          const crewName = req.crew_name || req.requester_name || req.full_name || 'Unknown crew'
-          const firstItem = req.items?.[0]?.item_name || 'PPE item'
-          const itemCount = req.items?.length || 0
-          const moreLabel = itemCount > 1 ? ` +${itemCount - 1} more` : ''
-          return {
-            id: `pending-${req.id}`,
-            href: `/ppe?view=history`,
-            title: `${crewName} needs PPE review`,
-            description: `${firstItem}${moreLabel}`,
-            meta: new Date(req.created_at).toLocaleString('en-GB'),
-            countLabel: 'NEW',
-            tone: 'amber',
-            icon: Clock,
-          }
-        })
-
-        const personalUpdates: CrewActionItem[] = personalRows.map((req: any) => {
-          const itemName = req.items?.[0]?.item_name || 'PPE item'
-          const approved = req.status === 'approved'
-          return {
-            id: req.id,
-            status: req.status,
-            title: approved ? 'PPE ready to receive' : 'PPE issue rejected',
-            description: approved
-              ? `${itemName} is waiting for your confirmation`
-              : req.admin_remark || req.rejection_reason || `${itemName} needs your attention`,
-          }
-        })
-        const personalApprovedCount = personalRows.filter((req: any) => req.status === 'approved').length
-        const personalUpdateCount = personalCountRes.count || 0
-
-        const ppeSizeActions = buildPpeSizeActions(activePpeSizeWindow, user)
-        const ppeSizeAlertCount = ppeSizeActions.length
+        const pendingActions: AdminActionItem[] = (payload.pendingActions || []).map((item: any) => ({
+          ...item,
+          icon: Clock,
+        }))
+        const personalUpdates: CrewActionItem[] = payload.personalUpdates || []
+        const personalApprovedCount = payload.personalApprovedCount || 0
+        const ppeSizeActions: CrewActionItem[] = payload.ppeSizeActions || []
+        const ppeSizeAlertCount = payload.ppeSizeAlertCount || 0
 
         setNotifData({
-          pending: pendingCount,
+          pending: payload.pending || 0,
           lowStock: 0,
           expiredCerts: 0,
           ppeSizeActions,
@@ -202,29 +139,9 @@ export function useNavbarNotifications({
           ppeSizeAlertCount,
           shipCertAlertCount: 0,
         })
-        currentTotal = pendingCount + personalUpdateCount + ppeSizeAlertCount
+        currentTotal = (payload.pending || 0) + (payload.personalUpdateCount || 0) + ppeSizeAlertCount
       } else {
-        const countQuery = await applyPpeRequestUserFilter(
-          supabase.from('ppe_requests').select('*', { count: 'exact', head: true }).in('status', ['approved', 'rejected']),
-          user,
-        )
-
-        const updatesQuery = await applyPpeRequestUserFilter(
-          supabase
-            .from('ppe_requests')
-            .select('id, created_at, status, admin_remark, rejection_reason, reason, items')
-            .in('status', ['approved', 'rejected'])
-            .order('created_at', { ascending: false })
-            .limit(6),
-          user,
-        )
-
-        const [{ count }, { data: updates }, activePpeSizeWindow] = await Promise.all([
-          countQuery,
-          updatesQuery,
-          fetchActivePpeSizeWindow(),
-        ])
-        const rows = updates || []
+        const rows = payload.updates || []
         const statusStorageKey = getCrewNotificationStorageKey(user)
         const previousStatuses = JSON.parse(
           localStorage.getItem(statusStorageKey) || '{}',
@@ -232,22 +149,14 @@ export function useNavbarNotifications({
         const nextStatuses: SeenCrewRequestStatuses = {}
         let hasNewCrewAction = false
         const actionItems: CrewActionItem[] = rows.map((req: any) => {
-          const itemName = req.items?.[0]?.item_name || 'PPE item'
           const approved = req.status === 'approved'
           nextStatuses[String(req.id)] = String(req.status || '')
-          return {
-            id: req.id,
-            status: req.status,
-            title: approved ? 'PPE ready to receive' : 'PPE issue rejected',
-            description: approved
-              ? `${itemName} is waiting for your confirmation`
-              : req.admin_remark || req.rejection_reason || `${itemName} needs your attention`,
-          }
+          return req
         })
 
         const approvedCount = rows.filter((req: any) => req.status === 'approved').length
-        const ppeSizeActions = buildPpeSizeActions(activePpeSizeWindow, user)
-        const ppeSizeAlertCount = ppeSizeActions.length
+        const ppeSizeActions: CrewActionItem[] = payload.ppeSizeActions || []
+        const ppeSizeAlertCount = payload.ppeSizeAlertCount || 0
 
         if (Object.keys(previousStatuses).length > 0) {
           const newlyApproved = rows.filter(
@@ -300,7 +209,7 @@ export function useNavbarNotifications({
         }
 
         setNotifData({
-          pending: count || 0,
+          pending: payload.pending || 0,
           lowStock: 0,
           expiredCerts: 0,
           ppeSizeActions,
@@ -315,7 +224,7 @@ export function useNavbarNotifications({
           personalApprovedCount: 0,
           shipCertAlertCount: 0,
         })
-        currentTotal = (count || 0) + ppeSizeAlertCount
+        currentTotal = (payload.pending || 0) + ppeSizeAlertCount
       }
 
       const lastSeenTotal = parseInt(localStorage.getItem('kmt_notif_seen') || '0')
