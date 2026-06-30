@@ -780,6 +780,8 @@ export default function SmsLibraryPage() {
           title="SMS Library"
           subtitle="Controlled procedure and checklist documents"
           icon={<FileText className="text-orange-500" size={36} />}
+          mobileBackHref="/dashboard"
+          mobileBackLabel="Dashboard"
           controls={(
             <div className="grid w-full max-w-2xl grid-cols-4 rounded-[30px] border border-orange-500/20 bg-black/40 p-1.5 text-[10px] font-black uppercase tracking-tight text-zinc-500 shadow-2xl backdrop-blur md:w-[720px]">
               {tabs.map((tab) => (

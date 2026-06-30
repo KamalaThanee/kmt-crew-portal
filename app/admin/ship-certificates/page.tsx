@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CalendarClock, Download, ExternalLink, FileBadge, Loader2, PlusCircle, Search, ShipWheel, Trash2, UploadCloud, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CalendarClock, Download, ExternalLink, FileBadge, Loader2, PlusCircle, Search, ShipWheel, Trash2, UploadCloud, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { compressImage } from '@/lib/certificateUpload'
 import { exportShipCertificatesTo1162 } from '@/lib/shipCertificateExport'
@@ -1079,6 +1079,15 @@ export default function ShipCertificatesPage() {
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <div className="space-y-8">
+        <button
+          type="button"
+          onClick={() => router.push('/certificates?tab=ship')}
+          className="inline-flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--panel)] px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)] shadow-[0_12px_28px_rgba(80,52,16,0.08)] md:hidden"
+        >
+          <ArrowLeft size={14} />
+          Certificates
+        </button>
+
         <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3"><ShipWheel className="text-orange-500" size={36}/> Ship Certificate</h1>

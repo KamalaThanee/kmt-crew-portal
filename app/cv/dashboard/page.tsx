@@ -119,6 +119,8 @@ export default function CvDashboardPage() {
         icon={<FileUser className="text-orange-500" size={38} />}
         title="Crew CV Dashboard"
         subtitle="Admin and radio operator review, tenure filters, and export access"
+        mobileBackHref="/cv"
+        mobileBackLabel="Crew CV"
       />
 
       <section className="mb-6 rounded-[32px] border border-orange-500/20 bg-[var(--surface)] p-4 shadow-xl">

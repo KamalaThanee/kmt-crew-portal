@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { Loader2, X } from 'lucide-react'
+import { ArrowLeft, Loader2, X } from 'lucide-react'
 import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
 import { extractCertPolicy, matchCertMasterRow, normalizeThaiDigits, resolveExpiryDate } from '@/lib/certificates'
 import { CertificateScanReview } from '@/components/certificates/CertificateScanReview'
@@ -307,6 +307,13 @@ function UploadContent() {
 
   return (
     <div className="p-6 max-w-xl mx-auto pb-32 pt-20 font-sans">
+      <button
+        onClick={() => router.push('/certificates')}
+        className="mb-5 inline-flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--panel)] px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)] shadow-[0_12px_28px_rgba(80,52,16,0.08)] md:hidden"
+      >
+        <ArrowLeft size={14} />
+        Certificates
+      </button>
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-2xl font-black uppercase italic tracking-tighter">Upload Cert</h1>

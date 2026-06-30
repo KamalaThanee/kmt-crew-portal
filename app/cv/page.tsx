@@ -1628,6 +1628,8 @@ function CvPageContent() {
         icon={<UserRound className="text-orange-500" size={38} />}
         title="Crew CV"
         subtitle="Personal record, certificates, and sea service profile"
+        mobileBackHref="/dashboard"
+        mobileBackLabel="Dashboard"
       />
 
       {canOpenDashboard && (
