@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 
 const uniqueSorted = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+const textValue = (value: unknown) => (typeof value === 'string' ? value : value == null ? '' : String(value))
 
 export default function CrewDashboard() {
   const router = useRouter()
@@ -26,9 +27,9 @@ export default function CrewDashboard() {
     if (!u) { router.push('/login'); return; }
     setUser(u);
     setPpeSizeForm({
-      suit_color: u.suit_color || '',
-      suit_size: u.suit_size || '',
-      boot_size: u.boot_size || '',
+      suit_color: textValue(u.suit_color),
+      suit_size: textValue(u.suit_size),
+      boot_size: textValue(u.boot_size),
     });
     fetchStats(u);
   }, [router])
