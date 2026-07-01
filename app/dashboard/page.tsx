@@ -26,14 +26,27 @@ export default function CrewDashboard() {
   useEffect(() => {
     const u = readCurrentUser()
     if (!u) { router.push('/login'); return; }
-    setUser(u);
-    setPpeSizeForm({
-      suit_color: textValue(u.suit_color),
-      suit_size: textValue(u.suit_size),
-      boot_size: textValue(u.boot_size),
-    });
-    fetchStats(u);
+    hydrateUser(u);
   }, [router])
+
+  async function hydrateUser(cachedUser: any) {
+    let nextUser = cachedUser
+    if (cachedUser?.id) {
+      const { data } = await supabase.from('crews').select('*').eq('id', cachedUser.id).maybeSingle()
+      if (data) {
+        nextUser = { ...cachedUser, ...data }
+        localStorage.setItem('kmt_user', JSON.stringify(nextUser))
+      }
+    }
+
+    setUser(nextUser)
+    setPpeSizeForm({
+      suit_color: textValue(nextUser.suit_color),
+      suit_size: textValue(nextUser.suit_size),
+      boot_size: textValue(nextUser.boot_size),
+    })
+    fetchStats(nextUser)
+  }
 
   useEffect(() => {
     if (!activePpeSizeWindow) return

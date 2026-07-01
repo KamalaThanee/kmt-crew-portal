@@ -265,14 +265,19 @@ export default function Navbar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`relative flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-2xl transition-all ${
-                isActive ? 'text-orange-500' : 'text-[var(--text-muted)]'
+              aria-label={item.name}
+              className={`relative flex min-h-[52px] items-center justify-center rounded-2xl transition-all ${
+                isActive
+                  ? 'gap-1.5 bg-orange-500/10 px-3 text-orange-500'
+                  : 'text-[var(--text-muted)] hover:bg-orange-500/5 hover:text-orange-500'
               }`}
             >
               <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-              <span className="text-[7px] font-black uppercase tracking-tighter">
-                {getMobileNavLabel(item.name)}
-              </span>
+              {isActive && (
+                <span className="max-w-[58px] truncate text-[7px] font-black uppercase tracking-tighter">
+                  {getMobileNavLabel(item.name)}
+                </span>
+              )}
               {isActive && <div className="absolute bottom-1 w-5 h-0.5 bg-orange-500 rounded-full shadow-[0_0_10px_#f97316]"></div>}
             </Link>
           );
