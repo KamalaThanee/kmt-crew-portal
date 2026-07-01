@@ -11,6 +11,7 @@ import {
 import Link from 'next/link'
 
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at;
+const textValue = (value: unknown) => (typeof value === 'string' ? value : value == null ? '' : String(value))
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -21,8 +22,21 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const uStr = localStorage.getItem('kmt_user')
-    if (uStr) { const u = JSON.parse(uStr); setUser(u); fetchAdminData(u); }
+    if (uStr) { const u = JSON.parse(uStr); hydrateUser(u); }
   }, [])
+
+  async function hydrateUser(cachedUser: any) {
+    let nextUser = cachedUser
+    if (cachedUser?.id) {
+      const { data } = await supabase.from('crews').select('*').eq('id', cachedUser.id).maybeSingle()
+      if (data) {
+        nextUser = { ...cachedUser, ...data }
+        localStorage.setItem('kmt_user', JSON.stringify(nextUser))
+      }
+    }
+    setUser(nextUser)
+    fetchAdminData(nextUser)
+  }
 
   async function fetchAdminData(u: any) {
     setLoading(true)
@@ -84,8 +98,13 @@ export default function AdminDashboard() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-black text-orange-500 font-black animate-pulse uppercase tracking-widest text-xs">Command Hub...</div>
 
+  const registeredSuitColor = textValue(user?.suit_color)
+  const registeredSuitSize = textValue(user?.suit_size)
+  const registeredSuit = [registeredSuitColor, registeredSuitSize].filter(Boolean).join(' / ') || 'Not registered'
+  const registeredBoots = textValue(user?.boot_size) || 'Not registered'
+
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-16 md:pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div><h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3 text-white"><ShieldCheck className="text-orange-500" size={36}/> Command Center</h1><p className="text-zinc-500 mt-1 tracking-widest">Vessel Oversight</p></div>
         <button onClick={() => fetchAdminData(user)} className="p-3 bg-zinc-900 border border-white/5 rounded-full hover:bg-orange-600 transition-all"><RefreshCw size={20}/></button>
@@ -105,7 +124,15 @@ export default function AdminDashboard() {
               </div>
            </Link>
            <Link href="/my-requests" className="block bg-zinc-900 border border-white/5 p-6 rounded-[32px] space-y-4 hover:border-emerald-500 transition-all">
-              <div className="flex justify-between items-center"><p className="text-zinc-500 uppercase">My PPE</p><span className="text-blue-400 font-black">{personal.lastStatus}</span></div>
+              <div className="flex justify-between items-start gap-3">
+                <div>
+                  <p className="text-zinc-500 uppercase">My PPE</p>
+                  <p className="mt-1 text-[11px] font-black normal-case leading-snug text-orange-400">
+                    Suit: {registeredSuit} <span className="mx-1 text-zinc-600">|</span> Boots: {registeredBoots}
+                  </p>
+                </div>
+                <span className="text-blue-400 font-black">{personal.lastStatus}</span>
+              </div>
               <div className="flex gap-4">
                  <div className="flex-1 text-center"><p className="text-[7px] text-zinc-600 uppercase">Suit</p><p className="text-sm font-black">{personal.suit}/2</p></div>
                  <div className="flex-1 text-center"><p className="text-[7px] text-zinc-600 uppercase">Boots</p><p className="text-sm font-black">{personal.boot}/1</p></div>
