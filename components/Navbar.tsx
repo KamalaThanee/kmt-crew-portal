@@ -50,9 +50,10 @@ export default function Navbar() {
   );
   const mobileMenuItems = useMemo(() => menuItems, [menuItems]);
   const mobileNavGridClass = useMemo(() => {
-    if (mobileMenuItems.length <= 4) return 'grid-cols-4';
-    if (mobileMenuItems.length <= 6) return 'grid-cols-3';
-    return 'grid-cols-4';
+    if (mobileMenuItems.length <= 3) return 'grid-cols-3';
+    if (mobileMenuItems.length === 4) return 'grid-cols-4';
+    if (mobileMenuItems.length === 5) return 'grid-cols-5';
+    return 'grid-cols-6';
   }, [mobileMenuItems.length]);
 
   const isNavItemActive = (href: string) => (
@@ -257,31 +258,31 @@ export default function Navbar() {
         </div>
       </nav>
 
-      <nav className={`md:hidden fixed bottom-6 left-1/2 z-[100] grid w-[92%] max-w-sm -translate-x-1/2 gap-1 rounded-3xl border border-[var(--nav-border)] bg-[var(--nav-bg)] px-2 py-2 shadow-2xl backdrop-blur-2xl transition-colors duration-300 ${mobileNavGridClass}`}>
-        {mobileMenuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = isNavItemActive(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-label={item.name}
-              className={`relative flex min-h-[52px] items-center justify-center rounded-2xl transition-all ${
-                isActive
-                  ? 'gap-1.5 bg-orange-500/10 px-3 text-orange-500'
-                  : 'text-[var(--text-muted)] hover:bg-orange-500/5 hover:text-orange-500'
-              }`}
-            >
-              <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-              {isActive && (
-                <span className="max-w-[58px] truncate text-[7px] font-black uppercase tracking-tighter">
-                  {getMobileNavLabel(item.name)}
-                </span>
-              )}
-              {isActive && <div className="absolute bottom-1 w-5 h-0.5 bg-orange-500 rounded-full shadow-[0_0_10px_#f97316]"></div>}
-            </Link>
-          );
-        })}
+      <nav className="md:hidden fixed inset-x-0 bottom-0 z-[100] border-t border-[var(--nav-border)] bg-[var(--nav-bg)]/95 px-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-14px_35px_rgba(80,52,16,0.12)] backdrop-blur-2xl transition-colors duration-300">
+        <div className={`mx-auto grid max-w-md gap-1 ${mobileNavGridClass}`}>
+          {mobileMenuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = isNavItemActive(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-label={item.name}
+                title={getMobileNavLabel(item.name)}
+                className={`relative flex h-12 items-center justify-center rounded-2xl transition-all ${
+                  isActive
+                    ? 'text-orange-600'
+                    : 'text-[var(--icon-muted)] hover:bg-orange-500/5 hover:text-orange-500'
+                }`}
+              >
+                {isActive && (
+                  <span className="absolute top-0 h-1 w-9 rounded-full bg-orange-600 shadow-[0_0_14px_rgba(249,115,22,0.45)]" />
+                )}
+                <Icon size={24} strokeWidth={isActive ? 2.7 : 2.2} />
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
       {showPpeSizeModal && user && (

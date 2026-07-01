@@ -139,8 +139,10 @@ export default function CrewDashboard() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-blue-500 font-black animate-pulse">LOADING...</div>
 
-  const registeredSuit = [textValue(user?.suit_color), textValue(user?.suit_size)].filter(Boolean).join(' / ') || 'Not registered'
-  const registeredBoots = textValue(user?.boot_size) || 'Not registered'
+  const registeredSuitColor = textValue(user?.suit_color) || textValue(ppeSizeForm.suit_color)
+  const registeredSuitSize = textValue(user?.suit_size) || textValue(ppeSizeForm.suit_size)
+  const registeredBoots = textValue(user?.boot_size) || textValue(ppeSizeForm.boot_size) || 'Not registered'
+  const registeredSuit = [registeredSuitColor, registeredSuitSize].filter(Boolean).join(' / ') || 'Not registered'
 
   return (
     <div className="mx-auto max-w-[1380px] px-4 pb-32 pt-28 font-sans text-[10px] font-bold uppercase text-[#17120f] md:px-8">
@@ -204,9 +206,9 @@ export default function CrewDashboard() {
               <p className="tracking-[0.22em] text-[#5f5147]">My PPE</p>
               <p className="text-sm font-black text-[#2862cf]">{stats.lastStatus}</p>
             </div>
-            <div className="mt-4 rounded-[20px] border border-[#f0ddc9] bg-[#fff8ef] px-4 py-3">
+            <div className="mt-4 rounded-[20px] border border-[#f0ddc9] bg-[#fff8ef] px-4 py-3 shadow-inner shadow-orange-100/50">
               <p className="tracking-[0.18em] text-[#9a7865]">Registered Size</p>
-              <p className="mt-1 text-sm font-black normal-case text-[#c24c12]">
+              <p className="mt-1 text-[13px] font-black normal-case leading-snug text-[#c24c12]">
                 Suit: {registeredSuit} <span className="mx-1 text-[#d7b397]">|</span> Boots: {registeredBoots}
               </p>
             </div>
@@ -214,10 +216,12 @@ export default function CrewDashboard() {
               <div className="rounded-[22px] bg-[#f7f0ea] px-4 py-4 text-center">
                 <p className="tracking-[0.18em] text-[#8a7669]">Suit</p>
                 <p className="mt-2 text-3xl font-black text-[#14100d]">{stats.suit}/2</p>
+                <p className="mt-1 truncate text-[10px] font-black normal-case text-[#c24c12]">{registeredSuit}</p>
               </div>
               <div className="rounded-[22px] bg-[#f7f0ea] px-4 py-4 text-center">
                 <p className="tracking-[0.18em] text-[#8a7669]">Boots</p>
                 <p className="mt-2 text-3xl font-black text-[#14100d]">{stats.boot}/1</p>
+                <p className="mt-1 truncate text-[10px] font-black normal-case text-[#c24c12]">{registeredBoots}</p>
               </div>
             </div>
           </Link>
