@@ -191,16 +191,20 @@ export default function CrewDashboard() {
               <p className="tracking-[0.22em] text-[#5f5147]">My PPE</p>
               <p className="text-sm font-black text-[#2862cf]">{stats.lastStatus}</p>
             </div>
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="mt-4 rounded-[20px] border border-[#f0ddc9] bg-[#fff8ef] px-4 py-3">
+              <p className="tracking-[0.18em] text-[#9a7865]">Registered Size</p>
+              <p className="mt-1 text-sm font-black normal-case text-[#c24c12]">
+                Suit: {registeredSuit} <span className="mx-1 text-[#d7b397]">|</span> Boots: {registeredBoots}
+              </p>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3">
               <div className="rounded-[22px] bg-[#f7f0ea] px-4 py-4 text-center">
                 <p className="tracking-[0.18em] text-[#8a7669]">Suit</p>
                 <p className="mt-2 text-3xl font-black text-[#14100d]">{stats.suit}/2</p>
-                <p className="mt-2 truncate text-[11px] font-black normal-case text-[#c24c12]" title={registeredSuit}>{registeredSuit}</p>
               </div>
               <div className="rounded-[22px] bg-[#f7f0ea] px-4 py-4 text-center">
                 <p className="tracking-[0.18em] text-[#8a7669]">Boots</p>
                 <p className="mt-2 text-3xl font-black text-[#14100d]">{stats.boot}/1</p>
-                <p className="mt-2 truncate text-[11px] font-black normal-case text-[#c24c12]" title={registeredBoots}>{registeredBoots}</p>
               </div>
             </div>
           </Link>
