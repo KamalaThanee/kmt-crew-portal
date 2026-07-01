@@ -145,8 +145,8 @@ export default function CrewDashboard() {
   const registeredSuit = [registeredSuitColor, registeredSuitSize].filter(Boolean).join(' / ') || 'Not registered'
 
   return (
-    <div className="mx-auto max-w-[1380px] px-4 pb-32 pt-28 font-sans text-[10px] font-bold uppercase text-[#17120f] md:px-8">
-      <div className="mb-8">
+    <div className="mx-auto max-w-[1380px] px-4 pb-32 pt-16 font-sans text-[10px] font-bold uppercase text-[#17120f] md:px-8 md:pt-28">
+      <div className="mb-6 md:mb-8">
         <h1 className="text-4xl font-black italic tracking-tight text-[#14100d] md:text-5xl">Command Center</h1>
         <p className="mt-2 tracking-[0.24em] text-[#5f5147]">Vessel oversight</p>
       </div>
@@ -203,10 +203,15 @@ export default function CrewDashboard() {
 
           <Link href="/my-requests" className="block rounded-[32px] border border-[#efd7c2] bg-white/92 p-6 shadow-[0_18px_45px_rgba(80,52,16,0.07)] transition hover:-translate-y-0.5 hover:border-[#cce7d8]">
             <div className="flex items-center justify-between">
-              <p className="tracking-[0.22em] text-[#5f5147]">My PPE</p>
+              <div>
+                <p className="tracking-[0.22em] text-[#5f5147]">My PPE</p>
+                <p className="mt-1 text-[11px] font-black normal-case leading-snug text-[#c24c12]">
+                  Suit: {registeredSuit} <span className="mx-1 text-[#d7b397]">|</span> Boots: {registeredBoots}
+                </p>
+              </div>
               <p className="text-sm font-black text-[#2862cf]">{stats.lastStatus}</p>
             </div>
-            <div className="mt-4 rounded-[20px] border border-[#f0ddc9] bg-[#fff8ef] px-4 py-3 shadow-inner shadow-orange-100/50">
+            <div className="mt-4 hidden rounded-[20px] border border-[#f0ddc9] bg-[#fff8ef] px-4 py-3 shadow-inner shadow-orange-100/50 md:block">
               <p className="tracking-[0.18em] text-[#9a7865]">Registered Size</p>
               <p className="mt-1 text-[13px] font-black normal-case leading-snug text-[#c24c12]">
                 Suit: {registeredSuit} <span className="mx-1 text-[#d7b397]">|</span> Boots: {registeredBoots}
