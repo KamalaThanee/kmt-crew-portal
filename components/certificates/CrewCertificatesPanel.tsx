@@ -93,12 +93,12 @@ export function CrewCertificatesPanel({
         <select value={filterSpecificCert} onChange={(event) => onFilterSpecificCertChange(event.target.value)} className="rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] p-4 text-xs font-black text-[var(--accent-text)] outline-none transition focus:border-orange-500"><option value="All">Select Specific Certificate...</option>{allCertTypes.map((certName) => <option key={certName} value={certName}>{certName}</option>)}</select>
         <button
           onClick={onDownloadFilteredCertificates}
-          disabled={filterSpecificCert === 'All' || filteredCertificateDownloads.length === 0 || isDownloadingCerts}
+          disabled={filteredCertificateDownloads.length === 0 || isDownloadingCerts}
           className="flex items-center justify-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-xs font-black text-emerald-300 transition-all hover:bg-emerald-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-          title={filterSpecificCert === 'All' ? 'Select a specific certificate first' : `Download ${filteredCertificateDownloads.length} matching files as ZIP`}
+          title={`Download ${filteredCertificateDownloads.length} matching files as ZIP`}
         >
           {isDownloadingCerts ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>}
-          {filterSpecificCert === 'All' ? 'Download ZIP' : `ZIP ${filteredCertificateDownloads.length}`}
+          {filterSpecificCert === 'All' ? `ZIP All (${filteredCertificateDownloads.length})` : `ZIP ${filteredCertificateDownloads.length}`}
         </button>
       </div>
 

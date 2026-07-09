@@ -269,7 +269,7 @@ function CertificatesContent() {
   const myCertData = useMemo(() => calculateCerts(currentUser || {}, myCerts), [currentUser, myCerts, matrix, rules, certMaster]);
 
   const allPositions = useMemo(() => ['All', ...new Set(crews.map(c => c.position))].sort(), [crews]);
-  const allCertTypes = useMemo(() => ['All', ...new Set(matrix.map(m => m.cert_name))].sort(), [matrix]);
+  const allCertTypes = useMemo(() => [...new Set(matrix.map(m => m.cert_name))].sort(), [matrix]);
 
   const enhancedCrews = useMemo(() => {
     return crews.map(c => ({ ...c, certData: calculateCerts(c, allCerts.filter(ac => ac.crew_id === c.id)) }))
@@ -306,28 +306,25 @@ function CertificatesContent() {
   }, [enhancedCrews, filterMode]);
 
   const filteredCertificateDownloads = useMemo(() => {
-    if (filterSpecificCert === 'All') return []
+    const downloads = finalDisplayCrews.flatMap((crew: any) => {
+      const certRows = filterSpecificCert === 'All'
+        ? crew.certData.list
+        : crew.certData.list.filter((item: any) => normalize(item.cert_name) === normalize(filterSpecificCert))
 
-    return finalDisplayCrews
-      .map((crew: any) => {
-        const cert = crew.certData.list.find((item: any) => normalize(item.cert_name) === normalize(filterSpecificCert))
-        if (!cert?.uploaded?.file_url) return null
-        return {
+      return certRows
+        .filter((cert: any) => cert?.uploaded?.file_url)
+        .map((cert: any) => ({
           crewName: crew.full_name,
           certName: cert.cert_name,
           url: cert.uploaded.file_url,
           expiryDate: cert.uploaded.expiry_date,
-        }
-      })
-      .filter(Boolean) as Array<{ crewName: string; certName: string; url: string; expiryDate?: string }>
+        }))
+    })
+
+    return downloads as Array<{ crewName: string; certName: string; url: string; expiryDate?: string }>
   }, [filterSpecificCert, finalDisplayCrews])
 
   const handleDownloadFilteredCertificates = async () => {
-    if (filterSpecificCert === 'All') {
-      toast.error('Select a specific certificate first')
-      return
-    }
-
     if (filteredCertificateDownloads.length === 0) {
       toast.error('No uploaded certificate files in the current filter')
       return
@@ -337,8 +334,9 @@ function CertificatesContent() {
 
     try {
       const files: Array<{ name: string; data: Uint8Array }> = []
-      for (const cert of filteredCertificateDownloads) {
-        const baseName = `${safeFileName(cert.crewName)}_${safeFileName(cert.certName)}`
+      for (const [index, cert] of filteredCertificateDownloads.entries()) {
+        const prefix = String(index + 1).padStart(3, '0')
+        const baseName = `${prefix}_${safeFileName(cert.crewName)}_${safeFileName(cert.certName)}`
         const response = await fetch(cert.url)
         if (!response.ok) throw new Error(`Unable to fetch ${cert.crewName}`)
         const blob = await response.blob()
@@ -349,7 +347,8 @@ function CertificatesContent() {
       const zipBlob = createZipBlob(files)
       const zipUrl = URL.createObjectURL(zipBlob)
       const stamp = new Date().toISOString().slice(0, 10)
-      triggerDownload(zipUrl, `${safeFileName(filterSpecificCert)}_certificates_${stamp}.zip`)
+      const certLabel = filterSpecificCert === 'All' ? 'all_crew' : safeFileName(filterSpecificCert)
+      triggerDownload(zipUrl, `${certLabel}_certificates_${stamp}.zip`)
       window.setTimeout(() => URL.revokeObjectURL(zipUrl), 3000)
       toast.success(`Downloaded ZIP with ${files.length} certificate${files.length === 1 ? '' : 's'}`)
     } catch (error: any) {

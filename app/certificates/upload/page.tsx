@@ -11,6 +11,55 @@ import { CertificateUploadDropzone } from '@/components/certificates/Certificate
 
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at
 const isPassportCertificate = (value: string) => value.toLowerCase().includes('passport')
+const isImageUpload = (input: File) =>
+  input.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(input.name)
+
+const readFileAsDataUrl = (input: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('Could not read certificate image'))
+    reader.readAsDataURL(input)
+  })
+
+const normalizeImageDataUrlForPdf = (imageDataUrl: string) =>
+  new Promise<string>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = image.naturalWidth || image.width
+      canvas.height = image.naturalHeight || image.height
+      const context = canvas.getContext('2d')
+      if (!context) {
+        reject(new Error('Could not prepare certificate image'))
+        return
+      }
+
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(image, 0, 0)
+      resolve(canvas.toDataURL('image/jpeg', 0.92))
+    }
+    image.onerror = () => reject(new Error('Could not open certificate image'))
+    image.src = imageDataUrl
+  })
+
+const convertImageToPdfBlob = async (input: File) => {
+  const imageDataUrl = await normalizeImageDataUrlForPdf(await readFileAsDataUrl(input))
+  const { jsPDF } = await import('jspdf')
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const margin = 24
+  const imgProps = pdf.getImageProperties(imageDataUrl)
+  const ratio = Math.min((pageWidth - margin * 2) / imgProps.width, (pageHeight - margin * 2) / imgProps.height)
+  const imgWidth = imgProps.width * ratio
+  const imgHeight = imgProps.height * ratio
+
+  pdf.addImage(imageDataUrl, 'JPEG', (pageWidth - imgWidth) / 2, (pageHeight - imgHeight) / 2, imgWidth, imgHeight)
+  return pdf.output('blob')
+}
+
 const normalizePassportCvData = (value: any) => ({
   nationalIdNo: normalizeThaiDigits(String(value?.nationalIdNo || '').trim()),
   nationality: String(value?.nationality || '').trim(),
@@ -230,14 +279,8 @@ function UploadContent() {
     setIsSaving(true)
     try {
       let fileToUpload: Blob = file as File
-      if (file && !file.type.includes('pdf') && preview) {
-        const { jsPDF } = await import('jspdf')
-        const pdf = new jsPDF()
-        const imgProps = pdf.getImageProperties(preview)
-        const pdfWidth = pdf.internal.pageSize.getWidth()
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width
-        pdf.addImage(preview, 'JPEG', 0, 0, pdfWidth, pdfHeight)
-        fileToUpload = pdf.output('blob')
+      if (file && isImageUpload(file)) {
+        fileToUpload = await convertImageToPdfBlob(file)
       }
 
       const selectedCertName = String(canonicalCertName || certName).trim()
@@ -265,7 +308,9 @@ function UploadContent() {
       const safeCertName = savedCertName.replace(/[^a-zA-Z0-9]/g, '_')
       const filePath = `${safeCrewName}/${safeCertName}_${Date.now()}.pdf`
 
-      const { error: storageError } = await supabase.storage.from('crew-certificates').upload(filePath, fileToUpload)
+      const { error: storageError } = await supabase.storage
+        .from('crew-certificates')
+        .upload(filePath, fileToUpload, { contentType: 'application/pdf' })
       if (storageError) throw storageError
 
       const { data: publicData } = supabase.storage.from('crew-certificates').getPublicUrl(filePath)
