@@ -241,10 +241,21 @@ function UploadContent() {
       }
 
       const selectedCertName = String(canonicalCertName || certName).trim()
-      const matchedSaveRow =
+      let matchedSaveRow =
         matchCertMasterRow(certMasterRows, certName) ||
         matchCertMasterRow(certMasterRows, selectedCertName)
-      const savedCertName = String(matchedSaveRow?.cert_name || selectedCertName).trim()
+
+      if (!matchedSaveRow) {
+        const { data: freshCertMasterRows, error: freshCertMasterError } = await supabase.from('cert_master').select('*')
+        if (freshCertMasterError) throw freshCertMasterError
+        const freshRows = freshCertMasterRows || []
+        setCertMasterRows(freshRows)
+        matchedSaveRow =
+          matchCertMasterRow(freshRows, certName) ||
+          matchCertMasterRow(freshRows, selectedCertName)
+      }
+
+      const savedCertName = String(matchedSaveRow?.cert_name || '').trim()
       if (!savedCertName) {
         toast.error('Certificate master record not found. Please check cert_master name.')
         return
