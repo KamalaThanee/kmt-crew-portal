@@ -197,7 +197,7 @@ function buildCrewExpandedRows(items: any[]) {
       }
     })
     const hideBasicSafetyRequirementChildren =
-      isBasicSafetyParentName(item.cert_name) && !!(item.uploaded || item.satisfiedByRefresher)
+      isBasicSafetyParentName(item.cert_name) && !!(item.uploaded || item.satisfiedByRefresher || item.satisfiedByComponents)
 
     const visibleChildren = hideBasicSafetyRequirementChildren
       ? children.filter((child: any) => child.relationKind !== 'requirement')
@@ -251,6 +251,9 @@ function CrewCertCard({
         <p className={`mt-1 text-[8px] font-bold uppercase ${statusText}`}>{cert.uploaded ? `Expiry: ${formatExpiryLabel(cert.uploaded.expiry_date)}` : 'Document Missing'}</p>
         {cert.satisfiedByRefresher && (
           <p className="mt-1 text-[8px] font-black uppercase tracking-widest text-emerald-500">Satisfied by refresher</p>
+        )}
+        {cert.satisfiedByComponents && !cert.satisfiedByRefresher && (
+          <p className="mt-1 text-[8px] font-black uppercase tracking-widest text-emerald-500">Satisfied by 4 basic subjects</p>
         )}
       </div>
       <div className="ml-4 flex gap-2 shrink-0">

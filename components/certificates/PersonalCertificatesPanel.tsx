@@ -133,10 +133,10 @@ function buildPersonalCertRows(items: any[]) {
       }
     })
     const hideBasicSafetyRequirementChildren =
-      isBasicSafetyParentName(item.cert_name) && !!(item.uploaded || item.satisfiedByRefresher)
+      isBasicSafetyParentName(item.cert_name) && !!(item.uploaded || item.satisfiedByRefresher || item.satisfiedByComponents)
 
     const visibleChildren = hideBasicSafetyRequirementChildren
-      ? children.filter((child) => child.relationKind !== 'requirement')
+      ? children.filter((child: any) => child.relationKind !== 'requirement')
       : children
 
     return { item: { ...item, relatedRequirements, relatedProficiencies }, children: visibleChildren }
@@ -213,6 +213,11 @@ function PersonalCertCard({ child, item, onUploadCertificate }: { child?: boolea
             {item.satisfiedByRefresher && (
               <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-emerald-600">
                 Satisfied by refresher
+              </span>
+            )}
+            {item.satisfiedByComponents && !item.satisfiedByRefresher && (
+              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-emerald-600">
+                Satisfied by 4 basic subjects
               </span>
             )}
             {isRelatedRequirement && (

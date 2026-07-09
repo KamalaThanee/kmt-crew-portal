@@ -95,6 +95,7 @@ export function calculateCrewCertificateCompliance({
     let uploaded = directUploaded
     let basicSafetyChildren: any[] = []
     let satisfiedByRefresher = false
+    let satisfiedByComponents = false
 
     if (isBasicSafetyParentName(req.cert_name)) {
       const refresherUploaded = crewCerts.find((cert) => isBasicSafetyRefresherName(cert.cert_name))
@@ -152,6 +153,7 @@ export function calculateCrewCertificateCompliance({
         status = parentState.status
         daysLeft = parentState.daysLeft
       } else if (allComponentsValid) {
+        satisfiedByComponents = true
         status = anyComponentWarning ? 'warning' : 'ok'
         daysLeft = validComponentRows.reduce((lowest, row) => Math.min(lowest, row.daysLeft), 9999)
       } else if (anyComponentExpired) {
@@ -202,6 +204,7 @@ export function calculateCrewCertificateCompliance({
       daysLeft,
       basicSafetyChildren,
       satisfiedByRefresher,
+      satisfiedByComponents,
     }
   }).sort((a, b) => {
     const weight: Record<string, number> = { expired: 1, missing: 2, warning: 3, ok: 4, optional: 5 }
@@ -218,7 +221,7 @@ export function calculateCrewCertificateCompliance({
 
   const basicSafetyVirtualChildren = list.flatMap((row) => {
     if (!Array.isArray(row.basicSafetyChildren)) return []
-    if (isBasicSafetyParentName(row.cert_name) && (row.uploaded || row.satisfiedByRefresher)) {
+    if (isBasicSafetyParentName(row.cert_name) && (row.uploaded || row.satisfiedByRefresher || row.satisfiedByComponents)) {
       return row.basicSafetyChildren.filter((child: any) => child.relationKind !== 'requirement')
     }
     return row.basicSafetyChildren
