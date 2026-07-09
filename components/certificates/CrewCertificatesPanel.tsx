@@ -243,16 +243,25 @@ function CrewCertCard({
         ? 'Related requirement'
         : 'Child certificate'
 
+  const satisfiedWithoutDirectUpload = !cert.uploaded && (cert.satisfiedByRefresher || cert.satisfiedByComponents)
+  const statusLabel = cert.uploaded
+    ? `Expiry: ${formatExpiryLabel(cert.uploaded.expiry_date)}`
+    : cert.satisfiedByRefresher
+      ? 'Satisfied by refresher'
+      : cert.satisfiedByComponents
+        ? 'Satisfied by 4 basic subjects'
+        : 'Document Missing'
+
   return (
     <div className={`flex items-center justify-between rounded-2xl border border-orange-500/10 bg-[var(--surface-strong)] p-4 border-l-4 ${statusBorder} ${child ? 'bg-blue-500/5 border-blue-500/20' : ''}`}>
       <div className="min-w-0">
         {child && <p className="mb-1 text-[8px] font-black uppercase tracking-widest text-blue-500">{childLabel}</p>}
         <p className="text-[11px] font-black uppercase leading-tight text-[var(--headline)]">{cert.cert_name}</p>
-        <p className={`mt-1 text-[8px] font-bold uppercase ${statusText}`}>{cert.uploaded ? `Expiry: ${formatExpiryLabel(cert.uploaded.expiry_date)}` : 'Document Missing'}</p>
-        {cert.satisfiedByRefresher && (
+        <p className={`mt-1 text-[8px] font-bold uppercase ${satisfiedWithoutDirectUpload ? 'text-emerald-600' : statusText}`}>{statusLabel}</p>
+        {cert.uploaded && cert.satisfiedByRefresher && (
           <p className="mt-1 text-[8px] font-black uppercase tracking-widest text-emerald-500">Satisfied by refresher</p>
         )}
-        {cert.satisfiedByComponents && !cert.satisfiedByRefresher && (
+        {cert.uploaded && cert.satisfiedByComponents && !cert.satisfiedByRefresher && (
           <p className="mt-1 text-[8px] font-black uppercase tracking-widest text-emerald-500">Satisfied by 4 basic subjects</p>
         )}
       </div>
