@@ -240,8 +240,11 @@ function UploadContent() {
         fileToUpload = pdf.output('blob')
       }
 
-      const matchedSaveRow = matchCertMasterRow(certMasterRows, canonicalCertName, certName, scanResult?.detectedCertName)
-      const savedCertName = String(matchedSaveRow?.cert_name || '').trim()
+      const selectedCertName = String(canonicalCertName || certName).trim()
+      const matchedSaveRow =
+        matchCertMasterRow(certMasterRows, certName) ||
+        matchCertMasterRow(certMasterRows, selectedCertName)
+      const savedCertName = String(matchedSaveRow?.cert_name || selectedCertName).trim()
       if (!savedCertName) {
         toast.error('Certificate master record not found. Please check cert_master name.')
         return
