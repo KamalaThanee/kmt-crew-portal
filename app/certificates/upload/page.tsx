@@ -28,6 +28,7 @@ function UploadContent() {
   const [targetCrew, setTargetCrew] = useState<any>(null)
   const [certPolicy, setCertPolicy] = useState({ refreshYears: null as number | null, noExpiry: false })
   const [certMasterRows, setCertMasterRows] = useState<any[]>([])
+  const [canonicalCertName, setCanonicalCertName] = useState('')
 
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -80,6 +81,7 @@ function UploadContent() {
       const matchedMasterRow = matchCertMasterRow(certMasterRes.data || [], certName)
       const extractedPolicy = extractCertPolicy(matchedMasterRow)
       setCertPolicy(extractedPolicy)
+      setCanonicalCertName(String(matchedMasterRow?.cert_name || certName).trim())
     }
 
     loadContext()
@@ -104,11 +106,22 @@ function UploadContent() {
     setFinalData((prev) => ({ ...prev, expiryDate: resolvedExpiry }))
   }, [certPolicy.noExpiry, certPolicy.refreshYears, finalData.expiryDate, finalData.issueDate, scanResult])
 
+  const effectiveExpiryDate = useMemo(
+    () =>
+      resolveExpiryDate({
+        issueDate: finalData.issueDate,
+        expiryDate: finalData.expiryDate,
+        refreshYears: certPolicy.refreshYears,
+        noExpiry: certPolicy.noExpiry,
+      }),
+    [certPolicy.noExpiry, certPolicy.refreshYears, finalData.expiryDate, finalData.issueDate],
+  )
+
   const canSave = useMemo(() => {
-    if (!file || !finalData.issueDate || !finalData.expiryDate) return false
+    if (!file || !finalData.issueDate || !effectiveExpiryDate) return false
     if (!scanResult) return false
     return scanResult.personNameMatch && scanResult.certTypeMatch
-  }, [file, finalData, scanResult])
+  }, [effectiveExpiryDate, file, finalData.issueDate, scanResult])
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0]
@@ -171,6 +184,7 @@ function UploadContent() {
           const matchedPolicyRow = matchCertMasterRow(certMasterRows, certName, result.detectedCertName)
           const extractedPolicy = extractCertPolicy(matchedPolicyRow)
           const resolvedPolicy = extractedPolicy
+          const resolvedCertName = String(matchedPolicyRow?.cert_name || canonicalCertName || certName).trim()
 
           const resolvedExpiry = resolveExpiryDate({
             issueDate: result.issueDate,
@@ -180,6 +194,7 @@ function UploadContent() {
           })
 
           setCertPolicy(resolvedPolicy)
+          setCanonicalCertName(resolvedCertName)
           setScanResult(result)
           setPassportCvData(normalizePassportCvData(result.passportCvData))
           setFinalData({
@@ -225,26 +240,35 @@ function UploadContent() {
         fileToUpload = pdf.output('blob')
       }
 
+      const matchedSaveRow = matchCertMasterRow(certMasterRows, canonicalCertName, certName, scanResult?.detectedCertName)
+      const savedCertName = String(matchedSaveRow?.cert_name || '').trim()
+      if (!savedCertName) {
+        toast.error('Certificate master record not found. Please check cert_master name.')
+        return
+      }
+
       const safeCrewName = String(targetCrew.full_name || 'crew').replace(/[^a-zA-Z0-9]/g, '_')
-      const safeCertName = certName.replace(/[^a-zA-Z0-9]/g, '_')
+      const safeCertName = savedCertName.replace(/[^a-zA-Z0-9]/g, '_')
       const filePath = `${safeCrewName}/${safeCertName}_${Date.now()}.pdf`
 
       const { error: storageError } = await supabase.storage.from('crew-certificates').upload(filePath, fileToUpload)
       if (storageError) throw storageError
 
       const { data: publicData } = supabase.storage.from('crew-certificates').getPublicUrl(filePath)
-      const expiryDate = resolveExpiryDate({
-        issueDate: finalData.issueDate,
-        expiryDate: finalData.expiryDate,
-        refreshYears: certPolicy.refreshYears,
-        noExpiry: certPolicy.noExpiry,
-      })
+      const expiryDate = effectiveExpiryDate
+      if (!expiryDate) {
+        toast.error('Expiry date is required or must be derivable from cert master policy')
+        return
+      }
+      if (expiryDate !== finalData.expiryDate) {
+        setFinalData((prev) => ({ ...prev, expiryDate }))
+      }
       const normalizedCertNumber = normalizeThaiDigits(finalData.certNumber || '')
 
       const { error: dbError } = await supabase.from('crew_certs').upsert(
         {
           crew_id: targetCrew.id || user.id,
-          cert_name: certName,
+          cert_name: savedCertName,
           issue_date: finalData.issueDate,
           expiry_date: expiryDate,
           cert_number: normalizedCertNumber || null,
@@ -258,7 +282,7 @@ function UploadContent() {
       if (dbError) throw dbError
       const normalizedPassportData = normalizePassportCvData(passportCvData)
       const passportUpdate: Record<string, string> = {}
-      if (isPassportCertificate(certName)) {
+      if (isPassportCertificate(savedCertName)) {
         if (normalizedPassportData.nationalIdNo) passportUpdate.national_id_no = normalizedPassportData.nationalIdNo
         if (normalizedPassportData.nationality) passportUpdate.nationality = normalizedPassportData.nationality
         if (normalizedPassportData.dateOfBirth) passportUpdate.date_of_birth = normalizedPassportData.dateOfBirth
@@ -278,20 +302,20 @@ function UploadContent() {
 
       await supabase.from('crew_cert_history').insert({
         crew_id: targetCrew.id || user.id,
-        cert_name: certName,
+        cert_name: savedCertName,
         action: 'upload_certificate',
         old_data: null,
         new_data: {
           crew_id: targetCrew.id || user.id,
           crew_name: targetCrew.full_name || user.full_name,
-          cert_name: certName,
+          cert_name: savedCertName,
           issue_date: finalData.issueDate,
           expiry_date: expiryDate,
           cert_number: normalizedCertNumber || null,
           place_of_issue: finalData.placeOfIssue || null,
           issue_authority: finalData.issueAuthority || null,
           file_url: publicData.publicUrl,
-          passport_cv_data: isPassportCertificate(certName) ? normalizedPassportData : null,
+          passport_cv_data: isPassportCertificate(savedCertName) ? normalizedPassportData : null,
         },
         actor_name: user.full_name || user.position || 'Unknown user',
       })
