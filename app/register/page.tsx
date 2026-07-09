@@ -6,6 +6,8 @@ import { toast } from 'sonner'
 import { Search, Key, ChevronRight, ChevronLeft, User, ShieldCheck } from 'lucide-react'
 
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at
+const normalizePin = (value: unknown) => String(value || '').replace(/\D/g, '').slice(0, 6)
+const hasLoginPin = (crew: any) => normalizePin(crew?.pin).length === 6
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -19,7 +21,7 @@ export default function RegisterPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [formData, setFormData] = useState({
-    id: null as number | null,
+    id: null as string | null,
     full_name: '',
     position: '',
     pin: '',
@@ -36,11 +38,11 @@ export default function RegisterPage() {
   useEffect(() => {
     async function init() {
       const [cr, inv, st] = await Promise.all([
-        supabase.from('crews').select('*').is('pin', null).order('full_name'),
+        supabase.from('crews').select('*').order('full_name'),
         supabase.from('ppe_inventory').select('*'),
         supabase.from('ppe_settings').select('*').eq('id', 1).single()
       ]);
-      if (cr.data) setCrewList(cr.data.filter(isCrewActive))
+      if (cr.data) setCrewList(cr.data.filter((crew) => isCrewActive(crew) && !hasLoginPin(crew)))
       if (inv.data) setInventory(inv.data)
       if (st.data) setSizeCharts({ suit: st.data.suit_chart_url || '', boot: st.data.boot_url || '' })
       setLoading(false)
@@ -69,17 +71,38 @@ export default function RegisterPage() {
       return
     }
 
+    const normalizedPin = normalizePin(formData.pin)
+    if (normalizedPin.length !== 6) {
+      toast.error('Please enter a 6-digit PIN')
+      setSaving(false)
+      return
+    }
+
     const { data, error } = await supabase.from('crews').update({
-      pin: formData.pin,
+      pin: normalizedPin,
       email: formData.email.trim(),
       phone: formData.phone.trim(),
       suit_color: formData.suit_color,
       suit_size: formData.suit_size,
       boot_size: formData.boot_size,
-      registered: true
+      registered: true,
+      is_active: true,
+      resigned_at: null
     }).eq('id', formData.id).select('id').single()
 
     if (!error && data) {
+      const { data: savedCrew, error: verifyError } = await supabase
+        .from('crews')
+        .select('id, pin, is_active, resigned_at')
+        .eq('id', formData.id)
+        .maybeSingle()
+
+      if (verifyError || !savedCrew || !isCrewActive(savedCrew) || !hasLoginPin(savedCrew)) {
+        toast.error('Registration saved, but login PIN was not verified. Please contact admin.')
+        setSaving(false)
+        return
+      }
+
       toast.success('Registration Complete')
       router.push('/login')
     } else {

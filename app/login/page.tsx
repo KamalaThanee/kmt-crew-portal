@@ -8,6 +8,8 @@ import { toast } from 'sonner'
 import { ChevronDown, Loader2, Lock, Search, ShieldCheck, User, UserPlus } from 'lucide-react'
 
 const isCrewActive = (crew: any) => crew?.is_active !== false && !crew?.resigned_at
+const normalizePin = (value: unknown) => String(value || '').replace(/\D/g, '').slice(0, 6)
+const hasLoginPin = (crew: any) => normalizePin(crew?.pin).length === 6
 
 export default function LoginPage() {
   const router = useRouter()
@@ -25,8 +27,12 @@ export default function LoginPage() {
     setMounted(true)
 
     const fetchRegisteredCrews = async () => {
-      const { data } = await supabase.from('crews').select('*').not('pin', 'is', null).order('full_name')
-      if (data) setCrews(data.filter(isCrewActive))
+      const { data, error } = await supabase.from('crews').select('*').order('full_name')
+      if (error) {
+        toast.error('Unable to load registered crew list')
+        return
+      }
+      if (data) setCrews(data.filter((crew) => isCrewActive(crew) && hasLoginPin(crew)))
     }
 
     fetchRegisteredCrews()
@@ -48,7 +54,9 @@ export default function LoginPage() {
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault()
 
-    if (!selectedCrew || pin.length !== 6) {
+    const normalizedPin = normalizePin(pin)
+
+    if (!selectedCrew || normalizedPin.length !== 6) {
       toast.error('Please select your name and enter a 6-digit PIN')
       return
     }
@@ -60,8 +68,8 @@ export default function LoginPage() {
         .from('crews')
         .select('*')
         .eq('id', selectedCrew.id)
-        .eq('pin', pin)
-        .single()
+        .eq('pin', normalizedPin)
+        .maybeSingle()
 
       if (error || !crew) {
         toast.error('Incorrect PIN')
