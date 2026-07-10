@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ShoppingCart, X, Trash2, PackageCheck, ShieldAlert, Loader2, History as HistoryIcon } from 'lucide-react';
+import { ShoppingCart, X, Trash2, PackageCheck, ShieldAlert, Loader2, History as HistoryIcon, Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import { applyPpeRequestUserFilter, insertPpeRequest } from '@/lib/ppeRequests';
@@ -94,6 +94,108 @@ export default function CartDrawer() {
     return name.includes('safety boot') && !name.includes('rubber');
   };
 
+  const getCartItemKey = (item: any) =>
+    [
+      String(item?.id ?? item?.inventory_id ?? ''),
+      normalize(item?.item_name),
+      normalize(item?.color || ''),
+      normalize(item?.size || ''),
+      normalize(item?.category || ''),
+    ].join('|');
+
+  const getInventoryLimit = (item: any) => {
+    const stock = Number(item?.stock ?? item?.current_stock ?? item?.quantity ?? item?.qty ?? item?.on_hand ?? NaN);
+    return Number.isFinite(stock) && stock >= 0 ? stock : null;
+  };
+
+  const getQuotaLimit = (item: any) => {
+    if (isSuitItem(item)) return 2;
+    if (isBootItem(item)) return 1;
+    return null;
+  };
+
+  const persistCartItems = (nextCart: any[]) => {
+    setCartItems(nextCart);
+    localStorage.setItem('kmt_cart', JSON.stringify(nextCart));
+    window.dispatchEvent(new CustomEvent('cart-updated', { detail: nextCart.length }));
+  };
+
+  const groupedCartItems = useMemo(() => {
+    const grouped = new Map<string, { key: string; sample: any; quantity: number }>();
+
+    cartItems.forEach((item) => {
+      const key = getCartItemKey(item);
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        grouped.set(key, { key, sample: item, quantity: 1 });
+      }
+    });
+
+    return Array.from(grouped.values());
+  }, [cartItems]);
+
+  const getAnnualIssuedCount = (predicate: (item: any) => boolean) => {
+    const currentYear = new Date().getFullYear();
+
+    return targetHistory.reduce((total, req) => {
+      const issuedAt = new Date(req.created_at);
+      if (Number.isNaN(issuedAt.getTime()) || issuedAt.getFullYear() !== currentYear) return total;
+
+      return total + (req.items || []).filter(predicate).length;
+    }, 0);
+  };
+
+  const getCartCount = (predicate: (item: any) => boolean) => cartItems.filter(predicate).length;
+
+  const getGroupLimitState = (group: { sample: any; quantity: number }) => {
+    const stockLimit = getInventoryLimit(group.sample);
+    const quotaLimit = getQuotaLimit(group.sample);
+    const quotaPredicate = isSuitItem(group.sample) ? isSuitItem : isBootItem(group.sample) ? isBootItem : null;
+    const annualIssued = quotaPredicate ? getAnnualIssuedCount(quotaPredicate) : 0;
+    const cartQuotaCount = quotaPredicate ? getCartCount(quotaPredicate) : 0;
+    const stockBlocked = stockLimit !== null && group.quantity >= stockLimit;
+    const quotaBlocked = selectedCrew && quotaLimit !== null && annualIssued + cartQuotaCount >= quotaLimit;
+
+    return {
+      stockLimit,
+      quotaLimit,
+      annualIssued,
+      cartQuotaCount,
+      stockBlocked,
+      quotaBlocked,
+      blockReason: stockBlocked
+        ? `Only ${stockLimit} ${group.sample.item_name} left in inventory`
+        : quotaBlocked
+          ? `Annual quota reached for ${isSuitItem(group.sample) ? 'boiler suit' : 'safety boots'}`
+          : null,
+    };
+  };
+
+  const addGroupedItem = (group: { sample: any; quantity: number }) => {
+    const limitState = getGroupLimitState(group);
+    if (limitState.blockReason) {
+      toast.error(limitState.blockReason);
+      return;
+    }
+
+    persistCartItems([...cartItems, { ...group.sample }]);
+  };
+
+  const removeGroupedItem = (key: string) => {
+    const removeIndex = cartItems.findIndex((item) => getCartItemKey(item) === key);
+    if (removeIndex < 0) return;
+
+    const nextCart = [...cartItems];
+    nextCart.splice(removeIndex, 1);
+    persistCartItems(nextCart);
+  };
+
+  const removeGroup = (key: string) => {
+    persistCartItems(cartItems.filter((item) => getCartItemKey(item) !== key));
+  };
+
   const getPpeProfileMismatch = (item: any, crew: any) => {
     if (!crew) return null;
 
@@ -121,23 +223,24 @@ export default function CartDrawer() {
 
   const mismatchWarnings = useMemo(() => {
     if (!selectedCrew) return [];
-    return cartItems
-      .map((item) => ({
-        item,
-        warning: getPpeProfileMismatch(item, selectedCrew),
+    return groupedCartItems
+      .map((group) => ({
+        item: group.sample,
+        quantity: group.quantity,
+        warning: getPpeProfileMismatch(group.sample, selectedCrew),
       }))
       .filter((entry) => entry.warning);
-  }, [cartItems, selectedCrew]);
+  }, [groupedCartItems, selectedCrew]);
 
   const getTargetItemStats = (itemName: string) => {
     let count = 0;
     let lastDate = 'Never';
 
     targetHistory.forEach((req) => {
-      const found = req.items?.find((i: any) => normalize(i.item_name) === normalize(itemName));
-      if (!found) return;
+      const matches = req.items?.filter((i: any) => normalize(i.item_name) === normalize(itemName)) || [];
+      if (matches.length === 0) return;
 
-      count++;
+      count += matches.length;
       if (lastDate === 'Never') {
         lastDate = new Date(req.created_at).toLocaleDateString('en-GB');
       }
@@ -145,6 +248,29 @@ export default function CartDrawer() {
 
     return { count, lastDate };
   };
+
+  const cartLimitViolations = useMemo(() => {
+    const violations: string[] = [];
+
+    groupedCartItems.forEach((group) => {
+      const stockLimit = getInventoryLimit(group.sample);
+      if (stockLimit !== null && group.quantity > stockLimit) {
+        violations.push(`${group.sample.item_name} exceeds inventory stock (${group.quantity}/${stockLimit})`);
+      }
+    });
+
+    if (selectedCrew) {
+      const suitLimit = 2;
+      const bootLimit = 1;
+      const suitTotal = getAnnualIssuedCount(isSuitItem) + getCartCount(isSuitItem);
+      const bootTotal = getAnnualIssuedCount(isBootItem) + getCartCount(isBootItem);
+
+      if (suitTotal > suitLimit) violations.push(`Boiler suit exceeds annual quota (${suitTotal}/${suitLimit})`);
+      if (bootTotal > bootLimit) violations.push(`Safety boots exceeds annual quota (${bootTotal}/${bootLimit})`);
+    }
+
+    return violations;
+  }, [groupedCartItems, cartItems, targetHistory, selectedCrew]);
 
   const handleCheckout = async () => {
     if (!isAdmin) {
@@ -166,9 +292,15 @@ export default function CartDrawer() {
     try {
       if (!selectedCrew) throw new Error('Selected crew not found');
 
+      if (cartLimitViolations.length > 0) {
+        toast.error(cartLimitViolations[0]);
+        setIsSubmitting(false);
+        return;
+      }
+
       if (mismatchWarnings.length > 0) {
         const warningText = mismatchWarnings
-          .map((entry) => `- ${entry.item.item_name} ${entry.item.color ? `(${entry.item.color})` : ''} ${entry.item.size ? `[${entry.item.size}]` : ''}: ${entry.warning}`)
+          .map((entry) => `- ${entry.item.item_name} x${entry.quantity} ${entry.item.color ? `(${entry.item.color})` : ''} ${entry.item.size ? `[${entry.item.size}]` : ''}: ${entry.warning}`)
           .join('\n');
         const confirmed = window.confirm(
           `Some issued PPE does not match ${selectedCrew.full_name}'s registered size/profile.\n\n${warningText}\n\nDo you want to continue anyway?`,
@@ -246,11 +378,14 @@ export default function CartDrawer() {
           )}
 
           <div className="space-y-4">
-            {cartItems.map((item, idx) => {
+            {groupedCartItems.map((group) => {
+              const item = group.sample;
               const targetStats = targetCrewId ? getTargetItemStats(item.item_name) : null;
               const mismatchWarning = selectedCrew ? getPpeProfileMismatch(item, selectedCrew) : null;
+              const limitState = getGroupLimitState(group);
+
               return (
-                <div key={`${item.id}-${idx}`} className="space-y-3 rounded-[28px] border border-white/5 bg-zinc-900 p-4 shadow-md">
+                <div key={group.key} className="space-y-3 rounded-[28px] border border-white/5 bg-zinc-900 p-4 shadow-md">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm font-black uppercase leading-tight text-white">{item.item_name}</p>
@@ -259,17 +394,51 @@ export default function CartDrawer() {
                       </p>
                     </div>
                     <button
-                      onClick={() => {
-                        const nextCart = [...cartItems];
-                        nextCart.splice(idx, 1);
-                        localStorage.setItem('kmt_cart', JSON.stringify(nextCart));
-                        window.dispatchEvent(new CustomEvent('cart-updated'));
-                      }}
+                      onClick={() => removeGroup(group.key)}
                       className="p-1 text-zinc-700 hover:text-red-500"
+                      title="Remove this item group"
                     >
                       <Trash2 size={16} />
                     </button>
                   </div>
+
+                  <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-black/40 p-3">
+                    <div>
+                      <p className="text-[8px] font-black uppercase tracking-widest text-zinc-500">Issue quantity</p>
+                      <p className="mt-1 text-[11px] font-bold text-zinc-300">
+                        {limitState.stockLimit !== null ? `Stock ${group.quantity}/${limitState.stockLimit}` : `${group.quantity} selected`}
+                        {limitState.quotaLimit !== null && (
+                          <span className="ml-2 text-orange-300">
+                            Quota {limitState.annualIssued + limitState.cartQuotaCount}/{limitState.quotaLimit}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => removeGroupedItem(group.key)}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white transition-colors hover:bg-white/10"
+                        title="Decrease quantity"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span className="min-w-10 text-center text-xl font-black text-white">{group.quantity}</span>
+                      <button
+                        onClick={() => addGroupedItem(group)}
+                        disabled={Boolean(limitState.blockReason)}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-orange-500/30 bg-orange-500/15 text-orange-300 transition-colors hover:bg-orange-500/25 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-white/5 disabled:text-zinc-700"
+                        title={limitState.blockReason || 'Increase quantity'}
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {limitState.blockReason && (
+                    <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-red-200">{limitState.blockReason}</p>
+                    </div>
+                  )}
 
                   {targetStats && (
                     <div className="flex items-center gap-3 rounded-xl border border-white/5 bg-black/50 p-3">
