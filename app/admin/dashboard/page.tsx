@@ -104,7 +104,7 @@ export default function AdminDashboard() {
   const registeredBoots = textValue(user?.boot_size) || 'Not registered'
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-16 md:pt-28 font-sans text-white uppercase font-bold text-[10px]">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-10 md:pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div><h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3 text-white"><ShieldCheck className="text-orange-500" size={36}/> Command Center</h1><p className="text-zinc-500 mt-1 tracking-widest">Vessel Oversight</p></div>
         <button onClick={() => fetchAdminData(user)} className="p-3 bg-zinc-900 border border-white/5 rounded-full hover:bg-orange-600 transition-all"><RefreshCw size={20}/></button>

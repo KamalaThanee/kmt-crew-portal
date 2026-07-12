@@ -389,7 +389,7 @@ function UploadContent() {
   }
 
   return (
-    <div className="p-6 max-w-xl mx-auto pb-32 pt-20 font-sans">
+    <div className="p-6 max-w-xl mx-auto pb-32 pt-10 font-sans md:pt-20">
       <button
         onClick={() => router.push('/certificates')}
         className="mb-5 inline-flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--panel)] px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)] shadow-[0_12px_28px_rgba(80,52,16,0.08)] md:hidden"

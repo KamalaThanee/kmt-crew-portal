@@ -454,7 +454,7 @@ function CertificatesContent() {
   const headerCopy = certificateTabCopy[activeTab] || certificateTabCopy.personal
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-10 md:pt-28 font-sans text-white uppercase font-bold text-[10px]">
       
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>

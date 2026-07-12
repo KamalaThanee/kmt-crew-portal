@@ -1073,11 +1073,11 @@ export default function ShipCertificatesPage() {
   }, [editingCert?.master_id, pageMapRows])
 
   if (loading) {
-    return <div className="min-h-screen bg-black pt-32 text-center text-orange-500 font-black animate-pulse">LOADING SHIP CERTIFICATES...</div>
+    return <div className="min-h-screen bg-black pt-10 text-center text-orange-500 font-black animate-pulse md:pt-32">LOADING SHIP CERTIFICATES...</div>
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-28 font-sans text-white uppercase font-bold text-[10px]">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-10 md:pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <div className="space-y-8">
         <button
           type="button"
