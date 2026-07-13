@@ -437,16 +437,6 @@ function downloadWorkbook(workbook: ArrayBuffer | Uint8Array, fileName: string) 
   URL.revokeObjectURL(url)
 }
 
-function parseDataUrl(dataUrl: string) {
-  const [meta, payload] = dataUrl.split(',')
-  const mime = meta.match(/data:([^;]+)/)?.[1] || 'image/png'
-  const extension = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : mime.includes('webp') ? 'webp' : 'png'
-  const binary = atob(payload || '')
-  const bytes = new Uint8Array(binary.length)
-  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
-  return { bytes, extension, mime }
-}
-
 function xmlEscape(value: string) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
@@ -467,43 +457,50 @@ function certNeedsCvRefresh(cert: CrewCert) {
   return !cert.issue_date || !cert.expiry_date
 }
 
-const transparentCvPicturePngBase64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnH8x8AAAAASUVORK5CYII='
+async function imageDataUrlToJpegBytes(dataUrl: string) {
+  const sourceResponse = await fetch(dataUrl)
+  if (!sourceResponse.ok) throw new Error('Could not load CV picture for export')
+  const sourceUrl = URL.createObjectURL(await sourceResponse.blob())
 
-async function imageDataUrlToPngBytes(dataUrl?: string | null) {
-  if (!dataUrl) return Uint8Array.from(atob(transparentCvPicturePngBase64), (char) => char.charCodeAt(0))
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const nextImage = new Image()
+      nextImage.onload = () => resolve(nextImage)
+      nextImage.onerror = () => reject(new Error('Could not prepare CV picture for export'))
+      nextImage.src = sourceUrl
+    })
 
-  return new Promise<Uint8Array>((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => {
-      const targetWidth = 500
-      const targetHeight = 650
-      const sourceWidth = image.naturalWidth || image.width || 1
-      const sourceHeight = image.naturalHeight || image.height || 1
-      const sourceRatio = sourceWidth / sourceHeight
-      const targetRatio = targetWidth / targetHeight
-      const cropWidth = sourceRatio > targetRatio ? sourceHeight * targetRatio : sourceWidth
-      const cropHeight = sourceRatio > targetRatio ? sourceHeight : sourceWidth / targetRatio
-      const cropX = Math.max(0, (sourceWidth - cropWidth) / 2)
-      const cropY = Math.max(0, (sourceHeight - cropHeight) / 2)
-      const canvas = document.createElement('canvas')
-      canvas.width = targetWidth
-      canvas.height = targetHeight
-      const context = canvas.getContext('2d')
-      if (!context) {
-        reject(new Error('Could not prepare CV picture for export'))
-        return
-      }
-      // Mobile spreadsheet viewers can render transparent PNGs as black boxes.
-      context.fillStyle = '#ffffff'
-      context.fillRect(0, 0, targetWidth, targetHeight)
-      context.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, targetWidth, targetHeight)
-      const pngDataUrl = canvas.toDataURL('image/png')
-      resolve(parseDataUrl(pngDataUrl).bytes)
+    const targetWidth = 500
+    const targetHeight = 650
+    const sourceWidth = image.naturalWidth || image.width || 1
+    const sourceHeight = image.naturalHeight || image.height || 1
+    const sourceRatio = sourceWidth / sourceHeight
+    const targetRatio = targetWidth / targetHeight
+    const cropWidth = sourceRatio > targetRatio ? sourceHeight * targetRatio : sourceWidth
+    const cropHeight = sourceRatio > targetRatio ? sourceHeight : sourceWidth / targetRatio
+    const cropX = Math.max(0, (sourceWidth - cropWidth) / 2)
+    const cropY = Math.max(0, (sourceHeight - cropHeight) / 2)
+    const canvas = document.createElement('canvas')
+    canvas.width = targetWidth
+    canvas.height = targetHeight
+    const context = canvas.getContext('2d')
+    if (!context) {
+      throw new Error('Could not prepare CV picture for export')
     }
-    image.onerror = () => reject(new Error('Could not prepare CV picture for export'))
-    image.src = dataUrl
-  })
+    // JPEG has no alpha channel, which avoids black image boxes in Android spreadsheet viewers.
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, targetWidth, targetHeight)
+    context.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, targetWidth, targetHeight)
+    const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob)
+        else reject(new Error('Could not encode CV picture for export'))
+      }, 'image/jpeg', 0.92)
+    })
+    return new Uint8Array(await jpegBlob.arrayBuffer())
+  } finally {
+    URL.revokeObjectURL(sourceUrl)
+  }
 }
 
 function normalizePassportCvProfileData(value: any): PassportCvProfileData {
@@ -641,21 +638,10 @@ function setCvCellStyle(doc: Document, address: string, styleId: string) {
   cell.setAttribute('s', styleId)
 }
 
-function ensureContentType(contentTypes: string, extension: string, mime: string, drawingPath: string) {
-  let next = contentTypes
-  if (!next.includes(`Extension="${extension}"`)) {
-    next = next.replace('</Types>', `<Default Extension="${extension}" ContentType="${mime}"/></Types>`)
-  }
-  const drawingPart = `/${drawingPath}`
-  if (!next.includes(`PartName="${drawingPart}"`)) {
-    next = next.replace('</Types>', `<Override PartName="${drawingPart}" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`)
-  }
-  return next
-}
-
 async function embedCvPictureInZip(zip: any, pictureDataUrl?: string | null) {
   const templatePicturePath = 'xl/media/image1.png'
-  if (!zip.file(templatePicturePath)) return
+  const exportedPicturePath = 'xl/media/image1.jpeg'
+  if (!pictureDataUrl || !zip.file(templatePicturePath)) return
   const drawingPath = 'xl/drawings/drawing1.xml'
   const drawingXml = await zip.file(drawingPath)?.async('string')
   if (drawingXml) {
@@ -667,7 +653,18 @@ async function embedCvPictureInZip(zip: any, pictureDataUrl?: string | null) {
       .replace(/<xdr:to><xdr:col>[^<]+<\/xdr:col><xdr:colOff>[^<]+<\/xdr:colOff><xdr:row>[^<]+<\/xdr:row><xdr:rowOff>[^<]+<\/xdr:rowOff><\/xdr:to>/, '<xdr:to><xdr:col>12</xdr:col><xdr:colOff>746694</xdr:colOff><xdr:row>8</xdr:row><xdr:rowOff>282857</xdr:rowOff></xdr:to>')
     zip.file(drawingPath, tunedDrawingXml)
   }
-  zip.file(templatePicturePath, await imageDataUrlToPngBytes(pictureDataUrl))
+
+  const drawingRelationshipsPath = 'xl/drawings/_rels/drawing1.xml.rels'
+  const drawingRelationships = await zip.file(drawingRelationshipsPath)?.async('string')
+  if (drawingRelationships) {
+    zip.file(
+      drawingRelationshipsPath,
+      drawingRelationships.replace(/Target="\.\.\/media\/image1\.(?:png|jpe?g)"/i, 'Target="../media/image1.jpeg"'),
+    )
+  }
+
+  zip.remove(templatePicturePath)
+  zip.file(exportedPicturePath, await imageDataUrlToJpegBytes(pictureDataUrl))
 }
 
 function CvPageContent() {
