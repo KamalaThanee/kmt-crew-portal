@@ -472,20 +472,32 @@ const transparentCvPicturePngBase64 =
 
 async function imageDataUrlToPngBytes(dataUrl?: string | null) {
   if (!dataUrl) return Uint8Array.from(atob(transparentCvPicturePngBase64), (char) => char.charCodeAt(0))
-  if (dataUrl.startsWith('data:image/png')) return parseDataUrl(dataUrl).bytes
 
   return new Promise<Uint8Array>((resolve, reject) => {
     const image = new Image()
     image.onload = () => {
+      const targetWidth = 500
+      const targetHeight = 650
+      const sourceWidth = image.naturalWidth || image.width || 1
+      const sourceHeight = image.naturalHeight || image.height || 1
+      const sourceRatio = sourceWidth / sourceHeight
+      const targetRatio = targetWidth / targetHeight
+      const cropWidth = sourceRatio > targetRatio ? sourceHeight * targetRatio : sourceWidth
+      const cropHeight = sourceRatio > targetRatio ? sourceHeight : sourceWidth / targetRatio
+      const cropX = Math.max(0, (sourceWidth - cropWidth) / 2)
+      const cropY = Math.max(0, (sourceHeight - cropHeight) / 2)
       const canvas = document.createElement('canvas')
-      canvas.width = image.naturalWidth || image.width || 1
-      canvas.height = image.naturalHeight || image.height || 1
+      canvas.width = targetWidth
+      canvas.height = targetHeight
       const context = canvas.getContext('2d')
       if (!context) {
         reject(new Error('Could not prepare CV picture for export'))
         return
       }
-      context.drawImage(image, 0, 0)
+      // Mobile spreadsheet viewers can render transparent PNGs as black boxes.
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, targetWidth, targetHeight)
+      context.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, targetWidth, targetHeight)
       const pngDataUrl = canvas.toDataURL('image/png')
       resolve(parseDataUrl(pngDataUrl).bytes)
     }
