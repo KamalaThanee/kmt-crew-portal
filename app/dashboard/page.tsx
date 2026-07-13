@@ -145,7 +145,7 @@ export default function CrewDashboard() {
   const registeredSuit = [registeredSuitColor, registeredSuitSize].filter(Boolean).join(' / ') || 'Not registered'
 
   return (
-    <div className="mx-auto max-w-[1380px] px-4 pb-32 pt-10 font-sans text-[10px] font-bold uppercase text-[#17120f] md:px-8 md:pt-28">
+    <div className="mx-auto max-w-[1380px] px-4 pb-32 pt-6 font-sans text-[10px] font-bold uppercase text-[#17120f] md:px-8 md:pt-28">
       <div className="mb-6 md:mb-8">
         <h1 className="text-4xl font-black italic tracking-tight text-[#14100d] md:text-5xl">Command Center</h1>
         <p className="mt-2 tracking-[0.24em] text-[#5f5147]">Vessel oversight</p>

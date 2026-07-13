@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="bg-[var(--app-bg)] text-[var(--app-text)] antialiased pb-20 pt-4 md:pt-20 transition-colors duration-300">
+      <body className="bg-[var(--app-bg)] text-[var(--app-text)] antialiased pb-20 pt-0 md:pt-20 transition-colors duration-300">
         <ThemeBridge />
         <OneSignalBridge />
         <RealtimeListener />

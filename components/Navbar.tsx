@@ -141,7 +141,7 @@ export default function Navbar() {
         />
       )}
 
-      <nav className="fixed top-4 left-1/2 -translate-x-1/2 w-[94%] max-w-6xl h-14 bg-[var(--nav-bg)] backdrop-blur-xl border border-[var(--nav-border)] rounded-2xl z-[100] px-4 flex items-center justify-between shadow-2xl transition-colors duration-300">
+      <nav className="sticky top-[max(0.75rem,env(safe-area-inset-top))] z-[100] mx-auto mt-3 flex h-14 w-[94%] max-w-6xl items-center justify-between rounded-2xl border border-[var(--nav-border)] bg-[var(--nav-bg)] px-4 shadow-2xl backdrop-blur-xl transition-colors duration-300 md:fixed md:left-1/2 md:top-4 md:mt-0 md:-translate-x-1/2">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => router.push(isAdmin ? '/admin/dashboard' : '/dashboard')}>
             <ShieldCheck size={22} className="text-orange-500" />

@@ -331,7 +331,7 @@ function PPEContent() {
   if (!mounted || !user) return null
 
   return (
-    <div className="mx-auto max-w-[1380px] px-4 pb-32 pt-10 font-sans text-[10px] font-bold uppercase text-[#17120f] md:px-8 md:pt-28">
+    <div className="mx-auto max-w-[1380px] px-4 pb-32 pt-6 font-sans text-[10px] font-bold uppercase text-[#17120f] md:px-8 md:pt-28">
       <div className="space-y-8 animate-in fade-in duration-500">
         <div className="mb-8 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div>
