@@ -111,6 +111,7 @@ type VaccinationRow = {
 type CvTab = 'personal' | 'certificates' | 'service' | 'review' | 'vessels'
 type ActiveUser = CurrentUser & { id: string }
 const defaultCvCompany = 'Truth Maritime Services'
+const cvPictureBucket = 'crew-cv-pictures'
 
 const emptyProfile: CvProfile = {
   national_id_no: '',
@@ -229,7 +230,6 @@ const splitCrewName = (value?: string | null) => {
 }
 
 const manualCompetencyKey = (crewId: string) => `kmt_cv_manual_competency_${crewId}`
-const cvPictureKey = (crewId: string) => `kmt_cv_picture_${crewId}`
 const cvHiddenCertsKey = (crewId: string) => `kmt_cv_hidden_certs_${crewId}`
 const cvManualCertsKey = (crewId: string) => `kmt_cv_manual_certs_${crewId}`
 const cvPairOrderKey = (crewId: string) => `kmt_cv_pair_order_${crewId}`
@@ -686,6 +686,7 @@ function CvPageContent() {
   const [vesselForm, setVesselForm] = useState<Omit<VesselMaster, 'id'>>(emptyVessel)
   const [vaccinationForm, setVaccinationForm] = useState<Omit<VaccinationRow, 'id'>>(emptyVaccination)
   const [savingProfile, setSavingProfile] = useState(false)
+  const [uploadingPicture, setUploadingPicture] = useState(false)
   const [savingService, setSavingService] = useState(false)
   const [savingCertId, setSavingCertId] = useState('')
   const [fillingCertId, setFillingCertId] = useState('')
@@ -721,7 +722,7 @@ function CvPageContent() {
       cv_company: clean((current as any).cv_company || defaultCvCompany),
       toeic_score: clean((current as any).toeic_score),
       toeic_test_date: toDateValue((current as any).toeic_test_date),
-      picture_data_url: localStorage.getItem(cvPictureKey(currentId)) || '',
+      picture_data_url: clean((current as any).cv_picture_url),
     })
     setSavedProfileSnapshot(profileSnapshot({
       national_id_no: clean((current as any).national_id_no),
@@ -731,7 +732,7 @@ function CvPageContent() {
       cv_company: clean((current as any).cv_company || defaultCvCompany),
       toeic_score: clean((current as any).toeic_score),
       toeic_test_date: toDateValue((current as any).toeic_test_date),
-      picture_data_url: localStorage.getItem(cvPictureKey(currentId)) || '',
+      picture_data_url: clean((current as any).cv_picture_url),
     }))
     setProfileTouched(false)
     const nextServiceForm = { ...emptySeaService, crew_id: currentId, rank: current.position || '', company: clean((current as any).cv_company || defaultCvCompany) }
@@ -922,7 +923,7 @@ function CvPageContent() {
         .order('date_given', { ascending: false, nullsFirst: false }),
       supabase
         .from('crews')
-        .select('national_id_no, nationality, date_of_birth, place_of_birth, cv_company, toeic_score, toeic_test_date, suit_color, suit_size, boot_size, cv_last_updated_at')
+        .select('national_id_no, nationality, date_of_birth, place_of_birth, cv_company, toeic_score, toeic_test_date, cv_picture_url, suit_color, suit_size, boot_size, cv_last_updated_at')
         .eq('id', current.id)
         .maybeSingle(),
     ])
@@ -955,7 +956,7 @@ function CvPageContent() {
         cv_company: clean(dbProfile.cv_company || (current as any).cv_company || defaultCvCompany),
         toeic_score: clean(dbProfile.toeic_score || (current as any).toeic_score),
         toeic_test_date: toDateValue(dbProfile.toeic_test_date || (current as any).toeic_test_date),
-        picture_data_url: localStorage.getItem(cvPictureKey(current.id)) || '',
+        picture_data_url: clean(dbProfile.cv_picture_url),
       }
       setProfile(mergedProfile)
       setSavedProfileSnapshot(profileSnapshot(mergedProfile))
@@ -1026,9 +1027,6 @@ function CvPageContent() {
     const nextUser = { ...user, ...payload }
     if (manualCompetency && user?.id) {
       localStorage.setItem(manualCompetencyKey(user.id), JSON.stringify(manualCompetency))
-    }
-    if (profile.picture_data_url && user?.id) {
-      localStorage.setItem(cvPictureKey(user.id), profile.picture_data_url)
     }
     if (user?.id) {
       localStorage.setItem(cvManualCertsKey(user.id), JSON.stringify(manualCvCerts))
@@ -1116,10 +1114,48 @@ function CvPageContent() {
       toast.error('Please upload JPG or PNG image')
       return
     }
-    const dataUrl = await readFileAsDataUrl(file)
-    setProfile((prev) => ({ ...prev, picture_data_url: dataUrl }))
-    localStorage.setItem(cvPictureKey(user.id), dataUrl)
-    toast.success('CV picture ready for export')
+    setUploadingPicture(true)
+    try {
+      const dataUrl = await compressImage(file)
+      const pictureBlob = await (await fetch(dataUrl)).blob()
+      const picturePath = `${user.id}/profile.jpg`
+      const { error: uploadError } = await supabase.storage
+        .from(cvPictureBucket)
+        .upload(picturePath, pictureBlob, { contentType: 'image/jpeg', upsert: true })
+      if (uploadError) throw uploadError
+
+      const { data: publicData } = supabase.storage.from(cvPictureBucket).getPublicUrl(picturePath)
+      const pictureUrl = `${publicData.publicUrl}?v=${Date.now()}`
+      const { error: updateError } = await supabase.from('crews').update({ cv_picture_url: pictureUrl }).eq('id', user.id)
+      if (updateError) throw updateError
+
+      setProfile((prev) => ({ ...prev, picture_data_url: pictureUrl }))
+      setUser((prev) => prev ? { ...prev, cv_picture_url: pictureUrl } : prev)
+      toast.success('CV picture saved')
+    } catch (error: any) {
+      toast.error(`${error?.message || 'Unable to save CV picture'}. Run sql/crew_cv_foundation.sql first.`)
+    } finally {
+      setUploadingPicture(false)
+    }
+  }
+
+  async function removeCvPicture() {
+    if (!user?.id) return
+    setUploadingPicture(true)
+    try {
+      const picturePath = `${user.id}/profile.jpg`
+      const { error: storageError } = await supabase.storage.from(cvPictureBucket).remove([picturePath])
+      if (storageError) throw storageError
+      const { error: updateError } = await supabase.from('crews').update({ cv_picture_url: null }).eq('id', user.id)
+      if (updateError) throw updateError
+      setProfile((prev) => ({ ...prev, picture_data_url: '' }))
+      setUser((prev) => prev ? { ...prev, cv_picture_url: null } : prev)
+      toast.success('CV picture removed')
+    } catch (error: any) {
+      toast.error(error?.message || 'Unable to remove CV picture')
+    } finally {
+      setUploadingPicture(false)
+    }
   }
 
   function updateProfileField<K extends keyof CvProfile>(field: K, value: CvProfile[K]) {
@@ -1742,19 +1778,17 @@ function CvPageContent() {
                   <p className="text-[10px] font-black uppercase tracking-widest text-[var(--accent-text)]">CV Picture</p>
                   <p className="mt-1 text-xs text-[var(--subtle)]">This image will be placed into the Picture box when exporting the CV Excel form.</p>
                 </div>
-                <label className="inline-flex cursor-pointer items-center justify-center rounded-2xl bg-orange-600 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20">
-                  Upload Picture
-                  <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => handleCvPictureUpload(event.target.files?.[0])} />
+                <label className={`inline-flex items-center justify-center rounded-2xl bg-orange-600 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/20 ${uploadingPicture ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                  {uploadingPicture ? 'Saving Picture...' : 'Upload Picture'}
+                  <input type="file" accept="image/png,image/jpeg" disabled={uploadingPicture} className="hidden" onChange={(event) => handleCvPictureUpload(event.target.files?.[0])} />
                 </label>
               </div>
               {profile.picture_data_url && (
-                <div className="mt-4 flex items-center gap-4">
+                <div className="mt-4 flex flex-col items-center gap-4">
                   <img src={profile.picture_data_url} alt="CV preview" className="h-28 w-24 rounded-2xl border border-orange-500/20 object-cover" />
                   <button
-                    onClick={() => {
-                      setProfile((prev) => ({ ...prev, picture_data_url: '' }))
-                      if (user?.id) localStorage.removeItem(cvPictureKey(user.id))
-                    }}
+                    onClick={removeCvPicture}
+                    disabled={uploadingPicture}
                     className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-red-500"
                   >
                     Remove Picture

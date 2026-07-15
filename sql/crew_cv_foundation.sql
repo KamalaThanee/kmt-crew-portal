@@ -9,6 +9,7 @@ alter table public.crews
   add column if not exists cv_company text,
   add column if not exists toeic_score text,
   add column if not exists toeic_test_date date,
+  add column if not exists cv_picture_url text,
   add column if not exists cv_last_updated_at timestamptz,
   add column if not exists passport_cv_updated_at timestamptz;
 
@@ -214,3 +215,39 @@ with check (true);
 grant select, insert, update, delete on public.cv_vessel_master to anon, authenticated;
 grant select, insert, update, delete on public.crew_cv_sea_services to anon, authenticated;
 grant select, insert, update, delete on public.crew_cv_vaccinations to anon, authenticated;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('crew-cv-pictures', 'crew-cv-pictures', true, 5242880, array['image/jpeg', 'image/png'])
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "Allow CV picture read" on storage.objects;
+drop policy if exists "Allow CV picture insert" on storage.objects;
+drop policy if exists "Allow CV picture update" on storage.objects;
+drop policy if exists "Allow CV picture delete" on storage.objects;
+
+create policy "Allow CV picture read"
+on storage.objects for select
+to anon, authenticated
+using (
+  bucket_id = 'crew-cv-pictures'
+  and storage.allow_any_operation(array['object.get_authenticated_info', 'object.get_authenticated'])
+);
+
+create policy "Allow CV picture insert"
+on storage.objects for insert
+to anon, authenticated
+with check (bucket_id = 'crew-cv-pictures');
+
+create policy "Allow CV picture update"
+on storage.objects for update
+to anon, authenticated
+using (bucket_id = 'crew-cv-pictures')
+with check (bucket_id = 'crew-cv-pictures');
+
+create policy "Allow CV picture delete"
+on storage.objects for delete
+to anon, authenticated
+using (bucket_id = 'crew-cv-pictures');
