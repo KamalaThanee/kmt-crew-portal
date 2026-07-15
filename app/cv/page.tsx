@@ -638,6 +638,45 @@ function setCvCellStyle(doc: Document, address: string, styleId: string) {
   cell.setAttribute('s', styleId)
 }
 
+function estimateCvWrappedLines(value: unknown, charsPerLine: number) {
+  const text = clean(value)
+  if (!text) return 1
+  const capacity = Math.max(1, charsPerLine)
+
+  return text.split(/\r?\n/).reduce((total, paragraph) => {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean)
+    if (words.length === 0) return total + 1
+    let lines = 1
+    let currentLength = 0
+
+    words.forEach((word) => {
+      if (word.length > capacity) {
+        if (currentLength > 0) lines += 1
+        lines += Math.floor((word.length - 1) / capacity)
+        currentLength = word.length % capacity || capacity
+      } else if (currentLength === 0) {
+        currentLength = word.length
+      } else if (currentLength + 1 + word.length <= capacity) {
+        currentLength += 1 + word.length
+      } else {
+        lines += 1
+        currentLength = word.length
+      }
+    })
+
+    return total + lines
+  }, 0)
+}
+
+function setCvRowHeight(doc: Document, rowNumber: number, values: Array<{ value: unknown; charsPerLine: number }>) {
+  const row = getCvRow(doc, rowNumber)
+  if (!row) return
+  const lineCount = Math.max(1, ...values.map(({ value, charsPerLine }) => estimateCvWrappedLines(value, charsPerLine)))
+  const height = Math.min(54, Math.max(18, 4 + lineCount * 13))
+  row.setAttribute('ht', String(height))
+  row.setAttribute('customHeight', '1')
+}
+
 async function embedCvPictureInZip(zip: any, pictureDataUrl?: string | null) {
   const templatePicturePath = 'xl/media/image1.png'
   const exportedPicturePath = 'xl/media/image1.jpeg'
@@ -1219,7 +1258,8 @@ function CvPageContent() {
 
     cvCertTables.paired.slice(0, 16).forEach((pair, index) => {
       const row = 22 + index
-      setCell(`A${row}`, pair.training?.cert_name || pair.proficiency?.cert_name || '')
+      const certName = pair.training?.cert_name || pair.proficiency?.cert_name || ''
+      setCell(`A${row}`, certName)
       setCvCellStyle(sheetDoc, `A${row}`, '42')
       setCell(`D${row}`, pair.training?.cert_number || '')
       setCell(`E${row}`, formatTemplateDate(pair.training?.issue_date))
@@ -1229,6 +1269,13 @@ function CvPageContent() {
       setCell(`K${row}`, formatTemplateDate(pair.proficiency?.issue_date))
       setCell(`L${row}`, formatTemplateDate(pair.proficiency?.expiry_date))
       setCell(`M${row}`, pair.proficiency?.issue_authority || '')
+      setCvRowHeight(sheetDoc, row, [
+        { value: certName, charsPerLine: 28 },
+        { value: pair.training?.cert_number, charsPerLine: 12 },
+        { value: pair.training?.place_of_issue, charsPerLine: 11 },
+        { value: pair.proficiency?.cert_number, charsPerLine: 12 },
+        { value: pair.proficiency?.issue_authority, charsPerLine: 12 },
+      ])
     })
 
     cvCertTables.medical.slice(0, 2).forEach((cert, index) => {
@@ -1260,6 +1307,13 @@ function CvPageContent() {
       setCell(`J${row}`, formatTemplateDate(service.sign_off_date))
       setCell(`L${row}`, service.company || defaultCvCompany)
       setCell(`M${row}`, monthsOnBoard > 0 ? monthsOnBoard.toFixed(1) : '')
+      setCvRowHeight(sheetDoc, row, [
+        { value: service.rank, charsPerLine: 13 },
+        { value: service.vessel_name, charsPerLine: 18 },
+        { value: service.vessel_type, charsPerLine: 13 },
+        { value: service.charterer, charsPerLine: 14 },
+        { value: service.company || defaultCvCompany, charsPerLine: 13 },
+      ])
     })
 
     zip.file(sheetPath, serializer.serializeToString(sheetDoc))
