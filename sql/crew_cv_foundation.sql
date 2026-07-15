@@ -231,10 +231,7 @@ drop policy if exists "Allow CV picture delete" on storage.objects;
 create policy "Allow CV picture read"
 on storage.objects for select
 to anon, authenticated
-using (
-  bucket_id = 'crew-cv-pictures'
-  and storage.allow_any_operation(array['object.get_authenticated_info', 'object.get_authenticated'])
-);
+using (bucket_id = 'crew-cv-pictures');
 
 create policy "Allow CV picture insert"
 on storage.objects for insert
