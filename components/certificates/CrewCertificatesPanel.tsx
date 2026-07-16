@@ -28,9 +28,11 @@ type CrewCertificatesPanelProps = {
   aiBackfillProgress?: string
   aiBackfillRunning?: boolean
   isDownloadingCerts: boolean
+  isExportingMatrix: boolean
   searchTerm: string
   onAiBackfillSelectedPosition?: () => void
   onDownloadFilteredCertificates: () => void
+  onExportCrewCertificateMatrix: () => void
   onEditCrewProfile: (crewId: string) => void
   onExpandedCrewsChange: (updater: (previous: string[]) => string[]) => void
   onFilterModeChange: (mode: string) => void
@@ -53,9 +55,11 @@ export function CrewCertificatesPanel({
   aiBackfillProgress,
   aiBackfillRunning,
   isDownloadingCerts,
+  isExportingMatrix,
   searchTerm,
   onAiBackfillSelectedPosition,
   onDownloadFilteredCertificates,
+  onExportCrewCertificateMatrix,
   onEditCrewProfile,
   onExpandedCrewsChange,
   onFilterModeChange,
@@ -87,7 +91,7 @@ export function CrewCertificatesPanel({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 rounded-[28px] border border-orange-500/20 bg-[var(--surface)] p-4 shadow-xl md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 rounded-[28px] border border-orange-500/20 bg-[var(--surface)] p-4 shadow-xl md:grid-cols-5">
         <div className="relative md:col-span-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtle)]" size={16}/><input type="text" placeholder="Search crew..." value={searchTerm} onChange={(event) => onSearchTermChange(event.target.value)} className="w-full rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] p-4 pl-12 text-xs font-black text-[var(--headline)] outline-none transition focus:border-orange-500" /></div>
         <select value={filterPos} onChange={(event) => onFilterPosChange(event.target.value)} className="rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] p-4 text-xs font-black text-[var(--headline)] outline-none transition focus:border-orange-500"><option value="All">All Positions</option>{allPositions.map((position) => <option key={position} value={position}>{position}</option>)}</select>
         <select value={filterSpecificCert} onChange={(event) => onFilterSpecificCertChange(event.target.value)} className="rounded-2xl border border-orange-500/20 bg-[var(--surface-strong)] p-4 text-xs font-black text-[var(--accent-text)] outline-none transition focus:border-orange-500"><option value="All">Select Specific Certificate...</option>{allCertTypes.map((certName) => <option key={certName} value={certName}>{certName}</option>)}</select>
@@ -99,6 +103,15 @@ export function CrewCertificatesPanel({
         >
           {isDownloadingCerts ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>}
           {filterSpecificCert === 'All' ? `ZIP All (${filteredCertificateDownloads.length})` : `ZIP ${filteredCertificateDownloads.length}`}
+        </button>
+        <button
+          onClick={onExportCrewCertificateMatrix}
+          disabled={isExportingMatrix}
+          className="flex items-center justify-center gap-3 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 text-xs font-black text-blue-500 transition-all hover:bg-blue-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+          title="Export all active crew and all certificate master columns"
+        >
+          {isExportingMatrix ? <Loader2 className="animate-spin" size={16}/> : <Download size={16}/>}
+          Export Excel Matrix
         </button>
       </div>
 

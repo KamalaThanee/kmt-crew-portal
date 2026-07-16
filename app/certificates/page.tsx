@@ -7,6 +7,7 @@ import { PersonalCertificatesPanel } from '@/components/certificates/PersonalCer
 import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { createZipBlob, getFileExtension, safeFileName, triggerDownload } from '@/lib/certificateDownloads'
 import { compressImage } from '@/lib/certificateUpload'
+import { exportCrewCertificateMatrix } from '@/lib/crewCertificateMatrixExport'
 import { fetchAiModels } from '@/lib/aiModels'
 import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
@@ -168,6 +169,7 @@ function CertificatesContent() {
   const [personalFilter, setPersonalFilter] = useState('all') 
   const [expandedCrews, setExpandedCrews] = useState<string[]>([])
   const [isDownloadingCerts, setIsDownloadingCerts] = useState(false)
+  const [isExportingMatrix, setIsExportingMatrix] = useState(false)
   const [aiBackfillRunning, setAiBackfillRunning] = useState(false)
   const [aiBackfillProgress, setAiBackfillProgress] = useState('')
 
@@ -357,6 +359,23 @@ function CertificatesContent() {
     }
   }
 
+  const handleExportCrewCertificateMatrix = async () => {
+    if (crews.length === 0 || certMaster.length === 0) {
+      toast.error('Crew or certificate master data is not available')
+      return
+    }
+
+    setIsExportingMatrix(true)
+    try {
+      await exportCrewCertificateMatrix({ crews, crewCerts: allCerts, certMaster })
+      toast.success('Crew Certificate Matrix exported successfully')
+    } catch (error: any) {
+      toast.error(error?.message || 'Unable to export Crew Certificate Matrix')
+    } finally {
+      setIsExportingMatrix(false)
+    }
+  }
+
   const handleAiBackfillSelectedPosition = async () => {
     if (filterPos === 'All') {
       toast.error('Select one position first')
@@ -496,9 +515,11 @@ function CertificatesContent() {
           aiBackfillProgress={aiBackfillProgress}
           aiBackfillRunning={aiBackfillRunning}
           isDownloadingCerts={isDownloadingCerts}
+          isExportingMatrix={isExportingMatrix}
           searchTerm={searchTerm}
           onAiBackfillSelectedPosition={handleAiBackfillSelectedPosition}
           onDownloadFilteredCertificates={handleDownloadFilteredCertificates}
+          onExportCrewCertificateMatrix={handleExportCrewCertificateMatrix}
           onEditCrewProfile={(crewId) => router.push(`/admin/settings?tab=crews&id=${crewId}`)}
           onExpandedCrewsChange={setExpandedCrews}
           onFilterModeChange={setFilterMode}
