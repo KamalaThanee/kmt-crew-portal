@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Bell, LogOut, Settings } from 'lucide-react'
+import { Bell, Bot, LogOut, Settings } from 'lucide-react'
 import type { CurrentUser } from '@/lib/currentUser'
 
 type ProfileMenuProps = {
@@ -35,13 +35,22 @@ export function ProfileMenu({
           </button>
         )}
         {isAdmin && (
-          <Link
-            href="/admin/settings"
-            onClick={onClose}
-            className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-[var(--text-muted)] hover:text-orange-500 hover:bg-orange-600/10 rounded-2xl transition-all uppercase tracking-widest"
-          >
-            <Settings size={16} /> Admin Panel
-          </Link>
+          <>
+            <Link
+              href="/admin/settings"
+              onClick={onClose}
+              className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-[var(--text-muted)] hover:text-orange-500 hover:bg-orange-600/10 rounded-2xl transition-all uppercase tracking-widest"
+            >
+              <Settings size={16} /> Admin Panel
+            </Link>
+            <Link
+              href="/admin/ai-models"
+              onClick={onClose}
+              className="w-full flex items-center gap-3 px-4 py-4 text-xs font-bold text-[var(--text-muted)] hover:text-orange-500 hover:bg-orange-600/10 rounded-2xl transition-all uppercase tracking-widest"
+            >
+              <Bot size={16} /> AI Models
+            </Link>
+          </>
         )}
         <button
           onClick={onLogout}

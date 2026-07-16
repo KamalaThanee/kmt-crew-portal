@@ -9,7 +9,7 @@ import { CrewStatusFilterTabs } from '@/components/settings/CrewStatusFilterTabs
 import { toast } from 'sonner'
 import { 
   Settings, Search, UserPlus,
-  RefreshCw, X, Save, Trash2
+  Bot, RefreshCw, X, Save, Trash2
 } from 'lucide-react'
 
 function SettingsContent() {
@@ -143,7 +143,10 @@ function SettingsContent() {
       <div className="max-w-[1600px] mx-auto">
         <div className="mb-10 flex justify-between items-center">
           <h1 className="text-4xl font-black italic flex items-center gap-4 tracking-tighter text-white"><Settings className="text-orange-500" size={36}/> Admin Panel</h1>
-          <button onClick={() => router.push('/admin/dashboard')} className="p-4 bg-zinc-900 rounded-full border border-white/5 hover:bg-orange-600 transition-all shadow-xl"><X size={24}/></button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => router.push('/admin/ai-models')} className="flex items-center gap-2 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-5 py-4 text-orange-500 hover:bg-orange-600 hover:text-white transition-all shadow-xl"><Bot size={20}/><span>AI Models</span></button>
+            <button onClick={() => router.push('/admin/dashboard')} className="p-4 bg-zinc-900 rounded-full border border-white/5 hover:bg-orange-600 transition-all shadow-xl"><X size={24}/></button>
+          </div>
         </div>
 
         <div className="bg-zinc-900/5 border border-white/5 rounded-[48px] p-8 shadow-inner min-h-[70vh]">
