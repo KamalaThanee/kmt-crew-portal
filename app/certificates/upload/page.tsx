@@ -74,6 +74,18 @@ function UploadContent() {
   const searchParams = useSearchParams()
   const certName = searchParams.get('cert') || ''
   const targetCrewId = searchParams.get('crewId')
+  const requestedReturnTo = searchParams.get('returnTo')
+  const fallbackReturnTo = targetCrewId ? '/certificates?tab=crew' : '/certificates?tab=personal'
+  const returnTo = (() => {
+    if (!requestedReturnTo || requestedReturnTo.startsWith('//')) return fallbackReturnTo
+    try {
+      const parsed = new URL(requestedReturnTo, 'https://kmt.local')
+      if (parsed.origin !== 'https://kmt.local' || parsed.pathname !== '/certificates') return fallbackReturnTo
+      return `${parsed.pathname}${parsed.search}`
+    } catch {
+      return fallbackReturnTo
+    }
+  })()
 
   const [user, setUser] = useState<any>(null)
   const [targetCrew, setTargetCrew] = useState<any>(null)
@@ -122,7 +134,7 @@ function UploadContent() {
       const resolvedCrew = crewRes.data || user
       if (!isCrewActive(resolvedCrew)) {
         toast.error('This crew is marked as resigned')
-        router.replace('/certificates')
+        router.replace(returnTo)
         return
       }
 
@@ -139,7 +151,7 @@ function UploadContent() {
     return () => {
       active = false
     }
-  }, [user, certName, targetCrewId, router])
+  }, [user, certName, targetCrewId, returnTo, router])
 
   useEffect(() => {
     if (!scanResult || !finalData.issueDate) return
@@ -394,7 +406,7 @@ function UploadContent() {
       window.dispatchEvent(new Event('new-notification'))
 
       toast.success('Certificate saved successfully')
-      router.push('/certificates')
+      router.replace(returnTo)
     } catch (error: any) {
       toast.error(error.message || 'Save failed')
     } finally {
@@ -405,7 +417,7 @@ function UploadContent() {
   return (
     <div className="p-6 max-w-xl mx-auto pb-32 pt-6 font-sans md:pt-20">
       <button
-        onClick={() => router.push('/certificates')}
+        onClick={() => router.push(returnTo)}
         className="mb-5 inline-flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--panel)] px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[var(--subtle)] shadow-[0_12px_28px_rgba(80,52,16,0.08)] md:hidden"
       >
         <ArrowLeft size={14} />
@@ -417,7 +429,7 @@ function UploadContent() {
           <p className="text-blue-500 font-bold text-[10px] uppercase mt-1">{certName}</p>
           {targetCrew?.full_name && <p className="text-slate-500 text-[10px] mt-2 uppercase">Crew: {targetCrew.full_name}</p>}
         </div>
-        <button onClick={() => router.push('/certificates')} className="p-2 bg-white/5 rounded-full">
+        <button onClick={() => router.push(returnTo)} className="p-2 bg-white/5 rounded-full">
           <X size={20} />
         </button>
       </div>

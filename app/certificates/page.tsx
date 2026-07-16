@@ -229,6 +229,10 @@ function CertificatesContent() {
     const tab = searchParams.get('tab')
     const crewFilter = searchParams.get('filter')
     const personal = searchParams.get('personal')
+    const crewPosition = searchParams.get('position')
+    const crewCert = searchParams.get('certFilter')
+    const crewSearch = searchParams.get('search')
+    const expandedCrew = searchParams.get('expanded')
 
     if (tab === 'crew' && canManageCertificates) setActiveTab('crew')
     if (tab === 'personal') setActiveTab('personal')
@@ -242,6 +246,11 @@ function CertificatesContent() {
     if (personal && ['all', 'ok', 'warning', 'expired', 'missing'].includes(personal)) {
       setPersonalFilter(personal)
     }
+
+    if (crewPosition) setFilterPos(crewPosition)
+    if (crewCert) setFilterSpecificCert(crewCert)
+    if (crewSearch) setSearchTerm(crewSearch)
+    if (expandedCrew) setExpandedCrews([expandedCrew])
   }, [canManageCertificates, canOpenShipCertificates, router, searchParams])
 
   useEffect(() => {
@@ -376,6 +385,21 @@ function CertificatesContent() {
     }
   }
 
+  const handleOpenPersonalCertificateUpload = (certName: string) => {
+    const returnTo = `/certificates?tab=personal&personal=${encodeURIComponent(personalFilter)}`
+    router.push(`/certificates/upload?cert=${encodeURIComponent(certName)}&returnTo=${encodeURIComponent(returnTo)}`)
+  }
+
+  const handleOpenCrewCertificateUpload = (certName: string, crewId: string) => {
+    const returnParams = new URLSearchParams({ tab: 'crew', expanded: crewId })
+    if (filterMode !== 'all') returnParams.set('filter', filterMode)
+    if (filterPos !== 'All') returnParams.set('position', filterPos)
+    if (filterSpecificCert !== 'All') returnParams.set('certFilter', filterSpecificCert)
+    if (searchTerm.trim()) returnParams.set('search', searchTerm.trim())
+    const returnTo = `/certificates?${returnParams.toString()}`
+    router.push(`/certificates/upload?cert=${encodeURIComponent(certName)}&crewId=${crewId}&returnTo=${encodeURIComponent(returnTo)}`)
+  }
+
   const handleAiBackfillSelectedPosition = async () => {
     if (filterPos === 'All') {
       toast.error('Select one position first')
@@ -497,7 +521,7 @@ function CertificatesContent() {
           myCertData={myCertData}
           personalFilter={personalFilter}
           onPersonalFilterChange={setPersonalFilter}
-          onUploadCertificate={(certName) => router.push(`/certificates/upload?cert=${encodeURIComponent(certName)}`)}
+          onUploadCertificate={handleOpenPersonalCertificateUpload}
         />
       )}
 
@@ -526,7 +550,7 @@ function CertificatesContent() {
           onFilterPosChange={setFilterPos}
           onFilterSpecificCertChange={setFilterSpecificCert}
           onSearchTermChange={setSearchTerm}
-          onUploadCrewCertificate={(certName, crewId) => router.push(`/certificates/upload?cert=${encodeURIComponent(certName)}&crewId=${crewId}`)}
+          onUploadCrewCertificate={handleOpenCrewCertificateUpload}
         />
       )}
 
