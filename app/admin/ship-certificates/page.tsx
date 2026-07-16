@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowLeft, CalendarClock, Download, ExternalLink, FileBa
 import { supabase } from '@/lib/supabase'
 import { compressImage } from '@/lib/certificateUpload'
 import { fetchAiModels } from '@/lib/aiModels'
+import { notifyOneSignal } from '@/lib/onesignalClient'
 import { exportShipCertificatesTo1162 } from '@/lib/shipCertificateExport'
 import { canViewShipCertificates } from '@/lib/roles'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
@@ -805,6 +806,7 @@ export default function ShipCertificatesPage() {
       setIsSaving(false)
       return
     }
+    const savedCertificate = data as ShipCertificate
 
     await supabase.from('ship_cert_history').insert({
       ship_certificate_id: data.id,
@@ -813,6 +815,16 @@ export default function ShipCertificatesPage() {
       new_data: data,
       actor_name: currentUser?.full_name || currentUser?.position || 'Unknown user',
     })
+    if (uploadFile) {
+      await notifyOneSignal({
+        type: 'ship_cert_upload',
+        certName: savedCertificate.cert_name,
+        actorName: currentUser?.full_name || currentUser?.position,
+        actorId: currentUser?.id,
+        actorPin: currentUser?.pin,
+      })
+      window.dispatchEvent(new Event('new-notification'))
+    }
     const nextPageMaps = normalizeAiPageMapRows(
       scanResult?.pageMap,
       (data as ShipCertificate).master_id || editingCert.master_id,
@@ -831,7 +843,6 @@ export default function ShipCertificatesPage() {
     }
     setHistoryRows(await fetchHistoryRows())
 
-    const savedCertificate = data as ShipCertificate
     const nextRows = isAddingCert
       ? [...rows, savedCertificate].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
       : rows.map((row) => (row.id === editingCert.id ? savedCertificate : row))

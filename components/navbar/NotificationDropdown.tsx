@@ -15,6 +15,7 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
   const hasNoAlerts =
     notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.ppeSizeAlertCount || 0) === 0 &&
     (notifData.updates || []).length === 0 &&
+    (notifData.adminActions || []).length === 0 &&
     totalPersonalAdminUpdates === 0
 
   return (
@@ -31,11 +32,11 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
           <>
             <div className="px-1 pt-2">
               <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-amber-300">
-                Legacy Request Feed
+                Upload Progress
               </p>
-              {(notifData.pendingActions || []).length > 0 ? (
+              {(notifData.adminActions || []).length > 0 ? (
                 <div className="space-y-2">
-                  {(notifData.pendingActions || []).map((item: AdminActionItem) => {
+                  {(notifData.adminActions || []).map((item: AdminActionItem) => {
                     const Icon = item.icon
                     return (
                       <NotificationLinkItem
@@ -45,16 +46,16 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
                         title={item.title}
                         description={item.description}
                         meta={item.meta}
-                        badge={item.countLabel || 'NEW'}
+                        badge={item.countLabel || 'UPLOAD'}
                         icon={<Icon size={16} />}
-                        tone="amber"
+                        tone={item.tone}
                       />
                     )
                   })}
                 </div>
               ) : (
                 <div className="rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                  No pending legacy requests right now
+                  No recent certificate uploads
                 </div>
               )}
             </div>

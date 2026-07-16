@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { ArrowLeft, Loader2, X } from 'lucide-react'
 import { compressImage } from '@/lib/certificateUpload'
 import { fetchAiModels } from '@/lib/aiModels'
+import { notifyOneSignal } from '@/lib/onesignalClient'
 import { extractCertPolicy, matchCertMasterRow, normalizeThaiDigits, resolveExpiryDate } from '@/lib/certificates'
 import { CertificateScanReview } from '@/components/certificates/CertificateScanReview'
 import { CertificateUploadDropzone } from '@/components/certificates/CertificateUploadDropzone'
@@ -381,6 +382,16 @@ function UploadContent() {
         },
         actor_name: user.full_name || user.position || 'Unknown user',
       })
+
+      await notifyOneSignal({
+        type: 'crew_cert_upload',
+        certName: savedCertName,
+        targetCrewName: targetCrew.full_name || user.full_name,
+        actorName: user.full_name || user.position,
+        actorId: user.id,
+        actorPin: user.pin,
+      })
+      window.dispatchEvent(new Event('new-notification'))
 
       toast.success('Certificate saved successfully')
       router.push('/certificates')

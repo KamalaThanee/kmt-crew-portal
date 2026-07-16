@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
 
-type NotificationTone = 'amber' | 'emerald' | 'red' | 'sky' | 'plain'
+type NotificationTone = 'amber' | 'emerald' | 'red' | 'sky' | 'violet' | 'plain'
 
 type NotificationLinkItemProps = {
   href: string
@@ -40,6 +40,12 @@ const toneClasses: Record<NotificationTone, { card: string; icon: string; meta: 
     icon: 'bg-sky-500/20 text-sky-400',
     meta: 'text-sky-300',
     arrow: 'group-hover:text-sky-400',
+  },
+  violet: {
+    card: 'border border-violet-500/10 bg-violet-500/[0.04]',
+    icon: 'bg-violet-500/20 text-violet-300',
+    meta: 'text-violet-300',
+    arrow: 'group-hover:text-violet-300',
   },
   plain: {
     card: '',

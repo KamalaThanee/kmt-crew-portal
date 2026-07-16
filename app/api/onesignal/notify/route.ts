@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 type NotifyPayload = {
-  type?: "new_request" | "approved" | "rejected" | "received" | "sms_revision" | "monthly_position_complete";
+  type?: "new_request" | "approved" | "rejected" | "received" | "sms_revision" | "monthly_position_complete" | "crew_cert_upload" | "ship_cert_upload";
   requestId?: string;
   crewId?: string;
   crewName?: string;
@@ -14,6 +14,10 @@ type NotifyPayload = {
   position?: string;
   month?: string;
   completedCount?: number;
+  certName?: string;
+  targetCrewName?: string;
+  actorId?: string;
+  actorPin?: string;
 };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -96,6 +100,22 @@ function getBaseUrl(request: Request) {
   return url.origin;
 }
 
+async function authenticateUploadActor(supabaseAdmin: any, payload: NotifyPayload) {
+  const actorId = String(payload.actorId || "");
+  const actorPin = String(payload.actorPin || "").replace(/\D/g, "").slice(0, 6);
+  if (!actorId || actorPin.length !== 6) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("crews")
+    .select("id, full_name, position, is_active, resigned_at")
+    .eq("id", actorId)
+    .eq("pin", actorPin)
+    .maybeSingle();
+
+  if (error || !data || data.is_active === false || data.resigned_at) return null;
+  return data as { id: string; full_name?: string; position?: string };
+}
+
 export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as NotifyPayload;
@@ -114,6 +134,31 @@ export async function POST(request: Request) {
         { error: "Missing OneSignal environment variables" },
         { status: 500 },
       );
+    }
+
+    if (payload.type === "crew_cert_upload" || payload.type === "ship_cert_upload") {
+      const actor = await authenticateUploadActor(supabaseAdmin, payload);
+      if (!actor) {
+        return NextResponse.json({ error: "Uploader authentication required" }, { status: 401 });
+      }
+
+      const { data: crews, error } = await supabaseAdmin
+        .from("crews")
+        .select("id, position, is_active, resigned_at");
+      if (error) throw error;
+
+      const externalIds = (crews || [])
+        .filter((crew: any) => crew.is_active !== false && !crew.resigned_at && adminRoles.includes(normalizeRole(crew.position)))
+        .map((crew: any) => String(crew.id))
+        .filter(Boolean);
+      const isShipCert = payload.type === "ship_cert_upload";
+      const title = isShipCert ? "Ship certificate uploaded" : "Crew certificate uploaded";
+      const certName = payload.certName || (isShipCert ? "Ship certificate" : "Crew certificate");
+      const subject = isShipCert ? certName : `${certName} for ${payload.targetCrewName || "a crew member"}`;
+      const body = `${subject} was uploaded by ${actor.full_name || payload.actorName || "a crew member"}.`;
+      const url = isShipCert ? `${baseUrl}/admin/ship-certificates` : `${baseUrl}/certificates?tab=crew`;
+      const data = await sendOneSignal(externalIds, title, body, url);
+      return NextResponse.json({ ok: true, target: "admins", targetCount: externalIds.length, data });
     }
 
     if (payload.type === "new_request" || payload.type === "received") {

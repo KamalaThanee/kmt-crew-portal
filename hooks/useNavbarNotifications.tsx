@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Clock, XCircle } from 'lucide-react'
+import { CheckCircle2, Clock, FileUp, ShipWheel, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CurrentUser } from '@/lib/currentUser'
 import {
@@ -21,7 +21,7 @@ export type AdminActionItem = {
   description: string
   meta: string
   countLabel?: string
-  tone: 'amber' | 'red' | 'violet'
+  tone: 'amber' | 'red' | 'violet' | 'sky'
   icon: typeof Clock
 }
 
@@ -103,12 +103,21 @@ export function useNavbarNotifications({
 
     const fetchNotifications = async () => {
       let currentTotal = 0
+      let adminUploadUnread = 0
       const params = new URLSearchParams({
         userId: String(user.id || ''),
         fullName: String(user.full_name || ''),
         isAdmin: isAdmin ? 'true' : 'false',
       })
-      const response = await fetch(`/api/navbar-notifications?${params.toString()}`, { cache: 'no-store' })
+      const response = await fetch(`/api/navbar-notifications?${params.toString()}`, {
+        cache: 'no-store',
+        headers: isAdmin
+          ? {
+              'x-kmt-user-id': String(user.id || ''),
+              'x-kmt-pin': String(user.pin || ''),
+            }
+          : undefined,
+      })
       const payload = await response.json()
       if (!response.ok) return
 
@@ -121,6 +130,18 @@ export function useNavbarNotifications({
         const personalApprovedCount = payload.personalApprovedCount || 0
         const ppeSizeActions: CrewActionItem[] = payload.ppeSizeActions || []
         const ppeSizeAlertCount = payload.ppeSizeAlertCount || 0
+        const adminActions: AdminActionItem[] = (payload.adminActions || []).map((item: any) => ({
+          ...item,
+          icon: item.icon === 'ship' ? ShipWheel : FileUp,
+        }))
+        const seenUploadKey = `kmt_admin_upload_notif_seen_${user.id}`
+        const storedSeenUploadIds = localStorage.getItem(seenUploadKey)
+        if (storedSeenUploadIds === null) {
+          localStorage.setItem(seenUploadKey, JSON.stringify(adminActions.map((item) => item.id)))
+        } else {
+          const seenUploadIds = new Set<string>(JSON.parse(storedSeenUploadIds || '[]'))
+          adminUploadUnread = adminActions.filter((item) => !seenUploadIds.has(item.id)).length
+        }
 
         setNotifData({
           pending: payload.pending || 0,
@@ -129,7 +150,7 @@ export function useNavbarNotifications({
           ppeSizeActions,
           pendingActions,
           shipCertActions: [],
-          adminActions: [],
+          adminActions,
           personalUpdates,
           personalCertActions: [],
           updates: [],
@@ -139,7 +160,7 @@ export function useNavbarNotifications({
           ppeSizeAlertCount,
           shipCertAlertCount: 0,
         })
-        currentTotal = (payload.pending || 0) + (payload.personalUpdateCount || 0) + ppeSizeAlertCount
+        currentTotal = ppeSizeAlertCount
       } else {
         const rows = payload.updates || []
         const statusStorageKey = getCrewNotificationStorageKey(user)
@@ -229,7 +250,7 @@ export function useNavbarNotifications({
 
       const lastSeenTotal = parseInt(localStorage.getItem('kmt_notif_seen') || '0')
       const unread = currentTotal > lastSeenTotal ? currentTotal - lastSeenTotal : 0
-      setUnreadCount(unread)
+      setUnreadCount(unread + adminUploadUnread)
     }
 
     fetchNotifications()
@@ -268,12 +289,16 @@ export function useNavbarNotifications({
           (notifData.personalUpdates || []).length +
           (notifData.ppeSizeAlertCount || 0)
         localStorage.setItem('kmt_notif_seen', total.toString())
+        if (isAdmin && user?.id) {
+          const uploadIds = (notifData.adminActions || []).map((item) => item.id)
+          localStorage.setItem(`kmt_admin_upload_notif_seen_${user.id}`, JSON.stringify(uploadIds))
+        }
         setUnreadCount(0)
       }
 
       return isOpening
     })
-  }, [notifData, setShowNotif, setShowProfile, user])
+  }, [isAdmin, notifData, setShowNotif, setShowProfile, user])
 
   return { notifData, unreadCount, handleOpenNotif }
 }
