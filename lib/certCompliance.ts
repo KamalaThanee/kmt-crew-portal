@@ -221,7 +221,7 @@ export function calculateCrewCertificateCompliance({
 
   const basicSafetyVirtualChildren = list.flatMap((row) => {
     if (!Array.isArray(row.basicSafetyChildren)) return []
-    if (isBasicSafetyParentName(row.cert_name) && (row.uploaded || row.satisfiedByRefresher || row.satisfiedByComponents)) {
+    if (isBasicSafetyParentName(row.cert_name) && (row.uploaded || row.satisfiedByRefresher)) {
       return row.basicSafetyChildren.filter((child: any) => child.relationKind !== 'requirement')
     }
     return row.basicSafetyChildren

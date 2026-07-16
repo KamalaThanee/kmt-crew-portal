@@ -210,7 +210,7 @@ function buildCrewExpandedRows(items: any[]) {
       }
     })
     const hideBasicSafetyRequirementChildren =
-      isBasicSafetyParentName(item.cert_name) && !!(item.uploaded || item.satisfiedByRefresher || item.satisfiedByComponents)
+      isBasicSafetyParentName(item.cert_name) && !!(item.uploaded || item.satisfiedByRefresher)
 
     const visibleChildren = hideBasicSafetyRequirementChildren
       ? children.filter((child: any) => child.relationKind !== 'requirement')
