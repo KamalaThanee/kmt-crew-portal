@@ -1,11 +1,3 @@
-export const AI_MODELS = [
-  { id: 'gemini-3.1-flash-lite-preview', provider: 'google', label: 'Gemini 3.1 Flash Lite Preview (AI Studio)' },
-  { id: 'gemini-2.5-flash', provider: 'google', label: 'Gemini 2.5 Flash (AI Studio)' },
-  { id: 'gemini-3-flash-preview', provider: 'google', label: 'Gemini 3 Flash Preview (AI Studio)' },
-  { id: 'google/gemini-2.5-flash-lite', provider: 'openrouter', label: 'Gemini 2.5 Flash Lite (OpenRouter)' },
-  { id: 'qwen/qwen3-vl-32b-instruct', provider: 'openrouter', label: 'Qwen3 VL 32B Instruct (OpenRouter)' },
-]
-
 export const compressImage = (file: File): Promise<string> =>
   new Promise((resolve) => {
     const reader = new FileReader()

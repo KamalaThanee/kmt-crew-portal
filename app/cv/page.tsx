@@ -7,7 +7,8 @@ import { BriefcaseBusiness, CalendarDays, Download, FileBadge, PencilLine, Plus,
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageShell } from '@/components/layout/PageShell'
-import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
+import { compressImage } from '@/lib/certificateUpload'
+import { fetchAiModels } from '@/lib/aiModels'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import { dayDiffInclusive, formatServiceDuration, formatYearsOneDecimal, getSeaServiceMetrics, sameMetricLabel } from '@/lib/cvMetrics'
 import { canManageCvDashboard, isAdminRole } from '@/lib/roles'
@@ -1575,9 +1576,10 @@ function CvPageContent() {
 
       let latestError = 'AI models busy'
       const section = getCvCertSection(cert)
+      const configuredModels = await fetchAiModels('cv')
       const candidateModels = mimeType === 'application/pdf'
-        ? AI_MODELS.filter((model) => model.provider === 'google')
-        : AI_MODELS
+        ? configuredModels.filter((model) => model.provider === 'google')
+        : configuredModels
       for (const model of candidateModels) {
         try {
           const response = await fetch('/api/ocr', {
@@ -1588,8 +1590,9 @@ function CvPageContent() {
               mimeType,
               certName: cert.cert_name,
               crewName: user.full_name,
-              modelId: model.id,
+              modelId: model.modelId,
               provider: model.provider,
+              modelUseCase: 'cv',
             }),
           })
           const result = await response.json()

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { resolveAiModel } from '@/lib/serverAiModels'
 
 export const runtime = 'edge'
 
@@ -61,7 +62,9 @@ const extractJsonObject = (rawText: string) => {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as ShipCertOcrBody
-    const { fileBase64, mimeType, extractedText, certName, code, category, pageMapHints, analysisFocus, modelId, provider } = body
+    const { fileBase64, mimeType, extractedText, certName, code, category, pageMapHints, analysisFocus, modelId: requestedModelId, provider: requestedProvider } = body
+    const model = await resolveAiModel('ship_certificate', requestedModelId, requestedProvider)
+    const { modelId, provider } = model
     const apiKey = provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : process.env.GEMINI_API_KEY
 
     if ((!extractedText && (!fileBase64 || !mimeType)) || !modelId || !provider) {

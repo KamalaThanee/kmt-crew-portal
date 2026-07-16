@@ -6,7 +6,8 @@ import { CrewCertificatesPanel } from '@/components/certificates/CrewCertificate
 import { PersonalCertificatesPanel } from '@/components/certificates/PersonalCertificatesPanel'
 import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { createZipBlob, getFileExtension, safeFileName, triggerDownload } from '@/lib/certificateDownloads'
-import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
+import { compressImage } from '@/lib/certificateUpload'
+import { fetchAiModels } from '@/lib/aiModels'
 import { canViewShipCertificates, isAdminRole } from '@/lib/roles'
 import { toast } from 'sonner'
 import { ExternalLink, Loader2, Mail, Save, Search, ShieldCheck } from 'lucide-react'
@@ -108,8 +109,6 @@ const certLogColumns = 'id, action, old_data, new_data, actor_name, created_at'
 const crewCertLogColumns = 'id, action, old_data, new_data, actor_name, created_at, crew_id, cert_name'
 const certEmailSettingsColumns = 'id, ship_alert_enabled, my_cert_alert_enabled, ship_to_emails, ship_cc_emails'
 const certEmailLogColumns = 'id, alert_type, scope, trigger_label, recipient, cc, subject, status, error_message, crew_name, related_cert_count, sent_at, created_at'
-const FREE_AI_MODELS = AI_MODELS.filter((model) => model.provider === 'google').slice(0, 3)
-
 const blobToDataUrl = (blob: Blob): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -379,6 +378,7 @@ function CertificatesContent() {
     let failed = 0
 
     try {
+      const freeAiModels = (await fetchAiModels('crew_certificate')).filter((model) => model.freeTier).slice(0, 3)
       for (let index = 0; index < candidates.length; index++) {
         const cert = candidates[index]
         const crew = crews.find((item) => item.id === cert.crew_id)
@@ -400,7 +400,7 @@ function CertificatesContent() {
           let aiResult: any = null
           let lastError = ''
 
-          for (const model of FREE_AI_MODELS) {
+          for (const model of freeAiModels) {
             const aiResponse = await fetch('/api/ocr', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -409,8 +409,9 @@ function CertificatesContent() {
                 mimeType,
                 certName: cert.cert_name,
                 crewName: crew?.full_name || '',
-                modelId: model.id,
+                modelId: model.modelId,
                 provider: model.provider,
+                modelUseCase: 'crew_certificate',
               }),
             })
             const data = await aiResponse.json()

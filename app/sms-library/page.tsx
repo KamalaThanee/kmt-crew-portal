@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import { canManageSmsLibrary } from '@/lib/roles'
+import { fetchAiModels } from '@/lib/aiModels'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageShell } from '@/components/layout/PageShell'
 import {
@@ -25,14 +26,6 @@ import {
 
 const SMS_BUCKET = 'sms-documents'
 const tabs: Array<SmsCategory | 'Revision Log'> = ['Procedure', 'Checklist', 'Support Document', 'Revision Log']
-
-const smsHeaderAiModels = [
-  { id: 'gemini-3.1-flash-lite-preview', provider: 'google', label: 'Gemini 3.1 Flash Lite Preview' },
-  { id: 'gemini-2.5-flash', provider: 'google', label: 'Gemini 2.5 Flash' },
-  { id: 'gemini-3-flash-preview', provider: 'google', label: 'Gemini 3 Flash Preview' },
-  { id: 'google/gemini-2.5-flash-lite', provider: 'openrouter', label: 'Gemini 2.5 Flash Lite' },
-  { id: 'qwen/qwen3-vl-32b-instruct', provider: 'openrouter', label: 'Qwen3 VL 32B' },
-]
 
 const formatDate = (value?: string | null) => {
   if (!value) return '-'
@@ -346,6 +339,7 @@ export default function SmsLibraryPage() {
 
     const nextDrafts = [...drafts]
     try {
+      const smsHeaderAiModels = await fetchAiModels('sms')
       for (let index = 0; index < targets.length; index += 1) {
         const draft = targets[index]
         const draftIndex = nextDrafts.findIndex((item) => item.id === draft.id)
@@ -377,7 +371,7 @@ export default function SmsLibraryPage() {
                 fileName: draft.fileName,
                 category: draft.category,
                 pageNumber,
-                modelId: model.id,
+                modelId: model.modelId,
                 provider: model.provider,
               }),
             })

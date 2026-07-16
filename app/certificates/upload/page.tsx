@@ -4,7 +4,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { ArrowLeft, Loader2, X } from 'lucide-react'
-import { AI_MODELS, compressImage } from '@/lib/certificateUpload'
+import { compressImage } from '@/lib/certificateUpload'
+import { fetchAiModels } from '@/lib/aiModels'
 import { extractCertPolicy, matchCertMasterRow, normalizeThaiDigits, resolveExpiryDate } from '@/lib/certificates'
 import { CertificateScanReview } from '@/components/certificates/CertificateScanReview'
 import { CertificateUploadDropzone } from '@/components/certificates/CertificateUploadDropzone'
@@ -205,7 +206,8 @@ function UploadContent() {
       }
 
       let latestError = 'AI models busy'
-      for (const model of AI_MODELS) {
+      const aiModels = await fetchAiModels('crew_certificate')
+      for (const model of aiModels) {
         setActiveModelLabel(`Trying: ${model.label}`)
 
         try {
@@ -217,8 +219,9 @@ function UploadContent() {
               mimeType,
               certName,
               crewName: targetCrew.full_name,
-              modelId: model.id,
+              modelId: model.modelId,
               provider: model.provider,
+              modelUseCase: 'crew_certificate',
               refreshYears: certPolicy.refreshYears,
               noExpiry: certPolicy.noExpiry,
             }),

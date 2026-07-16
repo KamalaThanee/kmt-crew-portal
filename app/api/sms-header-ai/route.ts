@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { resolveAiModel } from '@/lib/serverAiModels'
 
 export const runtime = 'edge'
 
@@ -16,7 +17,9 @@ type SmsHeaderAiBody = {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as SmsHeaderAiBody
-    const { fileBase64, mimeType, extractedText, fileName, category, pageNumber, modelId, provider } = body
+    const { fileBase64, mimeType, extractedText, fileName, category, pageNumber, modelId: requestedModelId, provider: requestedProvider } = body
+    const model = await resolveAiModel('sms', requestedModelId, requestedProvider)
+    const { modelId, provider } = model
     const apiKey = provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : process.env.GEMINI_API_KEY
     if (!apiKey || !modelId || !provider) throw new Error('Missing SMS AI provider configuration')
     if (!extractedText?.trim() && (!fileBase64 || !mimeType)) throw new Error('Missing SMS header AI input')

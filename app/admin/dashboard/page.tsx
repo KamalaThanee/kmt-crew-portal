@@ -6,7 +6,7 @@ import { calculateCrewCertificateCompliance } from '@/lib/certCompliance'
 import { applyPpeRequestUserFilter } from '@/lib/ppeRequests'
 import { getShipCertificateStatus, getShipSurveyStatus } from '@/lib/shipCertificates'
 import { 
-  User, AlertTriangle, ChevronRight, ShieldCheck, RefreshCw, Clock, Archive
+  User, AlertTriangle, ChevronRight, ShieldCheck, RefreshCw, Clock, Archive, Bot
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -107,7 +107,10 @@ export default function AdminDashboard() {
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 pt-6 md:pt-28 font-sans text-white uppercase font-bold text-[10px]">
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div><h1 className="text-3xl md:text-4xl font-black italic flex items-center gap-3 text-white"><ShieldCheck className="text-orange-500" size={36}/> Command Center</h1><p className="text-zinc-500 mt-1 tracking-widest">Vessel Oversight</p></div>
-        <button onClick={() => fetchAdminData(user)} className="p-3 bg-zinc-900 border border-white/5 rounded-full hover:bg-orange-600 transition-all"><RefreshCw size={20}/></button>
+        <div className="flex items-center gap-2">
+          <Link href="/admin/ai-models" className="flex items-center gap-2 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-orange-400 hover:bg-orange-600 hover:text-white"><Bot size={18}/><span className="hidden sm:inline">AI Models</span></Link>
+          <button onClick={() => fetchAdminData(user)} className="p-3 bg-zinc-900 border border-white/5 rounded-full hover:bg-orange-600 transition-all"><RefreshCw size={20}/></button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

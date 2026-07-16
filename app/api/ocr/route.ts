@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server'
 import { auditCertTypeMatch, NO_EXPIRY_DATE, parseBooleanLike, parseThaiDateEvidence, resolveExpiryDate } from '@/lib/certificates'
+import { resolveAiModel } from '@/lib/serverAiModels'
 
 export const runtime = 'edge'
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { imageBase64, mimeType, certName, crewName, modelId, provider, refreshYears, noExpiry } = body
+    const { imageBase64, mimeType, certName, crewName, modelId: requestedModelId, provider: requestedProvider, modelUseCase, refreshYears, noExpiry } = body
+    const model = await resolveAiModel(modelUseCase, requestedModelId, requestedProvider)
+    const { modelId, provider } = model
     const apiKey = provider === 'openrouter' ? process.env.OPENROUTER_API_KEY : process.env.GEMINI_API_KEY
     if (!apiKey) throw new Error('Missing OCR provider API key')
 
