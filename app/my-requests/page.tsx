@@ -57,6 +57,7 @@ export default function MyRequests() {
     if (!confirm('Confirm this PPE has been received? Stock will be deducted immediately.')) return
     setIsProcessing(true)
     try {
+      const user = JSON.parse(localStorage.getItem('kmt_user') || '{}')
       await receivePpeRequest(req)
       const pushResult = await notifyOneSignal({
         type: 'received',
@@ -64,6 +65,10 @@ export default function MyRequests() {
         crewId: req.crew_id,
         crewName: req.crew_name || req.requester_name || req.full_name,
         itemName: req.items?.[0]?.item_name || 'PPE item',
+        itemsSummary: (req.items || []).map((item: any) => `${item.item_name || 'PPE'} × ${Number(item.quantity || item.qty || 1)}`).join(', '),
+        actorName: user.full_name || user.position,
+        actorId: user.id,
+        actorPin: user.pin,
       })
       if (!pushResult?.ok || pushResult?.data?.skipped) {
         toast.warning(`Push not sent: ${pushResult?.error || pushResult?.data?.reason || 'check OneSignal logs'}`)

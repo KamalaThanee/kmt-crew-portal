@@ -13,6 +13,7 @@ import { readCurrentUser, type CurrentUser } from '@/lib/currentUser'
 import { dayDiffInclusive, formatServiceDuration, formatYearsOneDecimal, getSeaServiceMetrics, sameMetricLabel } from '@/lib/cvMetrics'
 import { canManageCvDashboard, isAdminRole } from '@/lib/roles'
 import { supabase } from '@/lib/supabase'
+import { notifyOneSignal } from '@/lib/onesignalClient'
 
 type VesselMaster = {
   id: string
@@ -826,6 +827,18 @@ function CvPageContent() {
   const canOpenDashboard = canManageCvDashboard(sessionUser?.position)
   const viewingOwnCv = user?.id && sessionUser?.id ? user.id === sessionUser.id : true
 
+  const notifyOwnCvUpdate = async (cvSection: string) => {
+    if (!viewingOwnCv || !sessionUser?.id) return
+    await notifyOneSignal({
+      type: 'cv_updated',
+      cvSection,
+      actorName: sessionUser.full_name || sessionUser.position,
+      actorId: sessionUser.id,
+      actorPin: sessionUser.pin,
+    })
+    window.dispatchEvent(new Event('new-notification'))
+  }
+
   const serviceSummary = useMemo(() => {
     return getSeaServiceMetrics(
       services,
@@ -1089,6 +1102,7 @@ function CvPageContent() {
     setUser(nextUser)
     setSavedProfileSnapshot(profileSnapshot(profile))
     setProfileTouched(false)
+    await notifyOwnCvUpdate('personal details')
     toast.success('CV profile saved')
   }
 
@@ -1171,6 +1185,7 @@ function CvPageContent() {
 
       setProfile((prev) => ({ ...prev, picture_data_url: pictureUrl }))
       setUser((prev) => prev ? { ...prev, cv_picture_url: pictureUrl } : prev)
+      await notifyOwnCvUpdate('profile picture')
       toast.success('CV picture saved')
     } catch (error: any) {
       toast.error(`${error?.message || 'Unable to save CV picture'}. Run sql/crew_cv_foundation.sql first.`)
@@ -1190,6 +1205,7 @@ function CvPageContent() {
       if (updateError) throw updateError
       setProfile((prev) => ({ ...prev, picture_data_url: '' }))
       setUser((prev) => prev ? { ...prev, cv_picture_url: null } : prev)
+      await notifyOwnCvUpdate('profile picture')
       toast.success('CV picture removed')
     } catch (error: any) {
       toast.error(error?.message || 'Unable to remove CV picture')
@@ -1454,6 +1470,7 @@ function CvPageContent() {
       return
     }
     toast.success(editingServiceId ? 'Sea service updated' : 'Sea service added')
+    await notifyOwnCvUpdate('sailing voyages')
     resetSeaServiceEditor(activeUser)
     await loadCv(activeUser, sessionUser)
   }
@@ -1513,6 +1530,7 @@ function CvPageContent() {
       return
     }
     setServices((prev) => prev.filter((item) => item.id !== id))
+    await notifyOwnCvUpdate('sailing voyages')
     toast.success('Sea service deleted')
   }
 
@@ -1559,6 +1577,7 @@ function CvPageContent() {
       return
     }
     setSavedCertSnapshots((prev) => ({ ...prev, [cert.id]: certSnapshot(cert) }))
+    await notifyOwnCvUpdate('certificate details')
     toast.success('CV certificate detail saved')
   }
 
@@ -1706,6 +1725,7 @@ function CvPageContent() {
       return
     }
     toast.success('Vaccination detail added')
+    await notifyOwnCvUpdate('vaccination details')
     setVaccinationForm({ ...emptyVaccination, crew_id: activeUser.id })
     await loadCv(activeUser, sessionUser)
   }
@@ -1717,6 +1737,7 @@ function CvPageContent() {
       return
     }
     setVaccinations((prev) => prev.filter((item) => item.id !== id))
+    await notifyOwnCvUpdate('vaccination details')
     toast.success('Vaccination detail deleted')
   }
 

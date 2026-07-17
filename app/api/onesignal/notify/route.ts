@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 type NotifyPayload = {
-  type?: "new_request" | "approved" | "rejected" | "received" | "sms_revision" | "monthly_position_complete" | "monthly_report_uploaded" | "monthly_report_collected" | "crew_cert_upload" | "ship_cert_upload";
+  type?: "new_request" | "approved" | "rejected" | "received" | "sms_revision" | "monthly_position_complete" | "monthly_report_uploaded" | "monthly_report_collected" | "crew_cert_upload" | "ship_cert_upload" | "inventory_received" | "cv_updated";
   requestId?: string;
   crewId?: string;
   crewName?: string;
@@ -22,6 +22,10 @@ type NotifyPayload = {
   reportMonth?: string;
   collectionAction?: "download" | "export";
   targetPositions?: string[];
+  targetCrewId?: string;
+  doNumber?: string;
+  itemsSummary?: string;
+  cvSection?: string;
 };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -127,6 +131,19 @@ async function authenticateUploadActor(supabaseAdmin: any, payload: NotifyPayloa
   return data as { id: string; full_name?: string; position?: string };
 }
 
+async function insertActivityEvent(supabaseAdmin: any, event: Record<string, unknown>) {
+  const { error } = await supabaseAdmin.from("notification_events").insert(event);
+  if (error) throw error;
+}
+
+async function getActiveCrews(supabaseAdmin: any) {
+  const { data, error } = await supabaseAdmin
+    .from("crews")
+    .select("id, full_name, position, is_active, resigned_at");
+  if (error) throw error;
+  return (data || []).filter((crew: any) => crew.is_active !== false && !crew.resigned_at);
+}
+
 export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as NotifyPayload;
@@ -136,13 +153,6 @@ export async function POST(request: Request) {
     if (!supabaseAdmin) {
       return NextResponse.json(
         { error: "Missing Supabase service role configuration" },
-        { status: 500 },
-      );
-    }
-
-    if (!oneSignalAppId || !oneSignalApiKey) {
-      return NextResponse.json(
-        { error: "Missing OneSignal environment variables" },
         { status: 500 },
       );
     }
@@ -168,6 +178,25 @@ export async function POST(request: Request) {
       const subject = isShipCert ? certName : `${certName} for ${payload.targetCrewName || "a crew member"}`;
       const body = `${subject} was uploaded by ${actor.full_name || payload.actorName || "a crew member"}.`;
       const url = isShipCert ? `${baseUrl}/admin/ship-certificates` : `${baseUrl}/certificates?tab=crew`;
+      const targetCrewName = payload.targetCrewName || "a crew member";
+      const actorName = actor.full_name || payload.actorName || "Unknown crew member";
+      await insertActivityEvent(supabaseAdmin, {
+        event_type: payload.type,
+        actor_id: actor.id,
+        actor_name: actorName,
+        actor_position: actor.position || null,
+        audience: "admins",
+        title: actorName,
+        description: isShipCert
+          ? `uploaded ship certificate ${certName}`
+          : actorName === targetCrewName
+            ? `uploaded ${certName}`
+            : `uploaded ${certName} for ${targetCrewName}`,
+        href: isShipCert ? "/admin/ship-certificates" : "/certificates?tab=crew",
+        icon: isShipCert ? "ship" : "file",
+        tone: isShipCert ? "violet" : "sky",
+        metadata: { certName, targetCrewName },
+      });
       const data = await sendOneSignal(externalIds, title, body, url);
       return NextResponse.json({ ok: true, target: "admins", targetCount: externalIds.length, data });
     }
@@ -205,6 +234,20 @@ export async function POST(request: Request) {
       const reportLabel = `${master.form_no || "N/A"} ${master.details || "Report"}`.trim();
       const month = payload.month ? ` for ${payload.month}` : "";
       const body = `${reportLabel} (${master.schedule || "Report"})${month} was uploaded by ${actor.full_name || payload.actorName || "a crew member"}.`;
+      await insertActivityEvent(supabaseAdmin, {
+        event_type: "monthly_report_uploaded",
+        actor_id: actor.id,
+        actor_name: actor.full_name || payload.actorName || "Unknown crew member",
+        actor_position: actor.position || null,
+        audience: "roles",
+        target_roles: ["radio operator"],
+        title: actor.full_name || payload.actorName || "Unknown crew member",
+        description: `uploaded ${reportLabel}${month}`,
+        href: "/monthly-reports",
+        icon: "report",
+        tone: "sky",
+        metadata: { reportMasterId: masterId, reportMonth, schedule: master.schedule },
+      });
       const data = await sendOneSignal(externalIds, "Report uploaded", body, `${baseUrl}/monthly-reports`);
       return NextResponse.json({ ok: true, target: "radio_operator", targetCount: externalIds.length, data });
     }
@@ -259,18 +302,27 @@ export async function POST(request: Request) {
       const action = payload.collectionAction === "export" ? "exported" : "downloaded";
       const month = payload.month ? ` for ${payload.month}` : "";
       const body = `${reportLabel}${month} was ${action} by ${actor.full_name || "Radio Operator"}.`;
+      await insertActivityEvent(supabaseAdmin, {
+        event_type: "monthly_report_collected",
+        actor_id: actor.id,
+        actor_name: actor.full_name || "Radio Operator",
+        actor_position: actor.position || null,
+        audience: "roles",
+        target_roles: Array.from(targetRoleSet),
+        title: actor.full_name || "Radio Operator",
+        description: `${action} ${reportLabel}${month}`,
+        href: "/monthly-reports",
+        icon: "report",
+        tone: "violet",
+        metadata: { reportMonth: payload.reportMonth, action },
+      });
       const data = await sendOneSignal(externalIds, "Report collected", body, `${baseUrl}/monthly-reports`);
       return NextResponse.json({ ok: true, target: "report_positions", targetCount: externalIds.length, data });
     }
 
     if (payload.type === "new_request" || payload.type === "received") {
-      const { data: crews, error } = await supabaseAdmin
-        .from("crews")
-        .select("id, position");
-
-      if (error) throw error;
-
-      const externalIds = (crews || [])
+      const crews = await getActiveCrews(supabaseAdmin);
+      const externalIds = crews
         .filter((crew: any) => adminRoles.includes(normalizeRole(crew.position)))
         .map((crew: any) => String(crew.id))
         .filter(Boolean);
@@ -287,24 +339,54 @@ export async function POST(request: Request) {
           ? `${baseUrl}/ppe?view=history`
           : `${baseUrl}/ppe`;
 
+      if (isReceived) {
+        const actor = await authenticateUploadActor(supabaseAdmin, payload);
+        if (!actor) return NextResponse.json({ error: "PPE issuer authentication required" }, { status: 401 });
+        const crewName = payload.crewName || "a crew member";
+        const items = payload.itemsSummary || payload.itemName || "PPE";
+        await insertActivityEvent(supabaseAdmin, {
+          event_type: "ppe_issued",
+          actor_id: actor.id,
+          actor_name: actor.full_name || payload.actorName || "Admin",
+          actor_position: actor.position || null,
+          audience: "admins",
+          title: actor.full_name || payload.actorName || "Admin",
+          description: `issued ${items} to ${crewName}`,
+          href: "/ppe?view=history",
+          icon: "ppe",
+          tone: "amber",
+          metadata: { requestId: payload.requestId, crewName, items },
+        });
+      }
+
       const data = await sendOneSignal(externalIds, title, body, url);
       return NextResponse.json({ ok: true, target: "admins", targetCount: externalIds.length, data });
     }
 
     if (payload.type === "sms_revision") {
-      const { data: crews, error } = await supabaseAdmin
-        .from("crews")
-        .select("id");
-
-      if (error) throw error;
-
-      const externalIds = (crews || [])
+      const actor = await authenticateUploadActor(supabaseAdmin, payload);
+      if (!actor) return NextResponse.json({ error: "SMS updater authentication required" }, { status: 401 });
+      const crews = await getActiveCrews(supabaseAdmin);
+      const externalIds = crews
         .map((crew: any) => String(crew.id))
         .filter(Boolean);
       const title = "SMS Library updated";
       const revision = payload.revision || "New revision";
       const count = payload.changedCount ? `${payload.changedCount} document(s)` : "documents";
       const body = `${revision} uploaded: ${count} updated.`;
+      await insertActivityEvent(supabaseAdmin, {
+        event_type: "sms_revision",
+        actor_id: actor.id,
+        actor_name: actor.full_name || payload.actorName || "Unknown crew member",
+        actor_position: actor.position || null,
+        audience: "all",
+        title: actor.full_name || payload.actorName || "Unknown crew member",
+        description: `published SMS ${revision}: ${count} updated`,
+        href: "/sms-library",
+        icon: "sms",
+        tone: "violet",
+        metadata: { revision, changedCount: payload.changedCount || 0 },
+      });
       const data = await sendOneSignal(
         externalIds,
         title,
@@ -315,22 +397,44 @@ export async function POST(request: Request) {
     }
 
     if (payload.type === "monthly_position_complete") {
-      const { data: crews, error } = await supabaseAdmin
-        .from("crews")
-        .select("id, position");
-
-      if (error) throw error;
-
-      const externalIds = (crews || [])
+      const actor = await authenticateUploadActor(supabaseAdmin, payload);
+      if (!actor) return NextResponse.json({ error: "Report uploader authentication required" }, { status: 401 });
+      const reportMonth = String(payload.reportMonth || "");
+      const position = payload.position || "A department";
+      const { data: completionNotice, error: completionError } = await supabaseAdmin
+        .from("monthly_report_completion_notices")
+        .select("id")
+        .eq("report_month", reportMonth)
+        .eq("position", position)
+        .eq("notified_by", actor.id)
+        .maybeSingle();
+      if (completionError || !completionNotice) {
+        return NextResponse.json({ error: "Completed report position could not be verified" }, { status: 400 });
+      }
+      const crews = await getActiveCrews(supabaseAdmin);
+      const externalIds = crews
         .filter((crew: any) => normalizeRole(crew.position) === "radio operator")
         .map((crew: any) => String(crew.id))
         .filter(Boolean);
 
       const title = "Monthly reports ready";
-      const position = payload.position || "A department";
       const month = payload.month || "this month";
       const count = payload.completedCount ? `${payload.completedCount} file(s)` : "all files";
       const body = `${position} completed ${count} for ${month}. Ready to export ZIP.`;
+      await insertActivityEvent(supabaseAdmin, {
+        event_type: "monthly_position_complete",
+        actor_id: actor.id,
+        actor_name: actor.full_name || payload.actorName || "Unknown crew member",
+        actor_position: actor.position || null,
+        audience: "roles",
+        target_roles: ["radio operator"],
+        title: position,
+        description: `completed ${count} for ${month}; ready to export`,
+        href: "/monthly-reports",
+        icon: "report",
+        tone: "amber",
+        metadata: { position, month, completedCount: payload.completedCount || 0 },
+      });
       const data = await sendOneSignal(
         externalIds,
         title,
@@ -338,6 +442,50 @@ export async function POST(request: Request) {
         `${baseUrl}/monthly-reports`,
       );
       return NextResponse.json({ ok: true, target: "radio_operator", targetCount: externalIds.length, data });
+    }
+
+    if (payload.type === "inventory_received" || payload.type === "cv_updated") {
+      const actor = await authenticateUploadActor(supabaseAdmin, payload);
+      if (!actor) return NextResponse.json({ error: "Actor authentication required" }, { status: 401 });
+      const isInventory = payload.type === "inventory_received";
+      if (isInventory && !adminRoles.includes(normalizeRole(actor.position))) {
+        return NextResponse.json({ error: "Inventory admin authentication required" }, { status: 403 });
+      }
+
+      const crews = await getActiveCrews(supabaseAdmin);
+      const externalIds = crews
+        .filter((crew: any) => adminRoles.includes(normalizeRole(crew.position)))
+        .map((crew: any) => String(crew.id))
+        .filter(Boolean);
+      const actorName = actor.full_name || payload.actorName || "Unknown crew member";
+      const description = isInventory
+        ? `received stock ${payload.doNumber || "DO"}: ${payload.itemsSummary || "inventory items"}`
+        : `updated their CV${payload.cvSection ? ` (${payload.cvSection})` : ""}`;
+      const href = isInventory ? "/admin/inventory" : `/cv?crewId=${actor.id}`;
+
+      await insertActivityEvent(supabaseAdmin, {
+        event_type: payload.type,
+        actor_id: actor.id,
+        actor_name: actorName,
+        actor_position: actor.position || null,
+        audience: "admins",
+        title: actorName,
+        description,
+        href,
+        icon: isInventory ? "inventory" : "cv",
+        tone: isInventory ? "amber" : "sky",
+        metadata: isInventory
+          ? { doNumber: payload.doNumber, itemsSummary: payload.itemsSummary }
+          : { cvSection: payload.cvSection || "CV" },
+      });
+
+      const data = await sendOneSignal(
+        externalIds,
+        isInventory ? "Stock received" : "CV updated",
+        `${actorName} ${description}.`,
+        `${baseUrl}${href}`,
+      );
+      return NextResponse.json({ ok: true, target: "admins", targetCount: externalIds.length, data });
     }
 
     if (payload.type === "approved" || payload.type === "rejected") {

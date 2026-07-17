@@ -650,6 +650,8 @@ export default function SmsLibraryPage() {
           revision: updateRound || changeItems[0]?.roundRevision || 'SMS revision',
           changedCount: changeItems.length || validDrafts.length,
           actorName: user.full_name,
+          actorId: user.id,
+          actorPin: user.pin,
         }),
       }).catch(() => undefined)
 

@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/cert-email-alerts",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/ship-cert-push-alerts",
+      "schedule": "15 23 * * *"
     }
   ]
 }

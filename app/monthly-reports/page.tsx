@@ -426,8 +426,12 @@ export default function MonthlyReportsPage() {
       await notifyOneSignal({
         type: 'monthly_position_complete',
         position,
+        reportMonth: reportMonthValue(selectedMonth),
         month: formatMonth(selectedMonth),
         completedCount: requiredRows.length,
+        actorName: user?.full_name || user?.position,
+        actorId: user?.id,
+        actorPin: user?.pin,
       })
     }
   }

@@ -13,6 +13,7 @@ type NotificationLinkItemProps = {
   icon: ReactNode
   tone?: NotificationTone
   arrowToneClassName?: string
+  titleClassName?: string
   onClick: () => void
 }
 
@@ -64,6 +65,7 @@ export function NotificationLinkItem({
   icon,
   tone = 'plain',
   arrowToneClassName,
+  titleClassName,
   onClick,
 }: NotificationLinkItemProps) {
   const colors = toneClasses[tone]
@@ -77,7 +79,7 @@ export function NotificationLinkItem({
       <div className="flex items-center gap-4 min-w-0">
         <div className={`p-2 rounded-xl ${colors.icon}`}>{icon}</div>
         <div className="min-w-0">
-          <p className="text-xs font-bold text-white uppercase truncate">{title}</p>
+          <p className={`truncate text-xs font-bold text-white ${titleClassName || 'uppercase'}`}>{title}</p>
           {description && <p className="text-[9px] text-zinc-400 mt-1 normal-case line-clamp-2">{description}</p>}
           {meta && <p className={`text-[9px] mt-2 normal-case font-black ${colors.meta}`}>{meta}</p>}
         </div>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Clock, FileUp, ShipWheel, XCircle } from 'lucide-react'
+import { Activity, BookOpen, Boxes, CheckCircle2, ClipboardCheck, Clock, FileText, PackageCheck, ShipWheel, UserRound, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CurrentUser } from '@/lib/currentUser'
 import {
@@ -21,8 +21,9 @@ export type AdminActionItem = {
   description: string
   meta: string
   countLabel?: string
-  tone: 'amber' | 'red' | 'violet' | 'sky'
+  tone: 'amber' | 'red' | 'violet' | 'sky' | 'emerald'
   icon: typeof Clock
+  isUnread?: boolean
 }
 
 export type NavbarNotificationData = {
@@ -97,13 +98,24 @@ export function useNavbarNotifications({
   const router = useRouter()
   const [notifData, setNotifData] = useState<NavbarNotificationData>(emptyNotifications)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [activityReadThrough, setActivityReadThrough] = useState('')
+
+  const activityIcon = (icon: string) => ({
+    ship: ShipWheel,
+    inventory: Boxes,
+    cv: UserRound,
+    sms: BookOpen,
+    report: FileText,
+    ppe: PackageCheck,
+    file: ClipboardCheck,
+  }[icon] || Activity)
 
   useEffect(() => {
     if (!user?.id) return
 
     const fetchNotifications = async () => {
       let currentTotal = 0
-      let adminUploadUnread = 0
+      let activityUnread = 0
       const params = new URLSearchParams({
         userId: String(user.id || ''),
         fullName: String(user.full_name || ''),
@@ -111,12 +123,10 @@ export function useNavbarNotifications({
       })
       const response = await fetch(`/api/navbar-notifications?${params.toString()}`, {
         cache: 'no-store',
-        headers: isAdmin
-          ? {
-              'x-kmt-user-id': String(user.id || ''),
-              'x-kmt-pin': String(user.pin || ''),
-            }
-          : undefined,
+        headers: {
+          'x-kmt-user-id': String(user.id || ''),
+          'x-kmt-pin': String(user.pin || ''),
+        },
       })
       const payload = await response.json()
       if (!response.ok) return
@@ -132,16 +142,10 @@ export function useNavbarNotifications({
         const ppeSizeAlertCount = payload.ppeSizeAlertCount || 0
         const adminActions: AdminActionItem[] = (payload.adminActions || []).map((item: any) => ({
           ...item,
-          icon: item.icon === 'ship' ? ShipWheel : FileUp,
+          icon: activityIcon(item.icon),
         }))
-        const seenUploadKey = `kmt_admin_upload_notif_seen_${user.id}`
-        const storedSeenUploadIds = localStorage.getItem(seenUploadKey)
-        if (storedSeenUploadIds === null) {
-          localStorage.setItem(seenUploadKey, JSON.stringify(adminActions.map((item) => item.id)))
-        } else {
-          const seenUploadIds = new Set<string>(JSON.parse(storedSeenUploadIds || '[]'))
-          adminUploadUnread = adminActions.filter((item) => !seenUploadIds.has(item.id)).length
-        }
+        setActivityReadThrough(payload.activityReadThrough || '')
+        activityUnread = payload.activityUnreadCount || 0
 
         setNotifData({
           pending: payload.pending || 0,
@@ -229,6 +233,12 @@ export function useNavbarNotifications({
           window.dispatchEvent(new Event('new-notification'))
         }
 
+        const activityActions: AdminActionItem[] = (payload.adminActions || []).map((item: any) => ({
+          ...item,
+          icon: activityIcon(item.icon),
+        }))
+        setActivityReadThrough(payload.activityReadThrough || '')
+        activityUnread = payload.activityUnreadCount || 0
         setNotifData({
           pending: payload.pending || 0,
           lowStock: 0,
@@ -240,7 +250,7 @@ export function useNavbarNotifications({
           approvedCount,
           personalCertAlertCount: 0,
           ppeSizeAlertCount,
-          adminActions: [],
+          adminActions: activityActions,
           personalUpdates: [],
           personalApprovedCount: 0,
           shipCertAlertCount: 0,
@@ -250,7 +260,7 @@ export function useNavbarNotifications({
 
       const lastSeenTotal = parseInt(localStorage.getItem('kmt_notif_seen') || '0')
       const unread = currentTotal > lastSeenTotal ? currentTotal - lastSeenTotal : 0
-      setUnreadCount(unread + adminUploadUnread)
+      setUnreadCount(unread + activityUnread)
     }
 
     fetchNotifications()
@@ -289,16 +299,39 @@ export function useNavbarNotifications({
           (notifData.personalUpdates || []).length +
           (notifData.ppeSizeAlertCount || 0)
         localStorage.setItem('kmt_notif_seen', total.toString())
-        if (isAdmin && user?.id) {
-          const uploadIds = (notifData.adminActions || []).map((item) => item.id)
-          localStorage.setItem(`kmt_admin_upload_notif_seen_${user.id}`, JSON.stringify(uploadIds))
-        }
         setUnreadCount(0)
+        void fetch('/api/navbar-notifications', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-kmt-user-id': String(user?.id || ''),
+            'x-kmt-pin': String(user?.pin || ''),
+          },
+          body: JSON.stringify({ action: 'mark-read', readThrough: activityReadThrough || new Date().toISOString() }),
+        })
       }
 
       return isOpening
     })
-  }, [isAdmin, notifData, setShowNotif, setShowProfile, user])
+  }, [activityReadThrough, notifData, setShowNotif, setShowProfile, user])
 
-  return { notifData, unreadCount, handleOpenNotif }
+  const clearReadNotifications = useCallback(async () => {
+    if (!user?.id) return
+    const request = (action: 'mark-read' | 'clear-read') => fetch('/api/navbar-notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-kmt-user-id': String(user.id),
+        'x-kmt-pin': String(user.pin || ''),
+      },
+      body: JSON.stringify({ action, readThrough: activityReadThrough || new Date().toISOString() }),
+    })
+    await request('mark-read')
+    const response = await request('clear-read')
+    if (!response.ok) return
+    setNotifData((previous) => ({ ...previous, adminActions: [] }))
+    setUnreadCount(0)
+  }, [activityReadThrough, user])
+
+  return { notifData, unreadCount, handleOpenNotif, clearReadNotifications }
 }

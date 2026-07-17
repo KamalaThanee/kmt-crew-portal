@@ -36,7 +36,7 @@ export default function Navbar() {
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
-  const { notifData, unreadCount, handleOpenNotif } = useNavbarNotifications({
+  const { notifData, unreadCount, handleOpenNotif, clearReadNotifications } = useNavbarNotifications({
     user,
     isAdmin,
     pathname,
@@ -218,6 +218,7 @@ export default function Navbar() {
                 notifData={notifData}
                 onClose={() => setShowNotif(false)}
                 onOpenPpeSizeModal={() => setShowPpeSizeModal(true)}
+                onClearRead={clearReadNotifications}
               />
             )}
           </div>

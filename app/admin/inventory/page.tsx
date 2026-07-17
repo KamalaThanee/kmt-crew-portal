@@ -20,6 +20,7 @@ import {
   updateRestockEntryRows,
 } from '@/lib/inventory'
 import { exportJsonRowsToExcel } from '@/lib/excelExport'
+import { notifyOneSignal } from '@/lib/onesignalClient'
 import { EditItemModal } from '@/components/inventory/EditItemModal'
 import { InventoryControls } from '@/components/inventory/InventoryControls'
 import { InventoryList } from '@/components/inventory/InventoryList'
@@ -536,6 +537,18 @@ function InventoryContent() {
         })
         if (error) throw error
       }
+      await notifyOneSignal({
+        type: 'inventory_received',
+        doNumber: finalDoNumber,
+        itemsSummary: validEntries.map((entry) => {
+          const item = inventory.find((row) => String(row.id) === String(entry.inventory_id))
+          return `${item?.item_name || 'Item'} × ${Number(entry.qty)}`
+        }).join(', '),
+        actorName: admin.full_name || admin.position,
+        actorId: admin.id,
+        actorPin: admin.pin,
+      })
+      window.dispatchEvent(new Event('new-notification'))
       toast.success(`Received ${finalDoNumber}`); setRestockEntries([{ id: Date.now(), product_key: '', color: '', size: '', inventory_id: '', qty: '' }]); setDoNumber(''); setDoFile(null); setRestockView('history'); fetchData();
     } catch (e: any) { toast.error(e.message) } finally { setIsProcessingRestock(false) }
   }

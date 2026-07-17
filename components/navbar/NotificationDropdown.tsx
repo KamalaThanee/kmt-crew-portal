@@ -8,9 +8,10 @@ type NotificationDropdownProps = {
   notifData: NavbarNotificationData
   onClose: () => void
   onOpenPpeSizeModal?: () => void
+  onClearRead?: () => void
 }
 
-export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSizeModal }: NotificationDropdownProps) {
+export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSizeModal, onClearRead }: NotificationDropdownProps) {
   const totalPersonalAdminUpdates = (notifData.personalUpdates || []).length
   const hasNoAlerts =
     notifData.pending + notifData.lowStock + notifData.expiredCerts + (notifData.ppeSizeAlertCount || 0) === 0 &&
@@ -27,13 +28,10 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
         </p>
       </div>
 
-      <div className="p-2 space-y-1 bg-black/20">
+      <div className="max-h-[min(68vh,560px)] space-y-1 overflow-y-auto bg-black/20 p-2">
         {isAdmin ? (
           <>
             <div className="px-1 pt-2">
-              <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-amber-300">
-                Upload Progress
-              </p>
               {(notifData.adminActions || []).length > 0 ? (
                 <div className="space-y-2">
                   {(notifData.adminActions || []).map((item: AdminActionItem) => {
@@ -44,9 +42,9 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
                         href={item.href}
                         onClick={onClose}
                         title={item.title}
+                        titleClassName="normal-case"
                         description={item.description}
                         meta={item.meta}
-                        badge={item.countLabel || 'UPLOAD'}
                         icon={<Icon size={16} />}
                         tone={item.tone}
                       />
@@ -55,7 +53,7 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
                 </div>
               ) : (
                 <div className="rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                  No recent certificate uploads
+                  No recent activity
                 </div>
               )}
             </div>
@@ -93,6 +91,26 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
           </>
         ) : (
           <>
+            {(notifData.adminActions || []).length > 0 && (
+              <div className="space-y-2 px-1 pt-2">
+                {(notifData.adminActions || []).map((item: AdminActionItem) => {
+                  const Icon = item.icon
+                  return (
+                    <NotificationLinkItem
+                      key={item.id}
+                      href={item.href}
+                      onClick={onClose}
+                      title={item.title}
+                      titleClassName="normal-case"
+                      description={item.description}
+                      meta={item.meta}
+                      icon={<Icon size={16} />}
+                      tone={item.tone}
+                    />
+                  )
+                })}
+              </div>
+            )}
             {(notifData.updates || []).map((item: CrewActionItem) => {
               const approved = item.status === 'approved'
               return (
@@ -121,6 +139,26 @@ export function NotificationDropdown({ isAdmin, notifData, onClose, onOpenPpeSiz
           </div>
         )}
       </div>
+      {(notifData.adminActions || []).length > 0 && (
+        <div className="border-t border-white/5 bg-black/40 p-3">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => void onClearRead?.()}
+              className="rounded-xl px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 transition-colors hover:bg-white/5 hover:text-orange-400"
+            >
+              Clear read
+            </button>
+            <Link
+              href="/notifications"
+              onClick={onClose}
+              className="rounded-xl px-3 py-2 text-center text-[9px] font-black uppercase tracking-widest text-orange-400 transition-colors hover:bg-white/5"
+            >
+              View all
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

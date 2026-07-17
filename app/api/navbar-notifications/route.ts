@@ -1,148 +1,113 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { applyPpeRequestUserFilterWithClient } from '@/lib/ppeRequests'
-import { isAdminRole } from '@/lib/roles'
+import { isAdminRole, normalizeRole } from '@/lib/roles'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-type CurrentUserParams = {
-  userId: string
-  fullName: string
-}
-
-type PpeSizeWindow = {
-  id?: string
-  title?: string | null
-  deadline_at?: string | null
+type CurrentCrew = {
+  id: string
+  full_name?: string | null
+  position?: string | null
+  is_active?: boolean | null
+  resigned_at?: string | null
 }
 
 function getSupabaseAdmin() {
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Missing Supabase service role environment variables')
-  }
-
-  return createClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
+  if (!supabaseUrl || !serviceRoleKey) throw new Error('Missing Supabase service role environment variables')
+  return createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } })
 }
 
 function badRequest(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status })
 }
 
-function buildPpeSizeActions(windowRow: PpeSizeWindow | null, user: CurrentUserParams) {
-  if (!windowRow?.id || !user.userId) return []
+async function authenticateCrew(request: Request, supabaseAdmin: any) {
+  const crewId = request.headers.get('x-kmt-user-id') || ''
+  const pin = (request.headers.get('x-kmt-pin') || '').replace(/\D/g, '').slice(0, 6)
+  if (!crewId || pin.length !== 6) return null
+  const { data, error } = await supabaseAdmin
+    .from('crews')
+    .select('id, full_name, position, is_active, resigned_at')
+    .eq('id', crewId)
+    .eq('pin', pin)
+    .maybeSingle()
+  if (error || !data || data.is_active === false || data.resigned_at) return null
+  return data as CurrentCrew
+}
 
-  const deadline = windowRow.deadline_at
-    ? `Deadline ${new Date(windowRow.deadline_at).toLocaleString('en-GB')}`
-    : 'Boiler suit and safety boots survey'
+function eventTargetsCrew(event: any, crew: CurrentCrew) {
+  if (event.audience === 'all') return true
+  if (event.audience === 'admins') return isAdminRole(crew.position)
+  if (event.audience === 'roles') {
+    const roles = (event.target_roles || []).map(normalizeRole)
+    return roles.includes(normalizeRole(crew.position))
+  }
+  if (event.audience === 'users') return (event.target_user_ids || []).map(String).includes(String(crew.id))
+  return false
+}
 
+function buildPpeSizeActions(windowRow: any, crew: CurrentCrew) {
+  if (!windowRow?.id) return []
   return [{
     id: `ppe-size-${windowRow.id}`,
     status: 'ppe-size',
     title: windowRow.title || 'Confirm PPE sizes',
-    description: deadline,
+    description: windowRow.deadline_at
+      ? `Deadline ${new Date(windowRow.deadline_at).toLocaleString('en-GB')}`
+      : 'Boiler suit and safety boots survey',
     href: '/dashboard?ppe=size#ppe-size-update',
   }]
 }
 
+async function fetchActivity(supabaseAdmin: any, crew: CurrentCrew, limit = 8) {
+  const [{ data: state }, { data: events, error }] = await Promise.all([
+    supabaseAdmin.from('notification_user_state').select('last_read_at, cleared_at').eq('user_id', crew.id).maybeSingle(),
+    supabaseAdmin.from('notification_events').select('*').order('created_at', { ascending: false }).limit(100),
+  ])
+  if (error) throw error
+
+  const clearedAt = state?.cleared_at ? new Date(state.cleared_at).getTime() : 0
+  const lastReadAt = state?.last_read_at ? new Date(state.last_read_at).getTime() : 0
+  const visibleEvents = (events || [])
+    .filter((event: any) => eventTargetsCrew(event, crew))
+    .filter((event: any) => new Date(event.created_at).getTime() > clearedAt)
+  const unreadCount = visibleEvents.filter((event: any) => new Date(event.created_at).getTime() > lastReadAt).length
+  const actions = visibleEvents.slice(0, limit).map((event: any) => ({
+    id: event.id,
+    href: event.href || '/',
+    title: event.title,
+    description: event.description,
+    meta: event.created_at ? new Date(event.created_at).toLocaleString('en-GB') : '',
+    tone: event.tone || 'sky',
+    icon: event.icon || 'activity',
+    createdAt: event.created_at,
+    isUnread: new Date(event.created_at).getTime() > lastReadAt,
+  }))
+  return { actions, unreadCount, readThrough: visibleEvents[0]?.created_at || new Date().toISOString() }
+}
+
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const userId = searchParams.get('userId') || ''
-  const fullName = searchParams.get('fullName') || ''
-  const isAdmin = searchParams.get('isAdmin') === 'true'
-
-  if (!userId && !fullName) {
-    return badRequest('Missing user identity')
-  }
-
   try {
     const supabaseAdmin = getSupabaseAdmin()
-    const user = { userId, fullName }
+    const crew = await authenticateCrew(request, supabaseAdmin)
+    if (!crew) return badRequest('Authentication required', 401)
+    const activityLimit = new URL(request.url).searchParams.get('view') === 'all' ? 30 : 8
 
-    const fetchActivePpeSizeWindow = async () => {
-      const { data, error } = await supabaseAdmin
+    const [{ data: sizeWindow }, activity] = await Promise.all([
+      supabaseAdmin
         .from('ppe_size_windows')
         .select('id, title, deadline_at')
         .eq('status', 'open')
         .order('opened_at', { ascending: false })
         .limit(1)
-        .maybeSingle()
+        .maybeSingle(),
+      fetchActivity(supabaseAdmin, crew, activityLimit),
+    ])
+    const ppeSizeActions = buildPpeSizeActions(sizeWindow, crew)
 
-      if (error) return null
-      return (data || null) as PpeSizeWindow | null
-    }
-
-    if (isAdmin) {
-      const authCrewId = request.headers.get('x-kmt-user-id') || ''
-      const authPin = (request.headers.get('x-kmt-pin') || '').replace(/\D/g, '').slice(0, 6)
-      if (!authCrewId || authCrewId !== userId || authPin.length !== 6) {
-        return badRequest('Admin authentication required', 401)
-      }
-      const { data: adminCrew, error: adminCrewError } = await supabaseAdmin
-        .from('crews')
-        .select('id, position, is_active, resigned_at')
-        .eq('id', authCrewId)
-        .eq('pin', authPin)
-        .maybeSingle()
-      if (adminCrewError || !adminCrew || adminCrew.is_active === false || adminCrew.resigned_at || !isAdminRole(adminCrew.position)) {
-        return badRequest('Admin authentication required', 401)
-      }
-
-      const [activePpeSizeWindow, crewUploadsRes, shipUploadsRes] = await Promise.all([
-        fetchActivePpeSizeWindow(),
-        supabaseAdmin
-          .from('crew_cert_history')
-          .select('id, actor_name, new_data, created_at')
-          .eq('action', 'upload_certificate')
-          .order('created_at', { ascending: false })
-          .limit(8),
-        supabaseAdmin
-          .from('ship_cert_history')
-          .select('id, action, actor_name, old_data, new_data, created_at')
-          .in('action', ['add_certificate', 'renew_upload'])
-          .order('created_at', { ascending: false })
-          .limit(8),
-      ])
-
-      const ppeSizeActions = buildPpeSizeActions(activePpeSizeWindow, user)
-      const crewUploadActions = (crewUploadsRes.data || []).map((row: any) => {
-        const crewName = row.new_data?.crew_name || 'Crew member'
-        const certName = row.new_data?.cert_name || 'Crew certificate'
-        return {
-          id: `crew-cert-upload-${row.id}`,
-          href: '/certificates?tab=crew',
-          title: `${certName} uploaded for ${crewName}`,
-          description: `Uploaded by ${row.actor_name || crewName}`,
-          meta: row.created_at ? new Date(row.created_at).toLocaleString('en-GB') : '',
-          countLabel: 'UPLOAD',
-          tone: 'sky',
-          icon: 'file',
-          createdAt: row.created_at || '',
-        }
-      })
-      const shipUploadActions = (shipUploadsRes.data || [])
-        .filter((row: any) => {
-          const nextFileUrl = row.new_data?.file_url
-          const oldFileUrl = row.old_data?.file_url
-          return Boolean(nextFileUrl) && (row.action === 'add_certificate' || nextFileUrl !== oldFileUrl)
-        })
-        .map((row: any) => ({
-          id: `ship-cert-upload-${row.id}`,
-          href: '/admin/ship-certificates',
-          title: `${row.new_data?.cert_name || 'Ship certificate'} uploaded`,
-          description: `Uploaded by ${row.actor_name || 'Unknown crew'}`,
-          meta: row.created_at ? new Date(row.created_at).toLocaleString('en-GB') : '',
-          countLabel: 'UPLOAD',
-          tone: 'violet',
-          icon: 'ship',
-          createdAt: row.created_at || '',
-        }))
-      const adminActions = [...crewUploadActions, ...shipUploadActions]
-        .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
-        .slice(0, 8)
-
+    if (isAdminRole(crew.position)) {
       return NextResponse.json({
         pending: 0,
         lowStock: 0,
@@ -150,14 +115,16 @@ export async function GET(request: Request) {
         ppeSizeActions,
         pendingActions: [],
         shipCertActions: [],
-        adminActions,
+        adminActions: activity.actions,
+        activityUnreadCount: activity.unreadCount,
+        activityReadThrough: activity.readThrough,
         personalUpdates: [],
         personalCertActions: [],
         updates: [],
         approvedCount: 0,
         personalApprovedCount: 0,
         personalUpdateCount: 0,
-        adminUploadCount: adminActions.length,
+        adminUploadCount: activity.actions.length,
         personalCertAlertCount: 0,
         ppeSizeAlertCount: ppeSizeActions.length,
         shipCertAlertCount: 0,
@@ -167,9 +134,8 @@ export async function GET(request: Request) {
     const countQuery = await applyPpeRequestUserFilterWithClient(
       supabaseAdmin,
       supabaseAdmin.from('ppe_requests').select('*', { count: 'exact', head: true }).in('status', ['approved', 'rejected']),
-      { id: userId, full_name: fullName },
+      { id: crew.id, full_name: crew.full_name || '' },
     )
-
     const updatesQuery = await applyPpeRequestUserFilterWithClient(
       supabaseAdmin,
       supabaseAdmin
@@ -178,15 +144,9 @@ export async function GET(request: Request) {
         .in('status', ['approved', 'rejected'])
         .order('created_at', { ascending: false })
         .limit(6),
-      { id: userId, full_name: fullName },
+      { id: crew.id, full_name: crew.full_name || '' },
     )
-
-    const [{ count }, { data: updates }, activePpeSizeWindow] = await Promise.all([
-      countQuery,
-      updatesQuery,
-      fetchActivePpeSizeWindow(),
-    ])
-
+    const [{ count }, { data: updates }] = await Promise.all([countQuery, updatesQuery])
     const rows = updates || []
     const actionItems = rows.map((req: any) => {
       const itemName = req.items?.[0]?.item_name || 'PPE item'
@@ -200,7 +160,6 @@ export async function GET(request: Request) {
           : req.admin_remark || req.rejection_reason || `${itemName} needs your attention`,
       }
     })
-    const ppeSizeActions = buildPpeSizeActions(activePpeSizeWindow, user)
 
     return NextResponse.json({
       pending: count || 0,
@@ -209,16 +168,50 @@ export async function GET(request: Request) {
       ppeSizeActions,
       personalCertActions: [],
       shipCertActions: [],
+      adminActions: activity.actions,
+      activityUnreadCount: activity.unreadCount,
+      activityReadThrough: activity.readThrough,
       updates: actionItems,
       approvedCount: rows.filter((req: any) => req.status === 'approved').length,
       personalCertAlertCount: 0,
       ppeSizeAlertCount: ppeSizeActions.length,
-      adminActions: [],
       personalUpdates: [],
       personalApprovedCount: 0,
       shipCertAlertCount: 0,
     })
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Unable to load notifications' }, { status: 500 })
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const supabaseAdmin = getSupabaseAdmin()
+    const crew = await authenticateCrew(request, supabaseAdmin)
+    if (!crew) return badRequest('Authentication required', 401)
+    const body = await request.json().catch(() => ({}))
+    const action = body?.action
+    if (action !== 'mark-read' && action !== 'clear-read') return badRequest('Unknown notification action')
+
+    const readThrough = body?.readThrough && !Number.isNaN(new Date(body.readThrough).getTime())
+      ? new Date(body.readThrough).toISOString()
+      : new Date().toISOString()
+    let payload: Record<string, unknown>
+    if (action === 'mark-read') {
+      payload = { user_id: crew.id, last_read_at: readThrough, updated_at: new Date().toISOString() }
+    } else {
+      const { data: state } = await supabaseAdmin
+        .from('notification_user_state')
+        .select('last_read_at')
+        .eq('user_id', crew.id)
+        .maybeSingle()
+      if (!state?.last_read_at) return NextResponse.json({ ok: true, action, cleared: 0 })
+      payload = { user_id: crew.id, cleared_at: state.last_read_at, updated_at: new Date().toISOString() }
+    }
+    const { error } = await supabaseAdmin.from('notification_user_state').upsert(payload, { onConflict: 'user_id' })
+    if (error) throw error
+    return NextResponse.json({ ok: true, action, readThrough })
+  } catch (error: any) {
+    return NextResponse.json({ error: error?.message || 'Unable to update notification state' }, { status: 500 })
   }
 }

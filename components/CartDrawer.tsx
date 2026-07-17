@@ -9,6 +9,7 @@ import { deductPpeStock } from '@/lib/ppeStock';
 import { isAdminRole } from '@/lib/roles';
 import { ensureDirectIssueTimeline, isCrewActive, normalizeCartText as normalize } from '@/lib/cartDrawer';
 import { DirectIssuePanel } from '@/components/cart/DirectIssuePanel';
+import { notifyOneSignal } from '@/lib/onesignalClient';
 
 export default function CartDrawer() {
   const [isOpen, setIsOpen] = useState(false);
@@ -334,6 +335,19 @@ export default function CartDrawer() {
         movementType: 'direct_issue',
         note: reason.trim(),
       });
+
+      await notifyOneSignal({
+        type: 'received',
+        requestId: data?.id,
+        crewId: selectedCrew?.id,
+        crewName: selectedCrew?.full_name,
+        itemName: cartItems[0]?.item_name || 'PPE item',
+        itemsSummary: cartItems.map((item) => `${item.item_name || 'PPE'} × ${Number(item.quantity || item.qty || 1)}`).join(', '),
+        actorName: user?.full_name || user?.position,
+        actorId: user?.id,
+        actorPin: user?.pin,
+      });
+      window.dispatchEvent(new Event('new-notification'));
 
       localStorage.setItem('kmt_cart', '[]');
       setReason('');
