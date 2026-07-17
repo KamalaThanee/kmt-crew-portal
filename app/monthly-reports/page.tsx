@@ -173,6 +173,9 @@ const isUploadPositionRow = (row: MonthlyReportMaster) =>
 const rowMatchesPositionFilter = (row: MonthlyReportMaster, position: string) =>
   position === 'All Positions' || splitPicRoles(row.pic).includes(position)
 
+const isWeeklyRow = (row: MonthlyReportMaster) => String(row.schedule || '').trim().toLowerCase() === 'weekly'
+const isMonthlyCollectionRow = (row: MonthlyReportMaster) => !isWeeklyRow(row)
+
 const buildStoredFileName = (row: MonthlyReportRow, month: string, originalName: string) => {
   const ext = originalName.includes('.') ? originalName.split('.').pop() || 'file' : 'file'
   const docNo = row.form_no && row.form_no !== 'N/A' ? row.form_no : 'NA'
@@ -290,13 +293,14 @@ export default function MonthlyReportsPage() {
   }, [accessibleRows, picFilter, scheduleFilter, search, statusFilter])
 
   const uploadRows = useMemo(() => accessibleRows.filter(isUploadPositionRow), [accessibleRows])
+  const monthlyCollectionRows = useMemo(() => uploadRows.filter(isMonthlyCollectionRow), [uploadRows])
 
   const exportByPosition = useMemo(() => {
     return new Map(exports.map((item) => [item.position, item]))
   }, [exports])
 
   const getPositionState = (position: string) => {
-    const scopedRows = uploadRows.filter((row) => rowMatchesPositionFilter(row, position))
+    const scopedRows = monthlyCollectionRows.filter((row) => rowMatchesPositionFilter(row, position))
     const uploadedRows = scopedRows.filter((row) => row.submission?.file_url)
     const required = scopedRows.length
     const uploaded = uploadedRows.length
@@ -325,7 +329,7 @@ export default function MonthlyReportsPage() {
 
   const positionStats = useMemo(() => {
     return UPLOAD_POSITIONS.map((position) => getPositionState(position))
-  }, [exportByPosition, uploadRows])
+  }, [exportByPosition, monthlyCollectionRows])
 
   const canUploadRow = (row: MonthlyReportRow) => canManage || roleMatchesPic(user?.position, row.pic)
 
@@ -359,8 +363,18 @@ export default function MonthlyReportsPage() {
         .upsert(payload, { onConflict: 'master_id,report_month' })
       if (saveError) throw saveError
 
+      await notifyOneSignal({
+        type: 'monthly_report_uploaded',
+        reportMasterId: row.id,
+        reportMonth: reportMonthValue(selectedMonth),
+        month: formatMonth(selectedMonth),
+        actorName: user.full_name || user.position,
+        actorId: user.id,
+        actorPin: user.pin,
+      })
+
       await notifyCompletedPositions(row)
-      toast.success('Monthly report uploaded')
+      toast.success(`${row.schedule || 'Report'} uploaded`)
       await fetchData()
     } catch (error: any) {
       toast.error(error?.message || 'Upload failed')
@@ -370,13 +384,14 @@ export default function MonthlyReportsPage() {
   }
 
   const notifyCompletedPositions = async (changedRow: MonthlyReportRow) => {
+    if (isWeeklyRow(changedRow)) return
     const affectedPositions = splitPicRoles(changedRow.pic).filter((position) =>
       ZIP_POSITIONS.includes(position as (typeof ZIP_POSITIONS)[number]),
     )
     if (affectedPositions.length === 0) return
 
     for (const position of affectedPositions) {
-      const requiredRows = masters.filter((row) => splitPicRoles(row.pic).includes(position))
+      const requiredRows = masters.filter((row) => isMonthlyCollectionRow(row) && splitPicRoles(row.pic).includes(position))
       if (requiredRows.length === 0) continue
 
       const { data, error } = await supabase
@@ -435,13 +450,25 @@ export default function MonthlyReportsPage() {
       const response = await fetch(fileUrl)
       if (!response.ok) throw new Error('Unable to download file')
       triggerBlobDownload(await response.blob(), row.submission?.file_name || `${row.form_no}-${row.details}`)
+      if (normalizeRole(user?.position) === 'radio operator') {
+        await notifyOneSignal({
+          type: 'monthly_report_collected',
+          reportMasterId: row.id,
+          reportMonth: reportMonthValue(selectedMonth),
+          month: formatMonth(selectedMonth),
+          collectionAction: 'download',
+          actorName: user?.full_name || user?.position,
+          actorId: user?.id,
+          actorPin: user?.pin,
+        })
+      }
     } catch (error: any) {
       toast.error(error?.message || 'Download failed')
     }
   }
 
   const downloadPositionZip = async (position: string) => {
-    const rowsToZip = rows.filter((row) => splitPicRoles(row.pic).includes(position) && row.submission?.file_url)
+    const rowsToZip = rows.filter((row) => isMonthlyCollectionRow(row) && splitPicRoles(row.pic).includes(position) && row.submission?.file_url)
     if (rowsToZip.length === 0) return toast.error(`No uploaded files for ${position}`)
     setDownloadingZip(position)
     try {
@@ -468,6 +495,18 @@ export default function MonthlyReportsPage() {
         exported_at: new Date().toISOString(),
       }, { onConflict: 'report_month,position' })
       if (exportError) throw exportError
+      if (normalizeRole(user?.position) === 'radio operator') {
+        await notifyOneSignal({
+          type: 'monthly_report_collected',
+          reportMonth: reportMonthValue(selectedMonth),
+          month: formatMonth(selectedMonth),
+          collectionAction: 'export',
+          targetPositions: [position],
+          actorName: user?.full_name || user?.position,
+          actorId: user?.id,
+          actorPin: user?.pin,
+        })
+      }
       toast.success(`${position} ZIP exported`)
       await fetchData()
     } catch (error: any) {
@@ -514,7 +553,7 @@ export default function MonthlyReportsPage() {
                 <div className="mt-6 flex items-end justify-between gap-4">
                   <div>
                     <p className="text-5xl font-black">{item.required}</p>
-                    <p className="mt-3 text-sm font-bold text-zinc-400">Required items</p>
+                    <p className="mt-3 text-sm font-bold text-zinc-400">Monthly required</p>
                   </div>
                   <div className="text-right">
                     <p className="text-2xl font-black text-emerald-300">{item.uploaded}</p>
@@ -543,7 +582,10 @@ export default function MonthlyReportsPage() {
           <section className="mb-8 rounded-[30px] border border-orange-500/20 bg-black/60 p-5">
             <div className="mb-4 flex items-center gap-2 text-orange-300">
               <FileArchive size={18} />
-              <h2 className="text-sm font-black uppercase tracking-[0.25em]">Radio Operator Collection ZIP</h2>
+              <div>
+                <h2 className="text-sm font-black uppercase tracking-[0.25em]">Radio Operator Monthly Collection ZIP</h2>
+                <p className="mt-1 text-[10px] font-bold normal-case tracking-normal text-zinc-500">Weekly reports stay separate and are never included in these ZIP files.</p>
+              </div>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
               {ZIP_POSITIONS.map((position) => {
@@ -567,7 +609,7 @@ export default function MonthlyReportsPage() {
                     {state.status === 'ready' && 'Ready | '}
                     {state.status === 'exported' && 'Exported | '}
                     {state.status === 'updated' && 'Updated | '}
-                    {position} ZIP
+                    {position} Monthly ZIP
                     {state.exportLog?.exported_at && (
                       <span className="mt-2 block text-[10px] normal-case tracking-normal opacity-70">
                         {formatDateTime(state.exportLog.exported_at)}

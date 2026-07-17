@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 type NotifyPayload = {
-  type?: "new_request" | "approved" | "rejected" | "received" | "sms_revision" | "monthly_position_complete" | "crew_cert_upload" | "ship_cert_upload";
+  type?: "new_request" | "approved" | "rejected" | "received" | "sms_revision" | "monthly_position_complete" | "monthly_report_uploaded" | "monthly_report_collected" | "crew_cert_upload" | "ship_cert_upload";
   requestId?: string;
   crewId?: string;
   crewName?: string;
@@ -18,6 +18,10 @@ type NotifyPayload = {
   targetCrewName?: string;
   actorId?: string;
   actorPin?: string;
+  reportMasterId?: string;
+  reportMonth?: string;
+  collectionAction?: "download" | "export";
+  targetPositions?: string[];
 };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -100,6 +104,13 @@ function getBaseUrl(request: Request) {
   return url.origin;
 }
 
+function splitRoles(value: unknown) {
+  return String(value || "")
+    .split("/")
+    .map((role) => role.trim())
+    .filter(Boolean);
+}
+
 async function authenticateUploadActor(supabaseAdmin: any, payload: NotifyPayload) {
   const actorId = String(payload.actorId || "");
   const actorPin = String(payload.actorPin || "").replace(/\D/g, "").slice(0, 6);
@@ -159,6 +170,97 @@ export async function POST(request: Request) {
       const url = isShipCert ? `${baseUrl}/admin/ship-certificates` : `${baseUrl}/certificates?tab=crew`;
       const data = await sendOneSignal(externalIds, title, body, url);
       return NextResponse.json({ ok: true, target: "admins", targetCount: externalIds.length, data });
+    }
+
+    if (payload.type === "monthly_report_uploaded") {
+      const actor = await authenticateUploadActor(supabaseAdmin, payload);
+      const masterId = String(payload.reportMasterId || "");
+      const reportMonth = String(payload.reportMonth || "");
+      if (!actor || !masterId || !/^\d{4}-\d{2}-01$/.test(reportMonth)) {
+        return NextResponse.json({ error: "Report uploader authentication required" }, { status: 401 });
+      }
+
+      const [{ data: master, error: masterError }, { data: submission, error: submissionError }] = await Promise.all([
+        supabaseAdmin.from("monthly_report_master").select("id, schedule, form_no, details, pic").eq("id", masterId).maybeSingle(),
+        supabaseAdmin
+          .from("monthly_report_submissions")
+          .select("id")
+          .eq("master_id", masterId)
+          .eq("report_month", reportMonth)
+          .eq("uploaded_by", actor.id)
+          .maybeSingle(),
+      ]);
+      if (masterError || submissionError || !master || !submission) {
+        return NextResponse.json({ error: "Uploaded report could not be verified" }, { status: 400 });
+      }
+
+      const { data: crews, error } = await supabaseAdmin
+        .from("crews")
+        .select("id, position, is_active, resigned_at");
+      if (error) throw error;
+      const externalIds = (crews || [])
+        .filter((crew: any) => crew.is_active !== false && !crew.resigned_at && normalizeRole(crew.position) === "radio operator")
+        .map((crew: any) => String(crew.id))
+        .filter(Boolean);
+      const reportLabel = `${master.form_no || "N/A"} ${master.details || "Report"}`.trim();
+      const month = payload.month ? ` for ${payload.month}` : "";
+      const body = `${reportLabel} (${master.schedule || "Report"})${month} was uploaded by ${actor.full_name || payload.actorName || "a crew member"}.`;
+      const data = await sendOneSignal(externalIds, "Report uploaded", body, `${baseUrl}/monthly-reports`);
+      return NextResponse.json({ ok: true, target: "radio_operator", targetCount: externalIds.length, data });
+    }
+
+    if (payload.type === "monthly_report_collected") {
+      const actor = await authenticateUploadActor(supabaseAdmin, payload);
+      if (!actor || normalizeRole(actor.position) !== "radio operator") {
+        return NextResponse.json({ error: "Radio Operator authentication required" }, { status: 401 });
+      }
+
+      let reportLabel = "Monthly report ZIP";
+      let targetPositions = Array.isArray(payload.targetPositions) ? payload.targetPositions.filter(Boolean) : [];
+      if (payload.reportMasterId) {
+        const { data: master, error: masterError } = await supabaseAdmin
+          .from("monthly_report_master")
+          .select("form_no, details, pic")
+          .eq("id", String(payload.reportMasterId))
+          .maybeSingle();
+        if (masterError || !master) {
+          return NextResponse.json({ error: "Report could not be verified" }, { status: 400 });
+        }
+        reportLabel = `${master.form_no || "N/A"} ${master.details || "Report"}`.trim();
+        targetPositions = splitRoles(master.pic);
+      } else if (payload.collectionAction === "export") {
+        const reportMonth = String(payload.reportMonth || "");
+        const exportPosition = targetPositions.length === 1 ? targetPositions[0] : "";
+        const { data: exportLog, error: exportError } = await supabaseAdmin
+          .from("monthly_report_exports")
+          .select("id")
+          .eq("report_month", reportMonth)
+          .eq("position", exportPosition)
+          .eq("exported_by", actor.id)
+          .maybeSingle();
+        if (exportError || !exportLog) {
+          return NextResponse.json({ error: "Monthly report export could not be verified" }, { status: 400 });
+        }
+        reportLabel = `${exportPosition} monthly report ZIP`;
+      }
+      const targetRoleSet = new Set(targetPositions.map(normalizeRole).filter(Boolean));
+      if (targetRoleSet.size === 0) {
+        return NextResponse.json({ error: "No report position found" }, { status: 400 });
+      }
+
+      const { data: crews, error } = await supabaseAdmin
+        .from("crews")
+        .select("id, position, is_active, resigned_at");
+      if (error) throw error;
+      const externalIds = (crews || [])
+        .filter((crew: any) => crew.is_active !== false && !crew.resigned_at && targetRoleSet.has(normalizeRole(crew.position)))
+        .map((crew: any) => String(crew.id))
+        .filter(Boolean);
+      const action = payload.collectionAction === "export" ? "exported" : "downloaded";
+      const month = payload.month ? ` for ${payload.month}` : "";
+      const body = `${reportLabel}${month} was ${action} by ${actor.full_name || "Radio Operator"}.`;
+      const data = await sendOneSignal(externalIds, "Report collected", body, `${baseUrl}/monthly-reports`);
+      return NextResponse.json({ ok: true, target: "report_positions", targetCount: externalIds.length, data });
     }
 
     if (payload.type === "new_request" || payload.type === "received") {
