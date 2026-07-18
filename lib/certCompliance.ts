@@ -39,15 +39,25 @@ export function calculateCrewCertificateCompliance({
 
   const crewPosition = normalize(crew?.position)
   const masterByCert = new Map((certMaster || []).map((row) => [normalize(row.cert_name), row]))
-  const required = matrix
-    .filter((row) => {
-      const requirementType = normalizeRequirementType(row.requirement_type)
-      return normalize(row.position) === crewPosition && (requirementType === 'P' || requirementType === 'O')
-    })
-    .map((row) => {
-      const requirementType = normalizeRequirementType(row.requirement_type)
-      return { ...row, ...(masterByCert.get(normalize(row.cert_name)) || {}), requirement_type: requirementType, is_mandatory: requirementType === 'P' }
-    })
+  const requiredByCert = new Map<string, any>()
+  matrix.forEach((row) => {
+    const requirementType = normalizeRequirementType(row.requirement_type)
+    if (normalize(row.position) !== crewPosition || (requirementType !== 'P' && requirementType !== 'O')) return
+
+    const certKey = normalize(row.cert_name)
+    if (!certKey) return
+    const previous = requiredByCert.get(certKey)
+    const previousType = normalizeRequirementType(previous?.requirement_type)
+    if (!previous || (previousType !== 'P' && requirementType === 'P')) {
+      requiredByCert.set(certKey, {
+        ...row,
+        ...(masterByCert.get(certKey) || {}),
+        requirement_type: requirementType,
+        is_mandatory: requirementType === 'P',
+      })
+    }
+  })
+  const required = Array.from(requiredByCert.values())
 
   ;(rules || []).forEach((rule) => {
     const hasTriggerCert = crewCerts.some((cert) => normalize(cert.cert_name) === normalize(rule.trigger_cert))
