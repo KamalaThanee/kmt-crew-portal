@@ -182,12 +182,18 @@ const buildStoredFileName = (row: MonthlyReportRow, month: string, originalName:
   return safeMonthlyReportName(`KMT-${docNo}-${row.details}-${formatMonth(month)}.${ext}`)
 }
 
-const openFileUrl = (fileUrl: string, fileName?: string | null) => {
+const addFileVersion = (fileUrl: string, version?: string | null) => {
+  const separator = fileUrl.includes('?') ? '&' : '?'
+  return `${fileUrl}${separator}cacheNonce=${encodeURIComponent(version || Date.now().toString())}`
+}
+
+const openFileUrl = (fileUrl: string, fileName?: string | null, version?: string | null) => {
   const ext = String(fileName || fileUrl).split('?')[0].split('.').pop()?.toLowerCase() || ''
   const officeExts = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])
+  const versionedFileUrl = addFileVersion(fileUrl, version)
   const previewUrl = officeExts.has(ext)
-    ? `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`
-    : fileUrl
+    ? `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(versionedFileUrl)}`
+    : versionedFileUrl
 
   window.open(previewUrl, '_blank', 'noopener,noreferrer')
 }
@@ -338,8 +344,10 @@ export default function MonthlyReportsPage() {
     setUploadingId(row.id)
     try {
       const storedName = buildStoredFileName(row, selectedMonth, file.name)
-      const path = `${selectedMonth}/${safeFileName(row.pic)}/${row.id}/${storedName}`
-      const { error: uploadError } = await supabase.storage.from(MONTHLY_BUCKET).upload(path, file, { upsert: true })
+      const objectName = `${Date.now()}-${safeFileName(storedName)}`
+      const path = `${selectedMonth}/${safeFileName(row.pic)}/${row.id}/${objectName}`
+      const previousPath = row.submission?.file_path
+      const { error: uploadError } = await supabase.storage.from(MONTHLY_BUCKET).upload(path, file)
       if (uploadError) throw uploadError
 
       const { data: publicData } = supabase.storage.from(MONTHLY_BUCKET).getPublicUrl(path)
@@ -362,6 +370,11 @@ export default function MonthlyReportsPage() {
         .from('monthly_report_submissions')
         .upsert(payload, { onConflict: 'master_id,report_month' })
       if (saveError) throw saveError
+
+      if (previousPath && previousPath !== path) {
+        const { error: removeError } = await supabase.storage.from(MONTHLY_BUCKET).remove([previousPath])
+        if (removeError) console.warn('Previous monthly report file cleanup skipped', removeError.message)
+      }
 
       await notifyOneSignal({
         type: 'monthly_report_uploaded',
@@ -451,7 +464,7 @@ export default function MonthlyReportsPage() {
     const fileUrl = row.submission?.file_url
     if (!fileUrl) return toast.error('No file uploaded yet')
     try {
-      const response = await fetch(fileUrl)
+      const response = await fetch(addFileVersion(fileUrl, row.submission?.uploaded_at), { cache: 'no-store' })
       if (!response.ok) throw new Error('Unable to download file')
       triggerBlobDownload(await response.blob(), row.submission?.file_name || `${row.form_no}-${row.details}`)
       if (normalizeRole(user?.position) === 'radio operator') {
@@ -482,7 +495,7 @@ export default function MonthlyReportsPage() {
       for (const row of rowsToZip) {
         const fileUrl = row.submission?.file_url
         if (!fileUrl) continue
-        const response = await fetch(fileUrl)
+        const response = await fetch(addFileVersion(fileUrl, row.submission?.uploaded_at), { cache: 'no-store' })
         if (!response.ok) continue
         const fileName = row.submission?.file_name || buildStoredFileName(row, selectedMonth, 'file')
         zip.file(safeFileName(fileName), await response.blob())
@@ -690,7 +703,7 @@ export default function MonthlyReportsPage() {
                     <div className="flex flex-col gap-3 md:items-end">
                       {uploaded && (
                         <div className="flex gap-2">
-                          <button onClick={() => openFileUrl(String(row.submission?.file_url), row.submission?.file_name)} className="rounded-2xl border border-blue-500/35 bg-blue-500/10 px-4 py-3 text-xs font-black uppercase text-blue-100">
+                          <button onClick={() => openFileUrl(String(row.submission?.file_url), row.submission?.file_name, row.submission?.uploaded_at)} className="rounded-2xl border border-blue-500/35 bg-blue-500/10 px-4 py-3 text-xs font-black uppercase text-blue-100">
                             <Eye size={15} className="mr-2 inline" /> View
                           </button>
                           <button onClick={() => downloadFile(row)} className="rounded-2xl border border-blue-500/35 bg-blue-500/10 px-4 py-3 text-xs font-black uppercase text-blue-100">
