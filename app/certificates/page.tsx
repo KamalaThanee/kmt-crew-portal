@@ -193,7 +193,7 @@ function CertificatesContent() {
 
   const fetchCrewData = async () => {
     const [crewsRes, allC] = await Promise.all([
-      supabase.from('crews').select(crewColumns).order('full_name'),
+      supabase.from('crews').select(crewColumns).order('full_name_sort').order('full_name'),
       supabase.from('crew_certs').select(crewCertColumns),
     ])
     if (crewsRes.data) setCrews(crewsRes.data.filter(isCrewActive))

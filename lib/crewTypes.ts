@@ -1,6 +1,7 @@
 export type CrewMember = {
   id?: string
   full_name?: string
+  full_name_sort?: string
   position?: string
   is_active?: boolean | null
   resigned_at?: string | null

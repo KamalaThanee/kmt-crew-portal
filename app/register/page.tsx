@@ -38,7 +38,7 @@ export default function RegisterPage() {
   useEffect(() => {
     async function init() {
       const [cr, inv, st] = await Promise.all([
-        supabase.from('crews').select('*').order('full_name'),
+        supabase.from('crews').select('*').order('full_name_sort').order('full_name'),
         supabase.from('ppe_inventory').select('*'),
         supabase.from('ppe_settings').select('*').eq('id', 1).single()
       ]);

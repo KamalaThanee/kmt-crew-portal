@@ -27,7 +27,7 @@ export default function LoginPage() {
     setMounted(true)
 
     const fetchRegisteredCrews = async () => {
-      const { data, error } = await supabase.from('crews').select('*').order('full_name')
+      const { data, error } = await supabase.from('crews').select('*').order('full_name_sort').order('full_name')
       if (error) {
         toast.error('Unable to load registered crew list')
         return

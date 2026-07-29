@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { compareCrewNames } from '@/lib/crewNames'
 import { Download, FileUser, Search } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageShell } from '@/components/layout/PageShell'
@@ -90,7 +91,7 @@ export default function CvDashboardPage() {
   }, [crews])
 
   const crewNameOptions = useMemo(() => {
-    return Array.from(new Set(crews.map((crew) => clean(crew.full_name)).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+    return Array.from(new Set(crews.map((crew) => clean(crew.full_name)).filter(Boolean))).sort(compareCrewNames)
   }, [crews])
 
   const rows = useMemo(() => {

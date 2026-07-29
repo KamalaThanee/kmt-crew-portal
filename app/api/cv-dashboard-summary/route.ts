@@ -22,6 +22,7 @@ export async function GET() {
       supabaseAdmin
         .from('crews')
         .select('id, full_name, position, cv_last_updated_at')
+        .order('full_name_sort', { ascending: true })
         .order('full_name', { ascending: true }),
       supabaseAdmin
         .from('crew_cv_sea_services')

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { isAdminRole } from '@/lib/roles'
 import { isCrewActive, smartSort, type CrewStatusFilter } from '@/lib/settings'
+import { CREW_POSITIONS, formatCrewName } from '@/lib/crewNames'
 import { CrewCard } from '@/components/settings/CrewCard'
 import { CrewStatusFilterTabs } from '@/components/settings/CrewStatusFilterTabs'
 import { toast } from 'sonner'
@@ -26,7 +27,7 @@ function SettingsContent() {
   const fetchData = async () => {
     const [invRes, crewRes] = await Promise.all([
       supabase.from('ppe_inventory').select('*').order('item_name'),
-      supabase.from('crews').select('*').order('full_name')
+      supabase.from('crews').select('*').order('full_name_sort').order('full_name')
     ]);
     if (invRes.data) setInventory(invRes.data);
     if (crewRes.data) setCrews(crewRes.data);
@@ -62,12 +63,13 @@ function SettingsContent() {
   }, [crews, searchTerm, crewStatusFilter]);
 
   const handleSaveCrew = async () => {
-    if (!editingCrew.full_name || !editingCrew.position) return toast.error('Full Name and Position required');
+    const fullName = formatCrewName(editingCrew.full_name)
+    if (!fullName || !editingCrew.position) return toast.error('Full Name and Position required');
     
     // บันทึกข้อมูลลงฐานข้อมูล (ใช้ upsert เพื่อรองรับทั้งการเพิ่มและแก้ไข)
     const { error } = await supabase.from('crews').upsert({
       id: editingCrew.id || undefined,
-      full_name: editingCrew.full_name,
+      full_name: fullName,
       position: editingCrew.position,
       suit_color: editingCrew.suit_color,
       suit_size: editingCrew.suit_size,
@@ -185,8 +187,28 @@ function SettingsContent() {
                <button onClick={() => setIsEditCrewOpen(false)} className="p-3 bg-white/5 rounded-full hover:bg-red-500 text-white transition-all"><X size={24}/></button>
             </div>
             <div className="space-y-6">
-              <div className="space-y-2"><label className="text-zinc-500 text-[10px] font-black tracking-widest ml-2 uppercase">FULL NAME *</label><input className="w-full bg-black border border-white/10 p-5 rounded-2xl text-white font-bold text-sm focus:border-orange-500" value={editingCrew.full_name} onChange={e => setEditingCrew({...editingCrew, full_name: e.target.value})}/></div>
-              <div className="space-y-2"><label className="text-zinc-500 text-[10px] font-black tracking-widest ml-2 uppercase">POSITION *</label><input className="w-full bg-black border border-white/10 p-5 rounded-2xl text-orange-500 font-black italic text-sm focus:border-orange-500" value={editingCrew.position} onChange={e => setEditingCrew({...editingCrew, position: e.target.value})}/></div>
+              <div className="space-y-2">
+                <label className="text-zinc-500 text-[10px] font-black tracking-widest ml-2 uppercase">FULL NAME *</label>
+                <input
+                  className="w-full bg-black border border-white/10 p-5 rounded-2xl text-white font-bold text-sm focus:border-orange-500"
+                  value={editingCrew.full_name}
+                  onChange={e => setEditingCrew({...editingCrew, full_name: e.target.value})}
+                  onBlur={e => setEditingCrew({...editingCrew, full_name: formatCrewName(e.target.value)})}
+                  placeholder="Mr. Firstname Lastname"
+                />
+                <p className="ml-2 text-[9px] normal-case text-zinc-600">Saved as: {formatCrewName(editingCrew.full_name) || 'Mr. Firstname Lastname'}</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-zinc-500 text-[10px] font-black tracking-widest ml-2 uppercase">POSITION *</label>
+                <select
+                  className="w-full bg-black border border-white/10 p-5 rounded-2xl text-orange-500 font-black italic text-sm focus:border-orange-500"
+                  value={editingCrew.position}
+                  onChange={e => setEditingCrew({...editingCrew, position: e.target.value})}
+                >
+                  <option value="">-- Select Position --</option>
+                  {CREW_POSITIONS.map(position => <option key={position} value={position}>{position}</option>)}
+                </select>
+              </div>
               
               <div className="space-y-4 pt-4 border-t border-white/5">
                 <p className="text-orange-500 text-[10px] font-black tracking-widest ml-2 uppercase">PPE Configuration</p>

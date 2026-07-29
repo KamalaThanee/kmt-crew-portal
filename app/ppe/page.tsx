@@ -107,7 +107,7 @@ function PPEContent() {
     supabase.from('ppe_inventory').select('*').order('item_name').then(({ data }) => data && setInventory(data))
 
     const fetchCrewLookup = async () => {
-      const crewsRes = await supabase.from('crews').select('id, full_name').order('full_name')
+      const crewsRes = await supabase.from('crews').select('id, full_name').order('full_name_sort').order('full_name')
       if (!crewsRes.error) {
         setAdminNameMap(
           Object.fromEntries(

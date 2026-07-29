@@ -148,6 +148,7 @@ function InventoryContent() {
       supabase
         .from('crews')
         .select('id, full_name, position, registered, is_active, resigned_at, suit_color, suit_size, boot_size, ppe_size_confirmed_at, ppe_size_confirmed_window_id')
+        .order('full_name_sort')
         .order('full_name'),
       supabase
         .from('ppe_size_windows')

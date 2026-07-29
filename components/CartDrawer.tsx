@@ -31,7 +31,7 @@ export default function CartDrawer() {
 
     if (!isAdminRole(u.position)) return;
 
-    const { data } = await supabase.from('crews').select('*').order('full_name');
+    const { data } = await supabase.from('crews').select('*').order('full_name_sort').order('full_name');
     if (data) setCrews(data.filter(isCrewActive));
   }, []);
 

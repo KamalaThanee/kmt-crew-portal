@@ -1,3 +1,5 @@
+import { compareCrewNames } from '@/lib/crewNames'
+
 type CrewMatrixCrew = {
   id: string
   full_name?: string | null
@@ -111,7 +113,7 @@ export async function createCrewCertificateMatrixWorkbook({
   const JSZip = (await import('jszip')).default
   const activeCrews = crews
     .filter((crew) => crew.is_active !== false && !crew.resigned_at)
-    .sort((left, right) => String(left.full_name || '').localeCompare(String(right.full_name || ''), 'en', { sensitivity: 'base' }))
+    .sort((left, right) => compareCrewNames(left.full_name, right.full_name))
   const masterRows = certMaster
     .filter((row) => Boolean(row.cert_name))
     .sort((left, right) => {
