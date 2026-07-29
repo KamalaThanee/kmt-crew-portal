@@ -499,11 +499,12 @@ function InventoryContent() {
 
   const handleSaveItem = async () => {
     if (!editingItem.item_name || !editingItem.category) return toast.error('Required fields missing')
-    await supabase.from('ppe_inventory').upsert({
+    const { error } = await supabase.from('ppe_inventory').upsert({
       id: editingItem.id || undefined, item_name: editingItem.item_name, item_id_code: editingItem.item_id_code,
       category: editingItem.category, color: editingItem.color, size: editingItem.size,
       quantity: Number(editingItem.quantity), threshold: Number(editingItem.threshold), unit: editingItem.unit || 'Piece'
     })
+    if (error) return toast.error(`Inventory save failed: ${error.message}`)
     toast.success('Inventory Saved'); setIsItemModalOpen(false); fetchData();
   }
 

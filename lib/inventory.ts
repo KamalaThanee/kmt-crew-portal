@@ -1,6 +1,16 @@
 export const DO_BUCKET = 'receipts'
 
 const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL']
+const inventoryCodePrefixes: Record<string, string> = {
+  'Head Protection': 'Head',
+  'Ears Protection': 'Ear',
+  'Eyes Protection': 'Eyes',
+  'Respiratory Protection': 'Nose',
+  'Body Protection': 'Body',
+  'Hands Protection': 'Hand',
+  'Foots Protection': 'Foot',
+  Other: 'Other',
+}
 
 export type RestockEntryRow = {
   id: number
@@ -50,22 +60,7 @@ export function generateInventoryCode(inventory: any[], catName: string) {
   const nextNumber = numbers.length > 0 ? Math.max(...numbers) + 1 : 1
   const padded = String(nextNumber).padStart(2, '0')
 
-  const prefixMap: Record<string, string> = {
-    'Head Protection': 'Head',
-    'Ears Protection': 'Ear',
-    'Eyes Protection': 'Eye',
-    'Respiratory Protection': 'Resp',
-    'Body Protection': 'Body',
-    'Hands Protection': 'Hand',
-    'Foots Protection': 'Foot',
-    Other: 'Other',
-  }
-
-  const existingPrefix = catItems
-    .map((item) => String(item.item_id_code || '').match(/^([A-Za-z]+)-\d+$/)?.[1])
-    .find(Boolean)
-
-  const prefix = existingPrefix || prefixMap[catName] || catName.replace(/\s+Protection$/i, '').replace(/\s+/g, '')
+  const prefix = inventoryCodePrefixes[catName] || catName.replace(/\s+Protection$/i, '').replace(/\s+/g, '')
   return `${prefix}-${padded}`
 }
 
