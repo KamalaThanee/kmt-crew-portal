@@ -343,30 +343,40 @@ export async function parseChangeRecord(file: File) {
   const sectionStarts = rows
     .map((cells, index) => ({ index, revision: getChangeRecordSectionRevision(cells) }))
     .filter((section): section is { index: number; revision: number } => section.revision !== null)
-  // Change Record revisions are appended chronologically. The last revision
-  // section in the document is therefore authoritative for this checklist.
-  const latestSection = sectionStarts.at(-1)
-  const latestSectionEnd = latestSection === undefined
-    ? rows.length
-    : sectionStarts.find((section) => section.index > latestSection.index)?.index ?? rows.length
-  const rowsToParse = latestSection === undefined
-    ? rows
-    : rows.slice(latestSection.index + 1, latestSectionEnd)
-  const roundRevision = latestSection ? `Revision ${latestSection.revision}` : fileRound || undefined
-  const roundSource: SmsChangeRecordItem['roundSource'] = latestSection ? 'document' : 'filename'
-  const seen = new Set<string>()
-  const items: SmsChangeRecordItem[] = []
 
-  rowsToParse.forEach((cells) => {
-    const item = parseChangeRecordRow(cells, roundRevision, roundSource)
-    if (!item) return
-    const key = `${item.docNo}|${item.revision}`
-    if (seen.has(key)) return
-    seen.add(key)
-    items.push(item)
-  })
+  const parseRows = (
+    candidateRows: string[][],
+    roundRevision?: string,
+    roundSource?: SmsChangeRecordItem['roundSource'],
+  ) => {
+    const seen = new Set<string>()
+    const items: SmsChangeRecordItem[] = []
+    candidateRows.forEach((cells) => {
+      const item = parseChangeRecordRow(cells, roundRevision, roundSource)
+      if (!item) return
+      const key = `${item.docNo}|${item.revision}`
+      if (seen.has(key)) return
+      seen.add(key)
+      items.push(item)
+    })
+    return items
+  }
 
-  return items
+  // Scan revision markers from the end. Change Record templates place the
+  // revision label either above or below its numbered requirement table, so
+  // accept the nearest non-empty table on either side of the latest marker.
+  for (let index = sectionStarts.length - 1; index >= 0; index -= 1) {
+    const section = sectionStarts[index]
+    const previousIndex = sectionStarts[index - 1]?.index ?? -1
+    const nextIndex = sectionStarts[index + 1]?.index ?? rows.length
+    const roundRevision = `Revision ${section.revision}`
+    const afterItems = parseRows(rows.slice(section.index + 1, nextIndex), roundRevision, 'document')
+    if (afterItems.length > 0) return afterItems
+    const beforeItems = parseRows(rows.slice(previousIndex + 1, section.index), roundRevision, 'document')
+    if (beforeItems.length > 0) return beforeItems
+  }
+
+  return parseRows(rows, fileRound || undefined, 'filename')
 }
 
 function pickValueAfterLabel(text: string, labels: string[]) {

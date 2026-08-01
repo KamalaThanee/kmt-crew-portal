@@ -1134,10 +1134,10 @@ export default function SmsLibraryPage() {
               {revisionValidation && (
                 <div className={`rounded-[24px] border p-4 ${
                   revisionValidation.kind === 'success'
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100'
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-800'
                     : revisionValidation.kind === 'warning'
-                      ? 'border-amber-500/35 bg-amber-500/10 text-amber-100'
-                      : 'border-red-500/35 bg-red-500/10 text-red-100'
+                      ? 'border-amber-500/35 bg-amber-500/10 text-amber-800'
+                      : 'border-red-500/35 bg-red-500/10 text-red-800'
                 }`}>
                   <p className="text-xs font-black uppercase tracking-widest">
                     {revisionValidation.kind === 'success' ? <CheckCircle2 size={16} className="mr-2 inline" /> : <AlertTriangle size={16} className="mr-2 inline" />}
