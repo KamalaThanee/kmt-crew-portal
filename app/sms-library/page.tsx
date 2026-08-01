@@ -85,6 +85,10 @@ const isLegacyWordDoc = (file: File) => /\.doc$/i.test(file.name) && !/\.docx$/i
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 const docKey = (value: string) => String(value || '').trim().toLowerCase()
 const revisionKey = (value?: string | null) => String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+const revisionNumber = (value?: string | null) => {
+  const match = String(value || '').match(/\brev(?:ision)?\.?\s*(\d{1,3})\b/i)
+  return match ? Number(match[1]) : null
+}
 const safeFileName = (value: string) =>
   String(value || 'sms-document')
     .replace(/[\\/:*?"<>|]+/g, '-')
@@ -107,6 +111,11 @@ export default function SmsLibraryPage() {
   const [changeRecordFile, setChangeRecordFile] = useState<File | null>(null)
   const [changeItems, setChangeItems] = useState<SmsChangeRecordItem[]>([])
   const [cancellationsConfirmed, setCancellationsConfirmed] = useState(false)
+  const [revisionValidation, setRevisionValidation] = useState<{
+    kind: 'success' | 'warning' | 'error'
+    message: string
+  } | null>(null)
+  const [revisionMismatchConfirmed, setRevisionMismatchConfirmed] = useState(false)
   const [drafts, setDrafts] = useState<SmsFileDraft[]>([])
   const [updateRound, setUpdateRound] = useState('')
   const [updateDate, setUpdateDate] = useState(new Date().toISOString().slice(0, 10))
@@ -117,6 +126,12 @@ export default function SmsLibraryPage() {
   const canManageSms = canManageSmsLibrary(user?.position)
   const isFirstUpload = documents.length === 0
   const uploadActionLabel = isFirstUpload ? 'New Upload' : 'Upload Revision'
+  const latestSavedRevisionNumber = useMemo(() => {
+    const revisions = logs
+      .map((log) => revisionNumber(log.update_round))
+      .filter((value): value is number => value !== null)
+    return revisions.length > 0 ? Math.max(...revisions) : null
+  }, [logs])
 
   useEffect(() => {
     const current = readCurrentUser()
@@ -233,6 +248,8 @@ export default function SmsLibraryPage() {
     setDrafts([])
     setChangeItems([])
     setCancellationsConfirmed(false)
+    setRevisionValidation(null)
+    setRevisionMismatchConfirmed(false)
     setChangeRecordFile(null)
     setUpdateRound('')
     setUpdateDate(new Date().toISOString().slice(0, 10))
@@ -259,6 +276,37 @@ export default function SmsLibraryPage() {
       const docMap = new Map(documents.map((doc) => [docKey(doc.doc_no), doc]))
       const roundFromFile = changeFile ? getChangeRecordRound(changeFile) : ''
       const roundFromChangeRecord = parsedChangeItems.find((item) => item.roundRevision)?.roundRevision || ''
+      const roundSource = parsedChangeItems.find((item) => item.roundRevision)?.roundSource
+      const detectedRound = roundFromChangeRecord || roundFromFile
+      const detectedRevisionNumber = revisionNumber(detectedRound)
+      const expectedRevisionNumber = latestSavedRevisionNumber === null ? null : latestSavedRevisionNumber + 1
+
+      if (changeFile) {
+        setRevisionMismatchConfirmed(false)
+        if (parsedChangeItems.length === 0 || roundSource !== 'document' || detectedRevisionNumber === null) {
+          setRevisionValidation({
+            kind: 'error',
+            message: 'Unable to read the latest Revision section inside 00_Change record. The update cannot be saved.',
+          })
+        } else if (expectedRevisionNumber !== null && detectedRevisionNumber < expectedRevisionNumber) {
+          setRevisionValidation({
+            kind: 'error',
+            message: `Database latest is Revision ${latestSavedRevisionNumber}. Expected Revision ${expectedRevisionNumber}, but the Change Record ends at Revision ${detectedRevisionNumber}.`,
+          })
+        } else if (expectedRevisionNumber !== null && detectedRevisionNumber > expectedRevisionNumber) {
+          setRevisionValidation({
+            kind: 'warning',
+            message: `Database latest is Revision ${latestSavedRevisionNumber}. Expected Revision ${expectedRevisionNumber}, but the Change Record ends at Revision ${detectedRevisionNumber}. Confirm this skipped revision before saving.`,
+          })
+        } else {
+          setRevisionValidation({
+            kind: 'success',
+            message: expectedRevisionNumber === null
+              ? `Latest section detected inside Change Record: Revision ${detectedRevisionNumber}.`
+              : `Verified: database Revision ${latestSavedRevisionNumber} → Change Record Revision ${detectedRevisionNumber}.`,
+          })
+        }
+      }
       if (roundFromChangeRecord) setUpdateRound(roundFromChangeRecord)
       else if (roundFromFile) setUpdateRound(roundFromFile)
 
@@ -456,6 +504,10 @@ export default function SmsLibraryPage() {
 
   const confirmUpload = async () => {
     if (!canManageSms || !user) return toast.error('SMS manager permission required')
+    if (revisionValidation?.kind === 'error') return toast.error(revisionValidation.message)
+    if (revisionValidation?.kind === 'warning' && !revisionMismatchConfirmed) {
+      return toast.error('Please confirm the skipped revision before saving')
+    }
     if (cancellationItems.length > 0 && !cancellationsConfirmed) {
       return toast.error('Please review and confirm the cancelled documents first')
     }
@@ -1063,6 +1115,7 @@ export default function SmsLibraryPage() {
                   <input
                     value={updateRound}
                     onChange={(event) => setUpdateRound(event.target.value)}
+                    readOnly={Boolean(changeRecordFile)}
                     placeholder={isFirstUpload ? 'Initial baseline / Revision 30' : 'Revision 30'}
                     className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-black text-white outline-none focus:border-orange-500"
                   />
@@ -1077,6 +1130,33 @@ export default function SmsLibraryPage() {
                   />
                 </div>
               </div>
+
+              {revisionValidation && (
+                <div className={`rounded-[24px] border p-4 ${
+                  revisionValidation.kind === 'success'
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100'
+                    : revisionValidation.kind === 'warning'
+                      ? 'border-amber-500/35 bg-amber-500/10 text-amber-100'
+                      : 'border-red-500/35 bg-red-500/10 text-red-100'
+                }`}>
+                  <p className="text-xs font-black uppercase tracking-widest">
+                    {revisionValidation.kind === 'success' ? <CheckCircle2 size={16} className="mr-2 inline" /> : <AlertTriangle size={16} className="mr-2 inline" />}
+                    Revision validation
+                  </p>
+                  <p className="mt-2 text-xs font-bold leading-relaxed">{revisionValidation.message}</p>
+                  {revisionValidation.kind === 'warning' && (
+                    <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-amber-500/25 bg-black/20 p-3 text-xs font-bold">
+                      <input
+                        type="checkbox"
+                        checked={revisionMismatchConfirmed}
+                        onChange={(event) => setRevisionMismatchConfirmed(event.target.checked)}
+                        className="mt-0.5 h-4 w-4 accent-orange-600"
+                      />
+                      I confirm that skipping to this Revision is intentional.
+                    </label>
+                  )}
+                </div>
+              )}
 
               {processingFiles && (
                 <div className="rounded-[28px] border border-white/10 bg-black/40 p-6 text-center text-sm font-black uppercase tracking-widest text-orange-400">
@@ -1245,7 +1325,7 @@ export default function SmsLibraryPage() {
 
               <div className="flex flex-col gap-3 md:flex-row md:justify-end">
                 <button onClick={resetUpload} className="rounded-[22px] bg-white/5 px-6 py-4 text-xs font-black uppercase text-zinc-300">Cancel</button>
-                <button onClick={confirmUpload} disabled={saving || processingFiles || (drafts.length === 0 && cancellationItems.length === 0) || (cancellationItems.length > 0 && !cancellationsConfirmed)} className="rounded-[22px] bg-orange-600 px-6 py-4 text-xs font-black uppercase text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+                <button onClick={confirmUpload} disabled={saving || processingFiles || (drafts.length === 0 && cancellationItems.length === 0) || (cancellationItems.length > 0 && !cancellationsConfirmed) || revisionValidation?.kind === 'error' || (revisionValidation?.kind === 'warning' && !revisionMismatchConfirmed)} className="rounded-[22px] bg-orange-600 px-6 py-4 text-xs font-black uppercase text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
                   {saving ? <Loader2 size={16} className="mr-2 inline animate-spin" /> : <CheckCircle2 size={16} className="mr-2 inline" />}
                   Confirm Update
                 </button>

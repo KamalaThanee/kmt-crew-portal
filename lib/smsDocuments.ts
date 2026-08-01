@@ -59,6 +59,7 @@ export type SmsChangeRecordItem = {
   revision: string
   changeSummary: string
   roundRevision?: string
+  roundSource?: 'document' | 'filename'
   action: 'upsert' | 'cancel'
 }
 
@@ -228,8 +229,11 @@ export function isChangeRecordFile(file: File) {
 }
 
 export function getChangeRecordRound(file: Pick<File, 'name'> & { webkitRelativePath?: string }) {
-  const path = `${file.webkitRelativePath || ''}/${file.name}`
-  const match = path.match(/\brev(?:ision)?\.?[_\s-]*(\d{1,3})\b/i)
+  const revisionPattern = /\brev(?:ision)?\.?[_\s-]*(\d{1,3})\b/i
+  // The file name is more reliable than a parent folder that may still carry
+  // the previous revision number.
+  const match = file.name.match(revisionPattern)
+    || String(file.webkitRelativePath || '').match(revisionPattern)
   return match ? `Revision ${Number(match[1])}` : ''
 }
 
@@ -295,7 +299,7 @@ function parseDocxRows(xml: string) {
   }).filter((cells) => cells.some(Boolean))
 }
 
-function parseChangeRecordRow(cells: string[], roundRevision?: string): SmsChangeRecordItem | null {
+function parseChangeRecordRow(cells: string[], roundRevision?: string, roundSource?: SmsChangeRecordItem['roundSource']): SmsChangeRecordItem | null {
   if (cells.length < 3) return null
   if (!/^\d+$/i.test(cells[0] || '')) return null
 
@@ -313,6 +317,7 @@ function parseChangeRecordRow(cells: string[], roundRevision?: string): SmsChang
     revision,
     changeSummary: cells[3] || '',
     roundRevision,
+    roundSource,
     action: isCancelledChangeSummary(cells[3] || '') ? 'cancel' : 'upsert',
   }
 }
@@ -335,31 +340,25 @@ export async function parseChangeRecord(file: File) {
   const xml = await readDocxXml(file)
   const rows = parseDocxRows(xml)
   const fileRound = getChangeRecordRound(file)
-  const fileRevision = Number(fileRound.match(/(\d+)/)?.[1] || 0) || null
   const sectionStarts = rows
     .map((cells, index) => ({ index, revision: getChangeRecordSectionRevision(cells) }))
     .filter((section): section is { index: number; revision: number } => section.revision !== null)
-  const preferredSection = fileRevision === null
-    ? undefined
-    : [...sectionStarts].reverse().find((section) => section.revision === fileRevision)
-  const latestSection = preferredSection || sectionStarts.reduce<{ index: number; revision: number } | undefined>((latest, section) => {
-    if (!latest) return section
-    if (section.revision > latest.revision) return section
-    if (section.revision === latest.revision && section.index > latest.index) return section
-    return latest
-  }, undefined)
+  // Change Record revisions are appended chronologically. The last revision
+  // section in the document is therefore authoritative for this checklist.
+  const latestSection = sectionStarts.at(-1)
   const latestSectionEnd = latestSection === undefined
     ? rows.length
     : sectionStarts.find((section) => section.index > latestSection.index)?.index ?? rows.length
   const rowsToParse = latestSection === undefined
     ? rows
     : rows.slice(latestSection.index + 1, latestSectionEnd)
-  const roundRevision = fileRound || (latestSection ? `Revision ${latestSection.revision}` : undefined)
+  const roundRevision = latestSection ? `Revision ${latestSection.revision}` : fileRound || undefined
+  const roundSource: SmsChangeRecordItem['roundSource'] = latestSection ? 'document' : 'filename'
   const seen = new Set<string>()
   const items: SmsChangeRecordItem[] = []
 
   rowsToParse.forEach((cells) => {
-    const item = parseChangeRecordRow(cells, roundRevision)
+    const item = parseChangeRecordRow(cells, roundRevision, roundSource)
     if (!item) return
     const key = `${item.docNo}|${item.revision}`
     if (seen.has(key)) return
