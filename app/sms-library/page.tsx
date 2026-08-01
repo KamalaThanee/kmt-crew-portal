@@ -13,6 +13,7 @@ import { PageShell } from '@/components/layout/PageShell'
 import {
   buildSmsFilePath,
   getSmsCategoryFromPath,
+  getChangeRecordRound,
   isChangeRecordFile,
   parseChangeRecord,
   readSmsDocumentHeader,
@@ -105,6 +106,7 @@ export default function SmsLibraryPage() {
   const [saving, setSaving] = useState(false)
   const [changeRecordFile, setChangeRecordFile] = useState<File | null>(null)
   const [changeItems, setChangeItems] = useState<SmsChangeRecordItem[]>([])
+  const [cancellationsConfirmed, setCancellationsConfirmed] = useState(false)
   const [drafts, setDrafts] = useState<SmsFileDraft[]>([])
   const [updateRound, setUpdateRound] = useState('')
   const [updateDate, setUpdateDate] = useState(new Date().toISOString().slice(0, 10))
@@ -230,6 +232,7 @@ export default function SmsLibraryPage() {
     setUploadOpen(false)
     setDrafts([])
     setChangeItems([])
+    setCancellationsConfirmed(false)
     setChangeRecordFile(null)
     setUpdateRound('')
     setUpdateDate(new Date().toISOString().slice(0, 10))
@@ -254,10 +257,10 @@ export default function SmsLibraryPage() {
       const combinedChangeItems = append && parsedChangeItems.length === 0 ? changeItems : parsedChangeItems
       const changeMap = new Map(combinedChangeItems.map((item) => [docKey(item.docNo), item]))
       const docMap = new Map(documents.map((doc) => [docKey(doc.doc_no), doc]))
-      const roundFromFile = changeFile?.webkitRelativePath?.match(/Revision[_\s-]*(\d+)/i)?.[0] || changeFile?.name.match(/Revision[_\s-]*(\d+)/i)?.[0] || ''
+      const roundFromFile = changeFile ? getChangeRecordRound(changeFile) : ''
       const roundFromChangeRecord = parsedChangeItems.find((item) => item.roundRevision)?.roundRevision || ''
       if (roundFromChangeRecord) setUpdateRound(roundFromChangeRecord)
-      else if (roundFromFile) setUpdateRound(roundFromFile.replace(/[_-]+/g, ' '))
+      else if (roundFromFile) setUpdateRound(roundFromFile)
 
       const nextDrafts: SmsFileDraft[] = []
       for (const file of uploadedDocs) {
@@ -296,7 +299,10 @@ export default function SmsLibraryPage() {
       }
 
       if (changeFile) setChangeRecordFile(changeFile)
-      if (parsedChangeItems.length > 0) setChangeItems(parsedChangeItems)
+      if (parsedChangeItems.length > 0) {
+        setChangeItems(parsedChangeItems)
+        setCancellationsConfirmed(false)
+      }
       else if (!append) setChangeItems([])
       setDrafts((prev) => append ? [...prev, ...nextDrafts] : nextDrafts)
       if (changeFile) toast.success(`Change record found: ${parsedChangeItems.length} required documents`)
@@ -417,11 +423,17 @@ export default function SmsLibraryPage() {
     const uploaded = new Set(drafts.map((draft) => docKey(draft.docNo)).filter(Boolean))
     const current = new Map(documents.map((doc) => [docKey(doc.doc_no), revisionKey(doc.current_revision)]))
     return changeItems.filter((item) => {
+      if (item.action === 'cancel') return false
       const key = docKey(item.docNo)
       if (uploaded.has(key)) return false
       return current.get(key) !== revisionKey(item.revision)
     })
   }, [changeItems, documents, drafts])
+
+  const cancellationItems = useMemo(
+    () => changeItems.filter((item) => item.action === 'cancel'),
+    [changeItems],
+  )
 
   const changeRecordChecklist = useMemo(() => {
     const uploaded = new Set(drafts.map((draft) => docKey(draft.docNo)).filter(Boolean))
@@ -430,35 +442,42 @@ export default function SmsLibraryPage() {
       const currentRevision = current.get(docKey(item.docNo)) || ''
       const found = uploaded.has(docKey(item.docNo))
       const alreadyCurrent = !found && revisionKey(currentRevision) === revisionKey(item.revision)
+      const cancellationReady = item.action === 'cancel' && cancellationsConfirmed
 
       return {
         ...item,
         found,
         alreadyCurrent,
-        complete: found || alreadyCurrent,
+        complete: item.action === 'cancel' ? cancellationReady : found || alreadyCurrent,
         currentRevision,
       }
     })
-  }, [changeItems, documents, drafts])
+  }, [cancellationsConfirmed, changeItems, documents, drafts])
 
   const confirmUpload = async () => {
     if (!canManageSms || !user) return toast.error('SMS manager permission required')
-    const validDrafts = drafts.filter((draft) => draft.docNo && draft.title && draft.revision)
-    if (validDrafts.length === 0) return toast.error('No valid SMS documents to upload')
+    if (cancellationItems.length > 0 && !cancellationsConfirmed) {
+      return toast.error('Please review and confirm the cancelled documents first')
+    }
+    const cancellationKeys = new Set(cancellationItems.map((item) => docKey(item.docNo)))
+    const validDrafts = drafts.filter((draft) => draft.docNo && draft.title && draft.revision && !cancellationKeys.has(docKey(draft.docNo)))
+    if (validDrafts.length === 0 && cancellationItems.length === 0) return toast.error('No valid SMS documents to upload')
     const knownRevisions = new Map<string, string>()
     validDrafts.forEach((draft) => {
       if (draft.oldRevision) knownRevisions.set(draft.docNo, draft.oldRevision)
     })
     const docNosToCheck = Array.from(new Set(validDrafts.map((draft) => draft.docNo)))
-    const { data: existingRows, error: existingRowsError } = await supabase
-      .from('sms_documents')
-      .select('doc_no, current_revision')
-      .in('doc_no', docNosToCheck)
+    if (docNosToCheck.length > 0) {
+      const { data: existingRows, error: existingRowsError } = await supabase
+        .from('sms_documents')
+        .select('doc_no, current_revision')
+        .in('doc_no', docNosToCheck)
 
-    if (existingRowsError) return toast.error(existingRowsError.message)
-    ;((existingRows || []) as Array<{ doc_no?: string | null; current_revision?: string | null }>).forEach((row) => {
-      if (row.doc_no && row.current_revision) knownRevisions.set(row.doc_no, row.current_revision)
-    })
+      if (existingRowsError) return toast.error(existingRowsError.message)
+      ;((existingRows || []) as Array<{ doc_no?: string | null; current_revision?: string | null }>).forEach((row) => {
+        if (row.doc_no && row.current_revision) knownRevisions.set(row.doc_no, row.current_revision)
+      })
+    }
 
     const replacingItems = validDrafts
       .map((draft) => ({ draft, oldRevision: knownRevisions.get(draft.docNo) || '' }))
@@ -601,12 +620,49 @@ export default function SmsLibraryPage() {
         })
       }
 
+      for (const item of cancellationItems) {
+        const existing = documents.find((doc) => docKey(doc.doc_no) === docKey(item.docNo))
+        const { data: cancelledRows, error: cancelError } = await supabase
+          .from('sms_documents')
+          .update({ status: 'inactive', updated_at: new Date().toISOString() })
+          .eq('doc_no', item.docNo)
+          .eq('status', 'active')
+          .select('id, title, category, current_revision')
+        if (cancelError) throw cancelError
+
+        const cancelled = (cancelledRows || [])[0] as { id?: string; title?: string; category?: SmsCategory; current_revision?: string | null } | undefined
+        const { error: cancellationLogError } = await supabase.from('sms_revision_logs').insert({
+          document_id: cancelled?.id || existing?.id || null,
+          action: 'cancelled',
+          doc_no: item.docNo,
+          title: item.title || cancelled?.title || existing?.title,
+          category: item.category || cancelled?.category || existing?.category,
+          old_revision: cancelled?.current_revision || existing?.current_revision || null,
+          new_revision: item.revision,
+          file_name: null,
+          actor_id: user.id,
+          actor_name: user.full_name,
+          update_round: updateRound || item.roundRevision || null,
+          update_date: updateDate || null,
+          details: {
+            matchStatus: cancelled ? 'cancelled' : 'already_inactive',
+            updateRound: updateRound || item.roundRevision || null,
+            updateDate: updateDate || null,
+            changeSummary: item.changeSummary,
+            changeRecordFile: changeRecordStoredName || changeRecordFile?.name || null,
+            changeRecordUrl: changeRecordUrl || null,
+          },
+        })
+        if (cancellationLogError) throw cancellationLogError
+      }
+
       const existingRoundKeys = new Set(
         logs
           .filter((log) => String(log.update_round || '').trim() === String(updateRound || '').trim())
           .map((log) => `${docKey(log.doc_no || '')}|${revisionKey(log.new_revision)}`),
       )
       const alreadyCurrentLogs = changeItems.reduce<Array<Record<string, unknown>>>((items, item) => {
+        if (item.action === 'cancel') return items
         if (uploadedKeys.has(docKey(item.docNo))) return items
         const doc = documents.find((row) => docKey(row.doc_no) === docKey(item.docNo))
         if (!doc || revisionKey(doc.current_revision) !== revisionKey(item.revision)) return items
@@ -655,7 +711,7 @@ export default function SmsLibraryPage() {
         }),
       }).catch(() => undefined)
 
-      toast.success(`SMS Library updated: ${validDrafts.length} files`)
+      toast.success(`SMS Library updated: ${validDrafts.length} files, ${cancellationItems.length} cancelled`)
       resetUpload()
       fetchData()
     } catch (error: any) {
@@ -1081,6 +1137,33 @@ export default function SmsLibraryPage() {
                 </div>
               )}
 
+              {cancellationItems.length > 0 && (
+                <div className="rounded-[28px] border border-amber-500/35 bg-amber-500/10 p-5">
+                  <p className="text-xs font-black uppercase tracking-widest text-amber-300">
+                    <AlertTriangle size={16} className="mr-2 inline" /> Documents marked Cancelled
+                  </p>
+                  <p className="mt-2 text-xs text-amber-100/80">
+                    These documents will be removed from the active SMS Library. Their files and revision history will be retained for audit.
+                  </p>
+                  <div className="mt-4 grid gap-2 md:grid-cols-2">
+                    {cancellationItems.map((item) => (
+                      <div key={`${item.docNo}-${item.revision}`} className="rounded-xl bg-black/30 px-3 py-2 text-xs font-bold text-amber-100">
+                        {item.docNo} · {item.title} · {item.revision}
+                      </div>
+                    ))}
+                  </div>
+                  <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-amber-500/25 bg-black/20 p-4 text-xs font-bold text-amber-50">
+                    <input
+                      type="checkbox"
+                      checked={cancellationsConfirmed}
+                      onChange={(event) => setCancellationsConfirmed(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 accent-orange-600"
+                    />
+                    I reviewed this list and confirm cancelling {cancellationItems.length} document(s).
+                  </label>
+                </div>
+              )}
+
               {changeRecordChecklist.length > 0 && (
                 <div className="rounded-[30px] border border-white/10 bg-black/35 p-5">
                   <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -1114,7 +1197,9 @@ export default function SmsLibraryPage() {
                         <div className="text-right md:text-left">
                           <p className="font-black text-orange-200">{item.revision}</p>
                           <p className={`mt-1 text-[10px] font-black uppercase ${item.complete ? 'text-emerald-300' : 'text-red-300'}`}>
-                            {item.found ? 'Uploaded' : item.alreadyCurrent ? 'Already current' : 'Missing'}
+                            {item.action === 'cancel'
+                              ? cancellationsConfirmed ? 'Cancellation confirmed' : 'Awaiting confirmation'
+                              : item.found ? 'Uploaded' : item.alreadyCurrent ? 'Already current' : 'Missing'}
                           </p>
                         </div>
                       </div>
@@ -1160,7 +1245,7 @@ export default function SmsLibraryPage() {
 
               <div className="flex flex-col gap-3 md:flex-row md:justify-end">
                 <button onClick={resetUpload} className="rounded-[22px] bg-white/5 px-6 py-4 text-xs font-black uppercase text-zinc-300">Cancel</button>
-                <button onClick={confirmUpload} disabled={saving || processingFiles || drafts.length === 0} className="rounded-[22px] bg-orange-600 px-6 py-4 text-xs font-black uppercase text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
+                <button onClick={confirmUpload} disabled={saving || processingFiles || (drafts.length === 0 && cancellationItems.length === 0) || (cancellationItems.length > 0 && !cancellationsConfirmed)} className="rounded-[22px] bg-orange-600 px-6 py-4 text-xs font-black uppercase text-white shadow-lg shadow-orange-600/20 disabled:opacity-50">
                   {saving ? <Loader2 size={16} className="mr-2 inline animate-spin" /> : <CheckCircle2 size={16} className="mr-2 inline" />}
                   Confirm Update
                 </button>

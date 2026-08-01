@@ -59,6 +59,7 @@ export type SmsChangeRecordItem = {
   revision: string
   changeSummary: string
   roundRevision?: string
+  action: 'upsert' | 'cancel'
 }
 
 export type SmsFileDraft = {
@@ -226,6 +227,16 @@ export function isChangeRecordFile(file: File) {
   return name.includes('change record') || name.includes('change_record') || name.includes('00_change')
 }
 
+export function getChangeRecordRound(file: Pick<File, 'name'> & { webkitRelativePath?: string }) {
+  const path = `${file.webkitRelativePath || ''}/${file.name}`
+  const match = path.match(/\brev(?:ision)?\.?[_\s-]*(\d{1,3})\b/i)
+  return match ? `Revision ${Number(match[1])}` : ''
+}
+
+export function isCancelledChangeSummary(value: string) {
+  return /\bcancell?ed\b/i.test(String(value || ''))
+}
+
 export function getSmsCategoryFromPath(file: File): SmsCategory | null {
   const path = String(file.webkitRelativePath || file.name || '').toLowerCase()
   if (/(^|[/\\])(support|supports|support document|support documents)([/\\]|$)/i.test(path) || path.includes('support document')) return 'Support Document'
@@ -289,7 +300,9 @@ function parseChangeRecordRow(cells: string[], roundRevision?: string): SmsChang
   if (!/^\d+$/i.test(cells[0] || '')) return null
 
   const rawDoc = cells[1] || ''
-  const parsed = parseSmsFilename(rawDoc)
+  // Some controlled Change Records contain the recurring typo "From 11.xxx".
+  // Treat it as "Form" only while parsing the document number.
+  const parsed = parseSmsFilename(rawDoc.replace(/^\s*From\s+(?=\d)/i, 'Form '))
   const revision = normalizeRevision(cells[2] || '')
   if (!parsed.docNo || !revision) return null
 
@@ -300,12 +313,19 @@ function parseChangeRecordRow(cells: string[], roundRevision?: string): SmsChang
     revision,
     changeSummary: cells[3] || '',
     roundRevision,
+    action: isCancelledChangeSummary(cells[3] || '') ? 'cancel' : 'upsert',
   }
 }
 
 function getChangeRecordSectionRevision(cells: string[]) {
-  const match = cells.join(' ').match(/register\s+documents?\s+rev(?:ision)?\.?\s*(\d+)/i)
-  return match ? Number(match[1]) : null
+  // Numbered data rows also contain values such as "Rev.00" and "Register new form";
+  // they must never be mistaken for revision section headings.
+  if (/^\d+$/.test(String(cells[0] || '').trim())) return null
+  const text = cells.join(' ')
+  if (!/\b(?:change\s+record|register(?:ing|ed)?|registration|revision|amendment|update)\b/i.test(text)) return null
+  const matches = Array.from(text.matchAll(/\brev(?:ision)?\.?\s*(\d{1,3})\b/gi))
+  const revision = matches.at(-1)?.[1]
+  return revision ? Number(revision) : null
 }
 
 export async function parseChangeRecord(file: File) {
@@ -314,10 +334,15 @@ export async function parseChangeRecord(file: File) {
 
   const xml = await readDocxXml(file)
   const rows = parseDocxRows(xml)
+  const fileRound = getChangeRecordRound(file)
+  const fileRevision = Number(fileRound.match(/(\d+)/)?.[1] || 0) || null
   const sectionStarts = rows
     .map((cells, index) => ({ index, revision: getChangeRecordSectionRevision(cells) }))
     .filter((section): section is { index: number; revision: number } => section.revision !== null)
-  const latestSection = sectionStarts.reduce<{ index: number; revision: number } | undefined>((latest, section) => {
+  const preferredSection = fileRevision === null
+    ? undefined
+    : [...sectionStarts].reverse().find((section) => section.revision === fileRevision)
+  const latestSection = preferredSection || sectionStarts.reduce<{ index: number; revision: number } | undefined>((latest, section) => {
     if (!latest) return section
     if (section.revision > latest.revision) return section
     if (section.revision === latest.revision && section.index > latest.index) return section
@@ -329,7 +354,7 @@ export async function parseChangeRecord(file: File) {
   const rowsToParse = latestSection === undefined
     ? rows
     : rows.slice(latestSection.index + 1, latestSectionEnd)
-  const roundRevision = latestSection ? `Revision ${latestSection.revision}` : undefined
+  const roundRevision = fileRound || (latestSection ? `Revision ${latestSection.revision}` : undefined)
   const seen = new Set<string>()
   const items: SmsChangeRecordItem[] = []
 
