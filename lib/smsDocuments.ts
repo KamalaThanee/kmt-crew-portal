@@ -295,7 +295,9 @@ function parseDocxRows(xml: string) {
 
   return rows.map((row) => {
     const cells = Array.from(row.getElementsByTagName('w:tc'))
-    return cells.map((cell) => cleanText(Array.from(cell.getElementsByTagName('w:t')).map((node) => node.textContent || '').join(' ')))
+    // Word may split a single token across runs (for example rev. + 3 + 1).
+    // OOXML run text is contiguous, so inserting spaces here corrupts values.
+    return cells.map((cell) => cleanText(Array.from(cell.getElementsByTagName('w:t')).map((node) => node.textContent || '').join('')))
   }).filter((cells) => cells.some(Boolean))
 }
 
