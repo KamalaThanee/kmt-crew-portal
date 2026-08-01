@@ -301,7 +301,7 @@ function parseDocxRows(xml: string) {
 
 function parseChangeRecordRow(cells: string[], roundRevision?: string, roundSource?: SmsChangeRecordItem['roundSource']): SmsChangeRecordItem | null {
   if (cells.length < 3) return null
-  if (!/^\d+$/i.test(cells[0] || '')) return null
+  if (!/^\d+\.?$/i.test(String(cells[0] || '').trim())) return null
 
   const rawDoc = cells[1] || ''
   // Some controlled Change Records contain the recurring typo "From 11.xxx".
@@ -323,14 +323,9 @@ function parseChangeRecordRow(cells: string[], roundRevision?: string, roundSour
 }
 
 function getChangeRecordSectionRevision(cells: string[]) {
-  // Numbered data rows also contain values such as "Rev.00" and "Register new form";
-  // they must never be mistaken for revision section headings.
-  if (/^\d+$/.test(String(cells[0] || '').trim())) return null
   const text = cells.join(' ')
-  if (!/\b(?:change\s+record|register(?:ing|ed)?|registration|revision|amendment|update)\b/i.test(text)) return null
-  const matches = Array.from(text.matchAll(/\brev(?:ision)?\.?\s*(\d{1,3})\b/gi))
-  const revision = matches.at(-1)?.[1]
-  return revision ? Number(revision) : null
+  const match = text.match(/\bregister\s+documents?\s+rev(?:ision)?\.?\s*(\d{1,3})\b/i)
+  return match ? Number(match[1]) : null
 }
 
 export async function parseChangeRecord(file: File, expectedRevision?: number | null) {
@@ -364,26 +359,19 @@ export async function parseChangeRecord(file: File, expectedRevision?: number | 
     return items
   }
 
-  // Only the expected revision may define the checklist. This prevents a
-  // document row such as "Rev.00 / Register new form" from being mistaken for
-  // the Change Record revision heading.
-  const targetSections = targetRevision === null
-    ? sectionStarts
-    : sectionStarts.filter((section) => section.revision === targetRevision)
-  const candidates: Array<{ markerIndex: number; items: SmsChangeRecordItem[] }> = []
-  for (let index = 0; index < targetSections.length; index += 1) {
-    const section = targetSections[index]
-    const previousIndex = targetSections[index - 1]?.index ?? -1
-    const nextIndex = targetSections[index + 1]?.index ?? rows.length
+  // The real Change Record template places a "Register Document rev.xx" row
+  // immediately before that revision's numbered requirements. Read only until
+  // the next revision marker so historical revisions can never leak in.
+  const targetSectionIndex = targetRevision === null
+    ? sectionStarts.length - 1
+    : sectionStarts.findIndex((section) => section.revision === targetRevision)
+  if (targetSectionIndex >= 0) {
+    const section = sectionStarts[targetSectionIndex]
+    const nextIndex = sectionStarts[targetSectionIndex + 1]?.index ?? rows.length
     const roundRevision = `Revision ${section.revision}`
-    const afterItems = parseRows(rows.slice(section.index + 1, nextIndex), roundRevision, 'document')
-    if (afterItems.length > 0) candidates.push({ markerIndex: section.index, items: afterItems })
-    const beforeItems = parseRows(rows.slice(previousIndex + 1, section.index), roundRevision, 'document')
-    if (beforeItems.length > 0) candidates.push({ markerIndex: section.index, items: beforeItems })
+    const items = parseRows(rows.slice(section.index + 1, nextIndex), roundRevision, 'document')
+    if (items.length > 0) return items
   }
-
-  const bestCandidate = candidates.sort((a, b) => b.items.length - a.items.length || b.markerIndex - a.markerIndex)[0]
-  if (bestCandidate) return bestCandidate.items
 
   return parseRows(rows, fileRound || undefined, 'filename')
 }
