@@ -270,7 +270,8 @@ export default function SmsLibraryPage() {
       }
       const changeFile = fileArray.find(isChangeRecordFile) || null
       const uploadedDocs = fileArray.filter((file) => !isChangeRecordFile(file))
-      const parsedChangeItems = changeFile ? await parseChangeRecord(changeFile) : []
+      const expectedRevisionNumber = latestSavedRevisionNumber === null ? null : latestSavedRevisionNumber + 1
+      const parsedChangeItems = changeFile ? await parseChangeRecord(changeFile, expectedRevisionNumber) : []
       const combinedChangeItems = append && parsedChangeItems.length === 0 ? changeItems : parsedChangeItems
       const changeMap = new Map(combinedChangeItems.map((item) => [docKey(item.docNo), item]))
       const docMap = new Map(documents.map((doc) => [docKey(doc.doc_no), doc]))
@@ -279,7 +280,6 @@ export default function SmsLibraryPage() {
       const roundSource = parsedChangeItems.find((item) => item.roundRevision)?.roundSource
       const detectedRound = roundFromChangeRecord || roundFromFile
       const detectedRevisionNumber = revisionNumber(detectedRound)
-      const expectedRevisionNumber = latestSavedRevisionNumber === null ? null : latestSavedRevisionNumber + 1
 
       if (changeFile) {
         setRevisionMismatchConfirmed(false)

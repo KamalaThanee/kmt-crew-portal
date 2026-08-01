@@ -333,7 +333,7 @@ function getChangeRecordSectionRevision(cells: string[]) {
   return revision ? Number(revision) : null
 }
 
-export async function parseChangeRecord(file: File) {
+export async function parseChangeRecord(file: File, expectedRevision?: number | null) {
   const ext = file.name.split('.').pop()?.toLowerCase()
   if (ext !== 'docx') return [] as SmsChangeRecordItem[]
 
@@ -343,6 +343,8 @@ export async function parseChangeRecord(file: File) {
   const sectionStarts = rows
     .map((cells, index) => ({ index, revision: getChangeRecordSectionRevision(cells) }))
     .filter((section): section is { index: number; revision: number } => section.revision !== null)
+  const fileRevision = Number(fileRound.match(/(\d+)/)?.[1] || 0) || null
+  const targetRevision = expectedRevision ?? fileRevision
 
   const parseRows = (
     candidateRows: string[][],
@@ -362,19 +364,26 @@ export async function parseChangeRecord(file: File) {
     return items
   }
 
-  // Scan revision markers from the end. Change Record templates place the
-  // revision label either above or below its numbered requirement table, so
-  // accept the nearest non-empty table on either side of the latest marker.
-  for (let index = sectionStarts.length - 1; index >= 0; index -= 1) {
-    const section = sectionStarts[index]
-    const previousIndex = sectionStarts[index - 1]?.index ?? -1
-    const nextIndex = sectionStarts[index + 1]?.index ?? rows.length
+  // Only the expected revision may define the checklist. This prevents a
+  // document row such as "Rev.00 / Register new form" from being mistaken for
+  // the Change Record revision heading.
+  const targetSections = targetRevision === null
+    ? sectionStarts
+    : sectionStarts.filter((section) => section.revision === targetRevision)
+  const candidates: Array<{ markerIndex: number; items: SmsChangeRecordItem[] }> = []
+  for (let index = 0; index < targetSections.length; index += 1) {
+    const section = targetSections[index]
+    const previousIndex = targetSections[index - 1]?.index ?? -1
+    const nextIndex = targetSections[index + 1]?.index ?? rows.length
     const roundRevision = `Revision ${section.revision}`
     const afterItems = parseRows(rows.slice(section.index + 1, nextIndex), roundRevision, 'document')
-    if (afterItems.length > 0) return afterItems
+    if (afterItems.length > 0) candidates.push({ markerIndex: section.index, items: afterItems })
     const beforeItems = parseRows(rows.slice(previousIndex + 1, section.index), roundRevision, 'document')
-    if (beforeItems.length > 0) return beforeItems
+    if (beforeItems.length > 0) candidates.push({ markerIndex: section.index, items: beforeItems })
   }
+
+  const bestCandidate = candidates.sort((a, b) => b.items.length - a.items.length || b.markerIndex - a.markerIndex)[0]
+  if (bestCandidate) return bestCandidate.items
 
   return parseRows(rows, fileRound || undefined, 'filename')
 }
