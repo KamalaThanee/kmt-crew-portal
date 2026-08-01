@@ -1207,32 +1207,32 @@ export default function SmsLibraryPage() {
               )}
 
               {requiredMissing.length > 0 && (
-                <div className="rounded-[28px] border border-red-500/30 bg-red-500/10 p-5">
-                  <p className="mb-3 text-xs font-black uppercase tracking-widest text-red-300"><AlertTriangle size={16} className="mr-2 inline" /> Missing from this upload set</p>
+                <div className="rounded-[28px] border border-red-400 bg-red-50 p-5">
+                  <p className="mb-3 text-xs font-black uppercase tracking-widest text-red-800"><AlertTriangle size={16} className="mr-2 inline" /> Missing from this upload set</p>
                   <div className="grid gap-2 md:grid-cols-2">
                     {requiredMissing.slice(0, 10).map((item) => (
-                      <div key={`${item.docNo}-${item.revision}`} className="rounded-xl bg-black/30 px-3 py-2 text-xs font-bold text-red-100">{item.docNo} · {item.title} · {item.revision}</div>
+                      <div key={`${item.docNo}-${item.revision}`} className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-900">{item.docNo} · {item.title} · {item.revision}</div>
                     ))}
                   </div>
                 </div>
               )}
 
               {cancellationItems.length > 0 && (
-                <div className="rounded-[28px] border border-amber-500/35 bg-amber-500/10 p-5">
-                  <p className="text-xs font-black uppercase tracking-widest text-amber-300">
+                <div className="rounded-[28px] border border-amber-400 bg-amber-50 p-5">
+                  <p className="text-xs font-black uppercase tracking-widest text-amber-900">
                     <AlertTriangle size={16} className="mr-2 inline" /> Documents marked Cancelled
                   </p>
-                  <p className="mt-2 text-xs text-amber-100/80">
+                  <p className="mt-2 text-xs font-medium text-amber-900/80">
                     These documents will be removed from the active SMS Library. Their files and revision history will be retained for audit.
                   </p>
                   <div className="mt-4 grid gap-2 md:grid-cols-2">
                     {cancellationItems.map((item) => (
-                      <div key={`${item.docNo}-${item.revision}`} className="rounded-xl bg-black/30 px-3 py-2 text-xs font-bold text-amber-100">
+                      <div key={`${item.docNo}-${item.revision}`} className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-950">
                         {item.docNo} · {item.title} · {item.revision}
                       </div>
                     ))}
                   </div>
-                  <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-amber-500/25 bg-black/20 p-4 text-xs font-bold text-amber-50">
+                  <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-amber-300 bg-white p-4 text-xs font-bold text-amber-950">
                     <input
                       type="checkbox"
                       checked={cancellationsConfirmed}

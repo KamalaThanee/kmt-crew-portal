@@ -111,6 +111,9 @@ export function normalizeDocNo(value: string) {
     .replace(/\s+/g, ' ')
     .replace(/\s*[-:]\s*$/g, '')
     .trim()
+  if (/^\d+(?:\s*\.\s*\d+)+(?:\s*[a-z])?$/i.test(clean)) {
+    return clean.replace(/\s+/g, '')
+  }
   if (/^[0-9.\s]+$/.test(clean)) {
     return clean.replace(/\s+/g, '').replace(/\.+/g, '.')
   }
