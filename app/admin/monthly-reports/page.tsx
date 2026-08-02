@@ -253,6 +253,7 @@ export default function MonthlyReportSettingsPage() {
             <label className="mt-5 block max-w-[180px] space-y-2 text-[10px] font-black uppercase tracking-widest text-zinc-500">Display order
               <input type="number" min="0" step="10" value={draft.sortOrder} onChange={(event) => setDraft({ ...draft, sortOrder: Number(event.target.value) })} className="h-12 w-full rounded-2xl border border-white/10 bg-black px-4 text-sm font-bold text-white outline-none focus:border-orange-500" />
             </label>
+            <p className="mt-2 text-[10px] normal-case text-blue-300">Display order applies immediately to every month. Other changes use the selected effective month.</p>
 
             <button onClick={saveDefinition} disabled={saving} className="mt-8 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 text-xs font-black uppercase hover:bg-orange-500 disabled:opacity-40">{saving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}Save document</button>
           </div>

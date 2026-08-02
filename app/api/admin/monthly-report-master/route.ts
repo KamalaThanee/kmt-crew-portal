@@ -120,14 +120,26 @@ export async function PATCH(req: Request) {
     if (sourceError || !source) throw sourceError || new Error('Monthly Report document not found')
 
     const actor = admin.full_name || admin.id
+    const updatedAt = new Date().toISOString()
+    const sortOrder = input.sortOrder || Number(source.sort_order || 0)
+
+    // Display order is presentation metadata, not a historical requirement.
+    // Keep every version of the same definition aligned so reordering is
+    // visible immediately in current and previous month views.
+    const { error: sortError } = await supabase
+      .from('monthly_report_master')
+      .update({ sort_order: sortOrder, updated_by: actor, updated_at: updatedAt })
+      .eq('definition_key', source.definition_key)
+    if (sortError) throw sortError
+
     const values = {
       form_no: input.formNo,
       details: input.details,
       period: input.period || null,
       pic: input.positions.join(' / '),
-      sort_order: input.sortOrder || Number(source.sort_order || 0),
+      sort_order: sortOrder,
       updated_by: actor,
-      updated_at: new Date().toISOString(),
+      updated_at: updatedAt,
     }
 
     if (input.effectiveFrom <= String(source.effective_from_month)) {
@@ -146,7 +158,7 @@ export async function PATCH(req: Request) {
         active: false,
         effective_to_month: previousMonth(input.effectiveFrom),
         updated_by: actor,
-        updated_at: new Date().toISOString(),
+        updated_at: updatedAt,
       })
       .eq('id', id)
     if (closeError) throw closeError

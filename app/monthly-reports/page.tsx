@@ -181,8 +181,9 @@ const isMonthlyCollectionRow = (row: MonthlyReportMaster) => !isWeeklyRow(row)
 
 const buildStoredFileName = (row: MonthlyReportRow, month: string, originalName: string) => {
   const ext = originalName.includes('.') ? originalName.split('.').pop() || 'file' : 'file'
-  const docNo = row.form_no && row.form_no !== 'N/A' ? row.form_no : 'NA'
-  return safeMonthlyReportName(`KMT-${docNo}-${row.details}-${formatMonth(month)}.${ext}`)
+  const docNo = String(row.form_no || '').trim()
+  const docNoPart = docNo && docNo.replace(/[^a-z0-9]/gi, '').toUpperCase() !== 'NA' ? `${docNo}-` : ''
+  return safeMonthlyReportName(`KMT-${docNoPart}${row.details}-${formatMonth(month)}.${ext}`)
 }
 
 const addFileVersion = (fileUrl: string, version?: string | null) => {
@@ -261,7 +262,11 @@ export default function MonthlyReportsPage() {
       toast.error(`${masterRes.error.message}. Run sql/monthly_reports.sql first.`)
       setMasters([])
     } else {
-      setMasters((masterRes.data || []) as MonthlyReportMaster[])
+      const sortedMasters = ([...(masterRes.data || [])] as MonthlyReportMaster[]).sort((left, right) =>
+        Number(left.sort_order || 0) - Number(right.sort_order || 0)
+        || String(left.form_no || '').localeCompare(String(right.form_no || ''), undefined, { numeric: true }),
+      )
+      setMasters(sortedMasters)
     }
 
     if (submissionRes.error) {
