@@ -7,10 +7,36 @@ create table if not exists public.monthly_report_master (
   pic text not null,
   sort_order integer not null default 0,
   active boolean not null default true,
+  definition_key uuid not null default gen_random_uuid(),
+  effective_from_month date not null default date '2000-01-01',
+  effective_to_month date,
+  created_by text,
+  updated_by text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (form_no, details, pic)
+  constraint monthly_report_master_effective_months_check check (
+    effective_from_month = date_trunc('month', effective_from_month)::date
+    and (effective_to_month is null or effective_to_month = date_trunc('month', effective_to_month)::date)
+    and (effective_to_month is null or effective_to_month >= effective_from_month)
+  )
 );
+
+alter table public.monthly_report_master
+  add column if not exists definition_key uuid,
+  add column if not exists effective_from_month date,
+  add column if not exists effective_to_month date,
+  add column if not exists created_by text,
+  add column if not exists updated_by text;
+
+update public.monthly_report_master set definition_key = id where definition_key is null;
+update public.monthly_report_master set effective_from_month = date '2000-01-01' where effective_from_month is null;
+
+alter table public.monthly_report_master
+  alter column definition_key set default gen_random_uuid(),
+  alter column definition_key set not null,
+  alter column effective_from_month set default date '2000-01-01',
+  alter column effective_from_month set not null,
+  drop constraint if exists monthly_report_master_form_no_details_pic_key;
 
 create table if not exists public.monthly_report_submissions (
   id uuid primary key default gen_random_uuid(),
@@ -57,13 +83,16 @@ create table if not exists public.monthly_report_exports (
 
 create index if not exists monthly_report_master_pic_idx on public.monthly_report_master(pic);
 create index if not exists monthly_report_master_active_idx on public.monthly_report_master(active);
+create unique index if not exists monthly_report_master_definition_month_uidx on public.monthly_report_master(definition_key, effective_from_month);
+create index if not exists monthly_report_master_effective_lookup_idx on public.monthly_report_master(schedule, effective_from_month, effective_to_month, sort_order);
 create index if not exists monthly_report_submissions_month_idx on public.monthly_report_submissions(report_month);
 create index if not exists monthly_report_submissions_master_idx on public.monthly_report_submissions(master_id);
 create index if not exists monthly_report_completion_notices_month_idx on public.monthly_report_completion_notices(report_month);
 create index if not exists monthly_report_exports_month_idx on public.monthly_report_exports(report_month);
 
 insert into public.monthly_report_master (schedule, form_no, details, period, pic, sort_order)
-values
+select seed.schedule, seed.form_no, seed.details, seed.period, seed.pic, seed.sort_order
+from (values
   ('Weekly', '11.81', 'Master HSE Weekly Inspection 1st week', 'Within on Friday of 1st week', 'Safety Officer', 10),
   ('Weekly', '11.82', 'Master HSE Weekly Inspection 2nd week', 'Within on Friday of 2nd week', 'Safety Officer', 20),
   ('Weekly', '11.83', 'Master HSE Weekly Inspection 3rd week', 'Within on Friday of 3rd week', 'Safety Officer', 30),
@@ -91,13 +120,15 @@ values
   ('Monthly Report', '11.133', 'Plan Maintenance System (AWB)', 'Within on 30th of each month', 'Chief Engineer', 250),
   ('Monthly Report', 'N/A', 'Ship Stability calculation monthly test report', 'Within on 30th of each month', 'Chief Officer', 260),
   ('Monthly Report', 'N/A', 'MAE Report (Only Vessel under PTTEP Charter)', 'Within on 30th of each month', 'Safety Officer', 270)
-on conflict (form_no, details, pic) do update
-set
-  schedule = excluded.schedule,
-  period = excluded.period,
-  sort_order = excluded.sort_order,
-  active = true,
-  updated_at = now();
+) as seed(schedule, form_no, details, period, pic, sort_order)
+where not exists (
+  select 1
+  from public.monthly_report_master existing
+  where existing.form_no = seed.form_no
+    and existing.details = seed.details
+    and existing.pic = seed.pic
+    and existing.active = true
+);
 
 insert into storage.buckets (id, name, public)
 values ('monthly-reports', 'monthly-reports', true)
@@ -109,9 +140,15 @@ alter table public.monthly_report_completion_notices enable row level security;
 alter table public.monthly_report_exports enable row level security;
 
 drop policy if exists "Allow anon monthly report master read" on public.monthly_report_master;
-create policy "Allow anon monthly report master read"
+drop policy if exists "Allow monthly report master read" on public.monthly_report_master;
+create policy "Allow monthly report master read"
 on public.monthly_report_master for select
+to anon, authenticated
 using (true);
+
+grant select on public.monthly_report_master to anon, authenticated;
+revoke insert, update, delete, truncate, references, trigger on public.monthly_report_master from anon, authenticated;
+grant select, insert, update, delete on public.monthly_report_master to service_role;
 
 drop policy if exists "Allow anon monthly report submissions read" on public.monthly_report_submissions;
 create policy "Allow anon monthly report submissions read"

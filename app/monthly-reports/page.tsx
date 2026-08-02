@@ -91,12 +91,15 @@ const rowPositionTheme = (pic: string) => {
 
 type MonthlyReportMaster = {
   id: string
+  definition_key: string
   schedule: string
   form_no: string
   details: string
   period: string | null
   pic: string
   sort_order: number
+  effective_from_month: string
+  effective_to_month: string | null
 }
 
 type MonthlyReportSubmission = {
@@ -236,20 +239,22 @@ export default function MonthlyReportsPage() {
 
   const fetchData = async () => {
     setLoading(true)
+    const reportMonth = reportMonthValue(selectedMonth)
     const [masterRes, submissionRes, exportRes] = await Promise.all([
       supabase
         .from('monthly_report_master')
-        .select('id, schedule, form_no, details, period, pic, sort_order')
-        .eq('active', true)
+        .select('id, definition_key, schedule, form_no, details, period, pic, sort_order, effective_from_month, effective_to_month')
+        .lte('effective_from_month', reportMonth)
+        .or(`effective_to_month.is.null,effective_to_month.gte.${reportMonth}`)
         .order('sort_order'),
       supabase
         .from('monthly_report_submissions')
         .select('id, master_id, report_month, status, file_name, file_path, file_url, file_size, mime_type, remarks, uploaded_by_name, uploaded_at')
-        .eq('report_month', reportMonthValue(selectedMonth)),
+        .eq('report_month', reportMonth),
       supabase
         .from('monthly_report_exports')
         .select('id, report_month, position, exported_count, exported_by_name, exported_at')
-        .eq('report_month', reportMonthValue(selectedMonth)),
+        .eq('report_month', reportMonth),
     ])
 
     if (masterRes.error) {
