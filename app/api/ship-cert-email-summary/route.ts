@@ -32,20 +32,28 @@ function getSupabaseAdmin() {
   })
 }
 
-function todayStart() {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate())
+function bangkokDateParts(value = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(value)
+  const pick = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0)
+  return { year: pick('year'), month: pick('month'), day: pick('day') }
 }
 
-function isoDate(date = new Date()) {
-  return date.toISOString().slice(0, 10)
+function bangkokDateKey(value = new Date()) {
+  const { year, month, day } = bangkokDateParts(value)
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
 function daysUntil(value?: string | null) {
   if (!value || value === '2099-12-31') return null
-  const target = new Date(`${String(value).slice(0, 10)}T00:00:00`)
-  if (Number.isNaN(target.getTime())) return null
-  return Math.ceil((target.getTime() - todayStart().getTime()) / DAY_MS)
+  const [year, month, day] = String(value).slice(0, 10).split('-').map(Number)
+  if (!year || !month || !day) return null
+  const today = bangkokDateParts()
+  return Math.round((Date.UTC(year, month - 1, day) - Date.UTC(today.year, today.month - 1, today.day)) / DAY_MS)
 }
 
 function getTrigger(days: number | null) {
@@ -150,7 +158,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ shouldSend: false, reason: 'no_due_alert' })
     }
 
-    const dateKey = isoDate()
+    const dateKey = bangkokDateKey()
     const triggerKeys = expiredRows.length > 0
       ? [`ship_cert_daily_expired:${dateKey}`]
       : triggerRows.map((item) => `ship_cert:${item.cert.id}:${getTrigger(item.days)}`)
